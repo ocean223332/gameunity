@@ -1,51 +1,51 @@
-# Tiền Tuyến — trạng thái Unity và combat slice P2
+# Tiền Tuyến — Unity and P2 combat slice status
 
-## Đã triển khai
+## Implemented
 
-- Người dùng duyệt Unity hiện có, URP, Windows offline; sau đó yêu cầu công khai mã nguồn lên GitHub tại `ocean223332/gameunity`.
+- The user approved the existing Unity installation, URP, and offline Windows; later, they requested publishing the source code to GitHub at `ocean223332/gameunity`.
 - Unity project: `../TienTuyen`, Editor **6000.3.24f1**, template `com.unity.template.urp-blank` (Universal 3D).
-- URP **17.3.0**, Input System **1.20.0**, Test Framework **1.6.0**, uGUI **2.0.0** có sẵn trong template; Pipeline **0.7.0-exp.1** thêm bằng CLI để điều khiển Editor cục bộ.
-- Giữ nguyên các package phụ của template, chưa cấu hình AI Navigation, Multiplayer Center, Visual Scripting hoặc Timeline thành tính năng. Không thêm IAP, quảng cáo hoặc backend.
-- Scene nền `Assets/_TienTuyen/Scenes/Bootstrap.unity` vẫn giữ nguyên cho kiểm tra project.
-- Scene chơi `Assets/_TienTuyen/Scenes/CombatSpike.unity`: arena top-down orthographic có cover, player, enemy pool, projectile/pickup pool, spawn warning và ánh sáng URP. Build Settings chỉ bật scene combat.
-- PC quality, Linear color, HDR, directional light/bóng mềm; Global Volume ACES, Bloom0.5/threshold0.9, Vignette0.15. Material dùng shader URP/Lit.
-- Windows64 Mono, 1280×720 windowed; ForceText, Visible Meta Files. Scene CombatSpike là scene duy nhất bật trong build settings.
-- UI runtime: uGUI + TextMeshPro, menu Rifle/SMG, HUD máu/wave/time/XP/currency/ammo/reload, pause, defeat/victory và restart/menu.
-- Combat slice hiện tại: 6 wave (wave 5–6 dài 50 giây), Rifle/SMG/Shotgun tự bắn và tự nạp, infantry/shooter/charger/elite với telegraph, cover/LOS, di chuyển lưới, pickup currency/XP, pause/death/restart, wave settlement và kiện tiếp tế wave 3 (20 tiếp tế + hồi 10 HP). Charger mở từ wave 2, báo trước lane rồi dash theo hướng đã khóa.
-- Module P2 thuần C# đã nối vào combat: `ProgressionRun`/`ShopSession` cho 4 slot, passive stack, upgrade pending, giá/reroll, khóa, mua/bán/ghép và băng bó; `PassiveCatalog` có 6 ID ổn định I01–I06; `ContentCatalog` có 3 vũ khí, 3 enemy thường và 1 elite; `SupplyEvent` xử lý progress/claim idempotent. Presentation có màn hình nâng cấp và shop tiếng Việt, preview trước/sau và các thao tác giao dịch.
+- URP **17.3.0**, Input System **1.20.0**, Test Framework **1.6.0**, and uGUI **2.0.0** came with the template; Pipeline **0.7.0-exp.1** was added via CLI to control the local Editor.
+- The template's auxiliary packages remain unchanged; AI Navigation, Multiplayer Center, Visual Scripting, and Timeline have not been configured as features. No IAP, ads, or backend were added.
+- The baseline scene, `Assets/_TienTuyen/Scenes/Bootstrap.unity`, remains unchanged for project validation.
+- Playable scene, `Assets/_TienTuyen/Scenes/CombatSpike.unity`: a top-down orthographic arena with cover, a player, an enemy pool, projectile/pickup pools, spawn warnings, and URP lighting. Only the combat scene is enabled in Build Settings.
+- PC quality, Linear color, HDR, directional light/soft shadows; Global Volume with ACES, Bloom 0.5/threshold 0.9, and Vignette 0.15. Materials use the URP/Lit shader.
+- Windows64 Mono, 1280×720 windowed; ForceText, Visible Meta Files. CombatSpike is the only scene enabled in build settings.
+- Runtime UI: uGUI + TextMeshPro, Rifle/SMG menu, health/wave/time/XP/currency/ammo/reload HUD, pause, defeat/victory, and restart/menu.
+- Current combat slice: 6 waves (waves 5–6 last 50 seconds), auto-firing and auto-reloading Rifle/SMG/Shotgun, infantry/shooter/charger/elite with telegraphs, cover/LOS, grid-based movement, currency/XP pickups, pause/death/restart, wave settlement, and a wave 3 supply crate (20 supplies + 10 HP healing). Chargers unlock from wave 2, telegraph their lane, then dash in the locked direction.
+- Pure C# P2 modules integrated into combat: `ProgressionRun`/`ShopSession` for 4 slots, passive stacks, pending upgrades, pricing/rerolls, locks, buying/selling/merging, and bandaging; `PassiveCatalog` has 6 stable IDs, I01–I06; `ContentCatalog` has 3 weapons, 3 regular enemies, and 1 elite; `SupplyEvent` handles progress/idempotent claiming. Presentation includes Vietnamese upgrade and shop screens, before/after previews, and transaction actions.
 
-## Bằng chứng kiểm tra
+## Verification evidence
 
-Cập nhật hoạt ảnh 2026-09-27: **57/57 Edit Mode**, **24/24 Play Mode** đạt. Đã bổ sung hoạt ảnh khớp low-poly, cầm súng hai tay, recoil/reload, muzzle flash/vỏ đạn và kiểm tra hình học của ba súng với áo/giáp. Đã xem cận cảnh từ hai góc ở tư thế đứng, chạy, bắn và nạp đạn. Các thông số build trong bảng bên dưới là bản P2 trước lần cập nhật hoạt ảnh, không phải xác nhận build mới. Log và ảnh kiểm thử mới lưu cục bộ trong `TestResults/`.
+Animation update, 2026-09-27: **57/57 Edit Mode** and **24/24 Play Mode** tests passed. Added articulated low-poly animation, two-handed weapon handling, recoil/reload, muzzle flashes/casings, and geometry checks for all three guns against clothing/armor. Reviewed close-ups from two angles in idle, running, firing, and reloading poses. The build figures in the table below refer to the P2 build before the animation update, not confirmation of a new build. New test logs and images are stored locally in `TestResults/`.
 
-| Kiểm tra | Kết quả |
+| Check | Result |
 |---|---|
-| Script compile | Hoàn tất sau khi import TMP và combat assemblies; không compile errors mới |
-| Foundation validator | Đạt; build scene trỏ tới CombatSpike |
-| Combat Edit Mode tests | **53/53 đạt**: combat rules, P2 catalog, charger eligibility/stats, progression transaction/cap, passive catalog, idempotent reward và supply lifecycle |
-| Combat Play Mode tests | **11/11 đạt**: full health/start, Shotgun P2, pause clock, invulnerability, defeat reward, charger telegraph/dash, charger reward idempotency, full 6-wave upgrade/shop→Victory flow, upgrade→shop flow, shop transactions và 20 restart/pool reset |
-| Foundation Edit Mode tests | **4/4 đạt** |
-| Edit/Play render | Đã xem camera thật trong Play Mode: arena, cover, player, enemy và pickup hiển thị đúng; menu tiếng Việt đã kiểm tra |
-| Integrity CLI | **271 file**, 0 lỗi, 0 cảnh báo, 0 mục không kiểm tra được |
-| Windows build | Build P2 thành công; `Builds/Windows/TienTuyen.exe`, 105.848.797 byte, 14,9 giây, 0 lỗi, 1 warning (Pipeline runtime tắt trong Player) |
-| Standalone smoke | Đã mở executable Windows, cửa sổ `Tiền Tuyến` hiển thị, phím bắt đầu chuyển qua menu/play flow và đóng được bằng Alt+F4 |
-| Network configuration | Cloud link trống, Unity Connect/ads/analytics tắt; Pipeline `enableInBuilds=false`, `autoStart=false`; không thấy TCP socket của tiến trình tại thời điểm kiểm tra |
+| Script compile | Completed after importing TMP and combat assemblies; no new compile errors |
+| Foundation validator | Passed; the build scene points to CombatSpike |
+| Combat Edit Mode tests | **53/53 passed**: combat rules, P2 catalog, charger eligibility/stats, progression transactions/caps, passive catalog, idempotent rewards, and supply lifecycle |
+| Combat Play Mode tests | **11/11 passed**: full health/start, P2 Shotgun, pause clock, invulnerability, defeat reward, charger telegraph/dash, charger reward idempotency, full 6-wave upgrade/shop→Victory flow, upgrade→shop flow, shop transactions, and 20 restarts/pool resets |
+| Foundation Edit Mode tests | **4/4 passed** |
+| Edit/Play render | Reviewed the actual camera in Play Mode: arena, cover, player, enemies, and pickups rendered correctly; the Vietnamese menu was checked |
+| Integrity CLI | **271 files**, 0 errors, 0 warnings, 0 uncheckable items |
+| Windows build | P2 build succeeded; `Builds/Windows/TienTuyen.exe`, 105,848,797 bytes, 14.9 seconds, 0 errors, 1 warning (Pipeline runtime disabled in Player) |
+| Standalone smoke | Launched the Windows executable; the `Tiền Tuyến` window appeared, the start key advanced through the menu/play flow, and Alt+F4 closed it |
+| Network configuration | Cloud link empty, Unity Connect/ads/analytics disabled; Pipeline `enableInBuilds=false`, `autoStart=false`; no process TCP sockets observed at the time of inspection |
 
-Ảnh: [Edit Mode](art/unity-baseline-edit.png), [Play Mode](art/unity-baseline-play.png). Đây là ảnh thực từ Unity, không phải concept đã tạo trước đó.
+Images: [Edit Mode](art/unity-baseline-edit.png), [Play Mode](art/unity-baseline-play.png). These are actual Unity images, not the previously generated concept.
 
-Máy tham chiếu ban đầu: Intel i7-12700H, RAM16GB, RTX3060 Laptop GPU6GB; chưa benchmark FPS/gameplay. Việc khởi động nền không chứng minh thao tác bàn phím, gameplay hoặc vận hành hoàn toàn không mạng ở mọi tình huống.
+Initial reference machine: Intel i7-12700H, 16 GB RAM, RTX3060 Laptop GPU with 6 GB VRAM; FPS/gameplay has not been benchmarked. Background startup does not establish keyboard interaction, gameplay, or completely offline operation in every situation.
 
-## Ghi chú công cụ
+## Tool notes
 
-- CLI beta8 không nhận `--caller`/`--skill` trên lệnh eval dù bản skill mới mô tả chúng; dùng schema thực tế đã truy vấn.
-- Build đầu qua eval đồng bộ vượt timeout5s của Pipeline nhưng vẫn hoàn tất; lỗi timeout công cụ xuất hiện trong báo cáo đầu. Đã gọi build lại qua Editor update callback và nhận log thành công3,2s.
-- Cảnh báo build của Pipeline xác nhận runtime bridge bị tắt, là trạng thái mong muốn. Package vẫn có assembly runtime nội bộ; không tuyên bố toàn bộ package được loại khỏi Player.
-- Editor có warning Hub IPC timeout; không chặn compile/render/test/build trong lượt này. Player ghi cảnh báo D3D12 info-queue nhưng tiếp tục khởi tạo GPU và load scene.
-- Ảnh chụp Edit Mode đầu quá sớm chỉ có clear color; đã chụp lại sau khi render cập nhật và xác minh.
-- Chưa kiểm thử clean checkout hoặc giao diện standalone trực tiếp. Build outputs/log/cache được .gitignore loại khỏi lịch sử.
+- CLI beta8 does not accept `--caller`/`--skill` on eval commands even though the newer skill describes them; the queried, actual schema was used.
+- The first build through synchronous eval exceeded Pipeline's 5-second timeout but still completed; the tool timeout error appeared in the initial report. The build was rerun through an Editor update callback, returning a successful 3.2-second log.
+- The Pipeline build warning confirms that the runtime bridge is disabled, which is the intended state. The package still contains an internal runtime assembly; this does not claim the entire package is excluded from Player.
+- The Editor reported a Hub IPC timeout warning; it did not block compilation/rendering/tests/builds during this run. Player logged a D3D12 info-queue warning but continued initializing the GPU and loading the scene.
+- The initial Edit Mode screenshot was taken too early and showed only the clear color; it was retaken after rendering updated and then verified.
+- A clean checkout and direct standalone UI testing have not yet been performed. Build outputs/logs/caches are excluded from history by .gitignore.
 
-## Giới hạn P2 và bước tiếp theo
+## P2 limitations and next steps
 
-Slice hiện vẫn dùng primitive graybox và material URP, chưa phải art final. Chưa có nhiều lớp nhân vật, audio hoàn chỉnh hoặc profiling stress. Bộ địch P2 đã đủ ba archetype thường cùng elite; full human playthrough 6 wave vẫn còn. TMP cảnh báo một số ký tự tiếng Việt ngoài glyph nền và dùng fallback/dynamic glyph khi cần; cần chốt font hỗ trợ đầy đủ trước P2 hoàn chỉnh.
+The slice still uses graybox primitives and URP materials, not final art. Multiple character classes, complete audio, and stress profiling are not yet available. The P2 enemy roster now includes all three regular archetypes plus an elite; a full human playthrough of 6 waves remains outstanding. TMP warns about some Vietnamese characters missing from the base glyph set and uses fallback/dynamic glyphs as needed; a font with full support must be finalized before P2 is complete.
 
-Bước kế tiếp là hoàn thiện kiểm chứng P2: một góc art/audio hoàn thiện đại diện, font tiếng Việt đầy đủ, rồi chạy playthrough đủ 6 wave trên Windows build.
+The next step is to finish P2 validation: one representative, fully finished art/audio section, complete Vietnamese font coverage, and then a full 6-wave playthrough on the Windows build.

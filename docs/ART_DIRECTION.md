@@ -1,90 +1,90 @@
 # TIỀN TUYẾN — Art direction & asset plan v0.1
 
-Ngày: 25/09/2026. **Đề xuất để duyệt**, chưa phải art đã triển khai hoặc benchmark. Gameplay theo [SPEC.md](SPEC.md), lịch sản xuất theo [PLAN.md](PLAN.md). Không đổi 12 đợt, 4 ô vũ khí hay phạm vi MVP.
+Date: 25/09/2026. **Proposal for approval**, not implemented art or a benchmark. Gameplay follows [SPEC.md](SPEC.md); the production schedule follows [PLAN.md](PLAN.md). No changes to the 12 waves, 4 weapon slots, or MVP scope.
 
-## 1. Hướng hình ảnh
+## 1. Visual direction
 
-**3D stylized low-poly với màu vẽ tay**, nghiêm túc vừa phải, hình khối gọn và chất liệu ít nhiễu. Không chibi, không photoreal, không pixel art. Nhân vật có tỉ lệ gần người thật nhưng bàn tay, súng và túi trang bị hơi lớn để nhìn rõ. Không dùng phóng đại cơ thể kiểu quái vật cho đối phương.
+**Stylized low-poly 3D with hand-painted colors**, a moderately serious tone, clean shapes, and low-noise materials. Not chibi, photorealistic, or pixel art. Characters have near-realistic human proportions, with slightly oversized hands, weapons, and equipment pouches for readability. Do not give enemies exaggerated, monster-like bodies.
 
-- Camera orthographic cố định, nghiêng khoảng 60° so với mặt đất; arena trong một khung 16:9. Duyệt asset ở góc camera này trước góc cận cảnh.
-- Rừng ô-liu trầm, đất nâu ấm, ánh sáng ban ngày dịu. Cỏ thưa trong đường chạy; tán cây tập trung ngoài rìa, làm mờ khi che nhân vật/cảnh báo.
-- Bóng mềm, ít phản xạ; hạn chế bloom, sương dày và depth of field. Không thêm mưa động trong MVP.
-- Thứ tự thị giác: người chơi → nguy hiểm → mục tiêu tiếp tế → địch → vật cản → trang trí.
+- Fixed orthographic camera, tilted approximately 60° relative to the ground; the arena fits within a single 16:9 frame. Review assets from this camera angle before reviewing close-ups.
+- Muted olive forest, warm brown earth, and soft daylight. Sparse grass along movement paths; concentrate tree canopies around the edges and fade them when they obscure characters or warnings.
+- Soft shadows and minimal reflections; limit bloom, dense fog, and depth of field. Do not add dynamic rain in the MVP.
+- Visual priority: player → danger → supply objective → enemies → obstacles → decoration.
 
-Địa điểm là trạm tiếp tế hư cấu ở Trường Sơn năm 1972. Quân phục, phù hiệu, súng và đối phương hiện là placeholder: phải duyệt reference lịch sử trước art cuối. Vai trò gameplay không chứng minh một loại trang bị có thật trong đơn vị.
+The setting is a fictional supply station in Trường Sơn in 1972. Uniforms, insignia, weapons, and opposing forces are currently placeholders: historical references must be approved before final art. A gameplay role does not establish that a particular unit actually used a given piece of equipment.
 
-## 2. Bảng màu thử nghiệm
+## 2. Experimental color palette
 
-| Vai trò | Màu khởi điểm | Cách nhận biết bổ sung |
+| Role | Starting colors | Additional identification cues |
 |---|---|---|
-| Rừng / bóng nền | `#354638`, `#24352D` | Mảng lớn, chi tiết thưa |
-| Đất / đường | `#80664C` | Bề mặt ít tương phản |
-| Người chơi | `#8E9B66` | Viền sáng, vòng chân có dấu chevron |
-| Địch | `#766C5E` | Silhouette theo vai trò, không chỉ đổi màu |
-| Tiếp tế | `#E7BD62` | Biểu tượng thùng + vòng tiến độ |
-| Nguy hiểm | `#F17858` | Viền sáng/tối, hình vùng và đếm ngược |
-| UI chữ / nền | `#EEE7D4`, `#202A25` | Chữ rõ dấu Việt, nền bảng đặc |
+| Forest / background shadows | `#354638`, `#24352D` | Large shapes, sparse detail |
+| Ground / paths | `#80664C` | Low-contrast surfaces |
+| Player | `#8E9B66` | Bright outline, foot ring with a chevron |
+| Enemies | `#766C5E` | Role-specific silhouettes, not just color swaps |
+| Supplies | `#E7BD62` | Crate icon + progress ring |
+| Danger | `#F17858` | Light/dark outlines, area shapes, and countdowns |
+| UI text / background | `#EEE7D4`, `#202A25` | Clear Vietnamese diacritics, solid panel backgrounds |
 
-Màu là giả thuyết art, chưa kiểm tra tương phản. Đạn địch dùng chấm sáng có đuôi ngắn; tracer người chơi dùng vệt mảnh. Chế độ xem xám vẫn phải phân biệt được nguy hiểm, pickup và người chơi.
+These colors are an art hypothesis; contrast has not yet been tested. Enemy bullets use bright dots with short trails; player tracers use thin streaks. Danger, pickups, and the player must remain distinguishable in grayscale.
 
-## 3. Danh mục asset theo mốc
+## 3. Asset catalog by milestone
 
-Số lượng dưới đây là tổng tích lũy; dùng chung mesh/rig khi hợp lý, không bắt buộc mỗi vai trò là một model mới hoàn toàn.
+The quantities below are cumulative totals; share meshes/rigs where appropriate. Each role does not necessarily require an entirely new model.
 
-| Nhóm | P1: combat spike | P2: vertical slice | P3: MVP |
+| Group | P1: combat spike | P2: vertical slice | P3: MVP |
 |---|---|---|---|
-| Nhân vật | 1 placeholder | 1 mẫu art hoàn chỉnh | 3 lớp: bộ binh, trinh sát, yểm trợ |
-| Vũ khí | 2 placeholder | 3 model + icon | 6 vai trò + 6 icon |
-| Địch | 2 placeholder | 3 thường + 1 elite | 6 thường + 1 elite + 1 boss |
-| Vật phẩm | Chưa cần | 6 icon | 18 icon riêng, không cần 18 model 3D |
-| Arena | 1 graybox | 1 góc hoàn thiện đại diện | 1 arena rừng thống nhất |
-| Tiếp tế | Pickup thường | Thêm kiện mục tiêu | Dùng lại tại đợt 3/6/9 |
-| UI/VFX | HUD và phản hồi tối thiểu | Menu, shop, upgrade, kết quả | Đủ trạng thái, accessibility |
+| Characters | 1 placeholder | 1 fully finished art sample | 3 classes: infantry, scout, support |
+| Weapons | 2 placeholders | 3 models + icons | 6 roles + 6 icons |
+| Enemies | 2 placeholders | 3 regular + 1 elite | 6 regular + 1 elite + 1 boss |
+| Items | Not needed yet | 6 icons | 18 distinct icons; 18 separate 3D models are not required |
+| Arena | 1 graybox | 1 representative, fully finished section | 1 cohesive forest arena |
+| Supplies | Standard pickups | Add an objective crate | Reuse in waves 3/6/9 |
+| UI/VFX | Minimal HUD and feedback | Menu, shop, upgrades, results | Complete state coverage and accessibility |
 
-Sáu vũ khí: súng trường, tiểu liên, trung liên, tản đạn, súng trường chính xác, bộ phóng lựu đạn; mẫu súng thật để sau kiểm chứng. Tier I/II/III dùng nhãn UI, chưa tạo 18 mesh. Bốn slot luôn hiện trên HUD; đề xuất một súng chính trên tay, các slot còn lại có điểm phát hiệu ứng nhỏ. Kiểm chứng khả năng đọc ở P1 trước chốt, không thêm đồng đội AI.
+The six weapons are a rifle, submachine gun, light machine gun, shotgun, precision rifle, and grenade launcher; specific real-world models will be chosen after verification. Tiers I/II/III use UI labels; do not create 18 meshes yet. All four slots remain visible on the HUD; the proposal is to show one primary weapon in hand, with small effect emitters for the other slots. Validate readability in P1 before committing; do not add AI squadmates.
 
-Sáu địch: áp sát, xung kích, xạ thủ, ném lựu đạn, lính nặng, yểm trợ. Khác biệt qua dáng đứng, kích thước túi/súng và động tác báo đòn; không dùng trang phục thiếu căn cứ chỉ để phân loại. Elite nhấn bằng trang bị và marker, không kéo giãn thành người khổng lồ. Boss là tổ hỏa lực hư cấu có người lính tỉ lệ bình thường; cấu trúc hành vi vẫn theo SPEC, không thêm xe điều khiển hoặc cơ chế mới.
+The six enemy types are melee, charger, shooter, grenadier, heavy, and support. Differentiate them through stance, pouch/weapon size, and attack telegraphs; do not use unsupported costume choices merely to distinguish roles. Emphasize elites through equipment and markers, not by stretching them into giants. The boss is a fictional fire team with normally proportioned soldiers; its behavior still follows SPEC, with no controllable vehicles or new mechanics.
 
-### Bộ môi trường modular
+### Modular environment kit
 
-Đề xuất 12–16 module tái sử dụng: đoạn/góc bao cát, hòm đóng/mở, mái che, cột, thùng, khúc gỗ, hai đá, hai cây, bụi, cỏ và mảng đất. Ghép thủ công thành arena; không sinh nguyên map thành một mesh. Bao cát/đá có collider rõ; cỏ/lá không collider. Mỗi cụm cover có ít nhất hai lối vòng. Tách mái/tán để xử lý che khuất.
+Propose 12–16 reusable modules: sandbag sections/corners, closed/open crates, a canopy, posts, a barrel, a log, two rocks, two trees, a bush, grass, and a ground patch. Assemble the arena by hand; do not generate the entire map as a single mesh. Sandbags/rocks have clearly defined colliders; grass/leaves have none. Each cover cluster has at least two routes around it. Separate roofs/canopies to handle occlusion.
 
-## 4. Rig, animation và budget tạm
+## 4. Rig, animation, and provisional budgets
 
-Một skeleton humanoid dùng chung nơi phù hợp; biến thể qua trang bị và mesh. Bộ cơ bản: idle, chạy, recoil/bắn, reload, hit, chết; thêm ngắm, lao và ném cho các vai trò cần thiết. Không ragdoll. Animation không được trì hoãn hoặc rút ngắn cảnh báo gameplay đã quy định.
+Use a shared humanoid skeleton where appropriate, with equipment and mesh variants. The basic set is idle, run, recoil/fire, reload, hit, and death; add aim, charge, and throw animations for roles that need them. No ragdolls. Animation must not delay or shorten the specified gameplay warning periods.
 
-| Asset | Mức thử ban đầu, không phải giới hạn đã đo |
+| Asset | Initial trial target, not a measured limit |
 |---|---|
-| Nhân vật | 2.000–4.000 triangles; 1–2 material |
-| Vũ khí | 300–1.000 triangles/model |
-| Prop nhỏ / cây | 100–800 / 500–1.500 triangles |
-| Texture | Atlas nhân vật 1K; môi trường 1K–2K; VFX 256–512 |
-| Icon | Nguồn 256×256, kiểm tra ở kích thước hiển thị 48–64 px |
+| Character | 2,000–4,000 triangles; 1–2 materials |
+| Weapon | 300–1,000 triangles/model |
+| Small prop / tree | 100–800 / 500–1,500 triangles |
+| Texture | 1K character atlas; 1K–2K environment; 256–512 VFX |
+| Icon | 256×256 source; check at the displayed size of 48–64 px |
 
-Ưu tiên atlas, material dùng chung, pool VFX và ít lớp lá trong suốt. Chỉ khóa budget sau đo standalone trên reference PC theo PLAN; không suy ra 60 FPS từ số polygon.
+Prioritize atlases, shared materials, pooled VFX, and few layers of transparent foliage. Finalize budgets only after standalone measurements on the reference PC defined in PLAN; do not infer 60 FPS from polygon counts.
 
-## 5. UI, VFX và nguồn asset
+## 5. UI, VFX, and asset sources
 
-UI gợi bảng quân nhu bằng màu giấy/ô-liu, không phủ texture cũ lên chữ. Shop có bốn thẻ hàng; inventory có bốn ô vũ khí. Cấp trang bị có số La Mã; trạng thái khóa có icon; cảnh báo nổ có vòng, nét và thời gian, không phụ thuộc đỏ/xanh. Hit flash ngắn, không che telegraph; cho phép tắt shake/damage numbers. Âm thanh nguy hiểm hỗ trợ hình ảnh, không thay thế hình ảnh.
+The UI suggests a quartermaster board through paper/olive colors, without placing aged textures over text. The shop has four item cards; the inventory has four weapon slots. Equipment tiers use Roman numerals; locked states use icons; explosion warnings use rings, lines, and timing, rather than relying on red/green. Keep hit flashes short and do not obscure telegraphs; allow shake/damage numbers to be disabled. Danger sounds supplement visuals rather than replace them.
 
-Nguồn có thể dùng: tự dựng, đặt artist, thư viện có license phù hợp, hoặc sinh model sau khi duyệt chi phí. Không mặc định asset miễn phí là dùng thương mại được. Lưu nguồn, tác giả, license, bằng chứng quyền sử dụng và chỉnh sửa trong manifest; kiểm tra riêng nhạc/font/animation. Chưa mua, tải pack, cài công cụ hoặc sinh model trong bước này.
+Possible sources include self-authored assets, commissioned artists, appropriately licensed libraries, or generated models after cost approval. Do not assume free assets are licensed for commercial use. Record the source, author, license, evidence of usage rights, and modifications in the manifest; check music/fonts/animation separately. No purchases, asset-pack downloads, tool installations, or model generation at this stage.
 
-Ảnh concept/keyframe dùng để duyệt màu, bố cục và phong cách; **không phải mesh, rig, texture atlas hay screenshot gameplay Unity**. Bản visualization giúp thảo luận mật độ, HUD và vùng nhìn; không chứng minh hiệu năng hoặc đường đi.
+Concept/keyframe images are for approving color, composition, and style; they are **not meshes, rigs, texture atlases, or Unity gameplay screenshots**. The visualization supports discussion of density, HUD layout, and viewing areas; it does not establish performance or navigability.
 
-## 6. Gate duyệt và QA
+## 6. Approval gates and QA
 
-1. Duyệt một keyframe combat và bảng màu ở camera thật.
-2. Duyệt một hero cùng súng/rig mẫu; kiểm tra hình ở 720p trước sản xuất cả catalog.
-3. Ghép vào blockout; kiểm chứng đạn, cover, tán cây và bốn slot; sau đó hoàn thiện góc vertical slice.
-4. Mở rộng đủ MVP khi pipeline art đã ổn.
+1. Approve one combat keyframe and the palette from the actual camera angle.
+2. Approve one hero with a sample weapon/rig; check the image at 720p before producing the full catalog.
+3. Integrate into the blockout; verify bullets, cover, tree canopies, and the four slots, then finish the vertical-slice section.
+4. Expand to the full MVP once the art pipeline is stable.
 
-QA: thử 720p/1080p, xem xám, combat đông và tắt shake; không mất dấu người chơi/đạn/telegraph. Mesh đúng scale/pivot, không missing material, animation không trượt chân rõ rệt, tiếng Việt không mất dấu. So hình với collider; kiểm tra license và reference lịch sử trước gắn nhãn art final.
+QA: test at 720p/1080p, in grayscale, in crowded combat, and with shake disabled; the player, bullets, and telegraphs must remain trackable. Meshes have correct scales/pivots, no materials are missing, animations have no obvious foot sliding, and Vietnamese text retains its diacritics. Compare visuals against colliders; check licenses and historical references before labeling art final.
 
-Cần duyệt tiếp: hướng 3D này; mức cường điệu nhân vật; cách thể hiện bốn vũ khí; diện mạo/lực lượng đối phương sau nghiên cứu. Chưa cần chốt mọi asset trước combat spike.
+Further approval is needed for this 3D direction, the degree of character exaggeration, the representation of four weapons, and the appearance/identity of opposing forces after research. Every asset does not need to be finalized before the combat spike.
 
-## 7. Minh họa v01
+## 7. Illustrations v01
 
-- [Concept màu và không gian](art/concept-v01.png), tạo bằng công cụ image generation tích hợp; [prompt và ghi chú review](art/CONCEPT_PROMPT.md).
-- [Ảnh kiểm tra bố cục HUD](art/hud-layout-qa-v01.png): sơ đồ ký hiệu, không phải art game. Bản tương tác đi kèm trong hội thoại chuyển giữa chiến đấu và quân nhu.
-- Concept đang chi tiết hơn budget đề xuất; production cần giảm nhiễu mặt đất/lá cây và làm rõ khác biệt đạn hai phía. Chi tiết quân phục/súng trong ảnh chưa được duyệt lịch sử.
-- Kiểm tra bản HUD trong trình duyệt: chuyển hai màn đúng, không runtime error trong lượt kiểm tra, không tràn ngang tại 320 px. Chưa kiểm chứng Unity, cảm ứng thật hoặc hiệu năng gameplay.
+- [Color and environment concept](art/concept-v01.png), created with the integrated image-generation tool; [prompt and review notes](art/CONCEPT_PROMPT.md).
+- [HUD layout QA image](art/hud-layout-qa-v01.png): a symbolic diagram, not game art. The accompanying interactive version in the conversation switches between combat and quartermaster screens.
+- The concept currently exceeds the proposed detail budget; production needs to reduce ground/foliage noise and make the two sides' projectiles more distinct. The image's uniform/weapon details have not received historical approval.
+- Browser checks of the HUD version: both screens switch correctly, no runtime errors occurred during the check, and there was no horizontal overflow at 320 px. Unity, real touch input, and gameplay performance have not yet been verified.
