@@ -1,8 +1,8 @@
 # PLAN — Top-down arena survivor trong bối cảnh chiến tranh Việt Nam
 
-Trạng thái: bản đề xuất v0.2, ngày 25/09/2026. Chỉ lập kế hoạch; chưa tạo Unity project, cài package hoặc viết gameplay. [SPEC.md](SPEC.md) là nguồn yêu cầu gameplay; PLAN mô tả cách thực hiện và chứng minh yêu cầu đó.
+Trạng thái: bản đề xuất v0.2, ngày 25/09/2026. P0 và phần lớn P2 vertical slice đã triển khai/kiểm chứng trong Unity; bộ địch đã đủ 3 archetype thường và elite, còn art/audio đại diện và playthrough người thật đủ 6 wave. [SPEC.md](SPEC.md) là nguồn yêu cầu gameplay; PLAN mô tả cách thực hiện và chứng minh yêu cầu đó.
 
-Cập nhật triển khai: người dùng đã duyệt Unity hiện có 6000.3.24f1 + URP, Windows offline và Git cục bộ không remote. Project `../TienTuyen` đã được khởi tạo; trạng thái kiểm chứng mới nhất nằm ở README và `SETUP_STATUS.md`, thay thế trạng thái chưa tạo project của bản kế hoạch gốc. Combat spike P1 chưa hoàn thành.
+Cập nhật triển khai: người dùng đã duyệt Unity hiện có 6000.3.24f1 + URP, Windows offline và Git cục bộ không remote. Project `../TienTuyen` đã được khởi tạo; scene `CombatSpike.unity` là bản chơi P2 hiện tại. Bộ địch combat hiện đã có 3 địch thường (infantry, shooter, charger) và elite; trạng thái kiểm chứng mới nhất nằm ở README và `SETUP_STATUS.md`, thay thế trạng thái chưa tạo project của bản kế hoạch gốc. P2 còn art/audio đại diện và playtest cần hoàn tất trước khi đóng mốc.
 
 ## 1. Phạm vi và các quyết định cần chốt
 
@@ -30,7 +30,7 @@ Các quyết định dưới đây giúp lập kế hoạch. Người dùng đã
 | Mốc | Đầu vào/phụ thuộc | Sản phẩm cụ thể | Điều kiện vượt mốc | Ước lượng ngày công |
 | --- | --- | --- | --- | --- |
 | P0 — Chốt hướng | Phản hồi trên SPEC/PLAN | Brief được duyệt; engine/platform/UI stack; reference PC; danh sách asset và quyền sử dụng; backlog ưu tiên | Không còn quyết định có thể buộc làm lại kiến trúc hoặc toàn bộ art | 1–2 |
-| P1 — Combat spike | P0 | Arena graybox; 1 lớp; 2 vũ khí; 2 địch; 3 wave; bắn/nạp đạn/LOS; nhặt tài nguyên; pause/death/restart; chưa có shop hoặc kiện tiếp tế | Ba wave chơi được liên tục; không bắn xuyên vật cản; né được đạn; AI không kẹt có hệ thống; người chơi hiểu nguy hiểm và lý do chết | 4–6 |
+| P1 — Combat spike | P0 | Arena graybox; 1 lớp; 2 vũ khí; 2 địch; 3 wave; bắn/nạp đạn/LOS; nhặt tài nguyên; pause/death/restart; chưa có shop hoặc kiện tiếp tế | **Đã triển khai và kiểm chứng** bằng 13 Edit Mode + 5 Play Mode tests, camera Play Mode và Windows standalone smoke. Full human 3-wave playthrough và cân bằng vẫn mở | 4–6 |
 | P2 — Vertical slice | P1 đạt combat gate | 6 wave; 1 lớp; 3 vũ khí; 6 vật phẩm; 3 địch thường và elite; tối đa 4 slot; upgrade → shop; một sự kiện supply tại wave 3; một góc art/audio hoàn thiện đại diện | Vòng lặp từ menu đến kết thúc 6 wave chạy trên Windows build; ít nhất 2 build khác cách chơi; ngân sách hiệu năng có capture ban đầu | 7–10 |
 | P3 — MVP nội dung | P2 đạt loop gate | 12 wave; đủ 3 lớp, 6 vũ khí, 18 vật phẩm, 6 địch thường, elite, boss; supply wave 3/6/9; toàn arena đồng nhất; tutorial ngắn; settings và kết quả | Có thể thắng/thua/chơi lại bằng cả 3 lớp; mọi nội dung thực sự xuất hiện và dùng được; không thiếu prefab hoặc âm thanh bắt buộc | 8–12 |
 | P4 — Ổn định, cân bằng | P3 feature complete | Bộ test, sửa lỗi, pass accessibility, profiling, cân bằng, gói Windows nội bộ, hướng dẫn build | Các acceptance bên dưới đạt; không lỗi chặn; 3 lượt chơi hoàn chỉnh liên tiếp ổn định trên máy tham chiếu | 5–8 |

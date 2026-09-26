@@ -85,11 +85,12 @@ namespace TienTuyen.Tests
         }
 
         [Test]
-        public void BuildUsesOnlyBootstrapAndLinearUrp()
+        public void BuildUsesCombatSpikeAndLinearUrp()
         {
             var enabled = EditorBuildSettings.scenes.Where(s => s.enabled).ToArray();
             Assert.That(enabled, Has.Length.EqualTo(1));
-            Assert.That(enabled[0].path, Is.EqualTo(ScenePath));
+            Assert.That(enabled[0].path, Is.EqualTo("Assets/_TienTuyen/Scenes/CombatSpike.unity"));
+            Assert.That(AssetDatabase.LoadAssetAtPath<SceneAsset>(enabled[0].path), Is.Not.Null);
             Assert.That(PlayerSettings.colorSpace, Is.EqualTo(ColorSpace.Linear));
             Assert.That(GraphicsSettings.currentRenderPipeline, Is.InstanceOf<UniversalRenderPipelineAsset>());
             Assert.That(((UniversalRenderPipelineAsset)GraphicsSettings.currentRenderPipeline).supportsHDR, Is.True);

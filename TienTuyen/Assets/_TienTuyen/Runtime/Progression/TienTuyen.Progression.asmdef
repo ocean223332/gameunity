@@ -1,0 +1,6 @@
+{
+  "name": "TienTuyen.Progression",
+  "rootNamespace": "TienTuyen.Progression",
+  "references": ["TienTuyen.Content"],
+  "autoReferenced": true
+}

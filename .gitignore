@@ -40,3 +40,7 @@ Desktop.ini
 !.env.sample
 
 # Deliberately retain Assets/**/*.meta and Packages/packages-lock.json.
+
+# Local verification artifacts and generated promotional video output.
+/TestResults/
+/video_output/

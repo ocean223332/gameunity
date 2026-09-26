@@ -1,0 +1,5 @@
+{
+  "name": "TienTuyen.Presentation",
+  "references": ["TienTuyen.Combat", "TienTuyen.Content", "TienTuyen.Progression", "Unity.TextMeshPro", "UnityEngine.UI", "Unity.InputSystem"],
+  "autoReferenced": true
+}

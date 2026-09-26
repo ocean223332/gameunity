@@ -6,8 +6,8 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/_TienTuyen/Scenes/Bootstrap.unity
-    guid: c2a2b3ad84cba9f489abfa7f1f4ef457
+    path: Assets/_TienTuyen/Scenes/CombatSpike.unity
+    guid: ab045a300ed41e34c963aace044f11d9
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
   m_UseUCBPForAssetBundles: 0

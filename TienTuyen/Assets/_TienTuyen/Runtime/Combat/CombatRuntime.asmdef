@@ -1,0 +1,6 @@
+{
+  "name": "TienTuyen.Combat",
+  "rootNamespace": "TienTuyen.Combat",
+  "references": ["Unity.InputSystem", "TienTuyen.Progression", "TienTuyen.Waves", "TienTuyen.Content"],
+  "autoReferenced": true
+}

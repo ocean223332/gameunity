@@ -5,7 +5,6 @@ using System.IO;
 using System.Linq;
 using UnityEditor;
 using UnityEditor.Build;
-using UnityEditor.Build.Reporting;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -185,8 +184,8 @@ namespace TienTuyen.Editor
                 }
             }
             EditorBuildSettingsScene[] buildScenes = EditorBuildSettings.scenes;
-            Check(buildScenes.Length == 1 && buildScenes[0].enabled && buildScenes[0].path == ScenePath,
-                "Build settings must enable only Bootstrap.", errors);
+            Check(buildScenes.Length == 1 && buildScenes[0].enabled && buildScenes[0].path == CombatSceneSetup.ScenePath,
+                "Build settings must enable only CombatSpike.", errors);
             Check(PlayerSettings.GetScriptingBackend(NamedBuildTarget.Standalone) == ScriptingImplementation.Mono2x,
                 "Standalone scripting backend must be Mono.", errors);
             Check(PlayerSettings.defaultScreenWidth == 1280 && PlayerSettings.defaultScreenHeight == 720 &&
@@ -195,7 +194,7 @@ namespace TienTuyen.Editor
                 "ForceText and Visible Meta Files are required.", errors);
             if (errors.Count > 0)
                 throw new InvalidOperationException("Baseline validation failed:\n- " + string.Join("\n- ", errors));
-            return "Baseline validation passed: saved Bootstrap, URP/HDR/Linear, orthographic camera, ACES/Bloom/Vignette, Windows Mono settings. No gameplay implemented.";
+            return "Baseline validation passed: saved Bootstrap reference scene, URP/HDR/Linear, orthographic camera, ACES/Bloom/Vignette, Windows Mono settings. CombatSpike is the playable build scene.";
         }
 
         [MenuItem("Tien Tuyen/Foundation/Validate Baseline")]
@@ -203,22 +202,7 @@ namespace TienTuyen.Editor
 
         public static string BuildWindows()
         {
-            RequireEditMode();
-            RequireCleanScenes();
-            ValidateBaseline();
-            string projectRoot = Directory.GetParent(Application.dataPath).FullName;
-            string output = Path.GetFullPath(Path.Combine(projectRoot, "../Builds/Windows/TienTuyen.exe"));
-            Directory.CreateDirectory(Path.GetDirectoryName(output));
-            BuildReport report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
-            {
-                scenes = new[] { ScenePath },
-                locationPathName = output,
-                target = BuildTarget.StandaloneWindows64,
-                options = BuildOptions.None
-            });
-            if (report == null || report.summary.result != BuildResult.Succeeded)
-                throw new InvalidOperationException("Windows build failed: " + (report == null ? "no report" : report.summary.result.ToString()));
-            return $"Windows build succeeded: {output}; {report.summary.totalSize} bytes; {report.summary.totalTime.TotalSeconds:F1} seconds. Launch smoke test still required.";
+            return CombatSceneSetup.BuildWindows();
         }
 
         [MenuItem("Tien Tuyen/Foundation/Build Windows")]
