@@ -1,4 +1,4 @@
-# PLAN — Top-down arena survivor set during the Vietnam War
+# PLAN — Third-person arena survivor set during the Vietnam War
 
 Status: proposal v0.2, dated 25/09/2026. P0 and most of the P2 vertical slice have been implemented/verified in Unity; the enemy roster now includes all 3 regular archetypes and an elite. Representative art/audio and a full human playthrough of all 6 waves remain outstanding. [SPEC.md](SPEC.md) is the source of gameplay requirements; PLAN describes how to implement and demonstrate those requirements.
 
@@ -13,7 +13,7 @@ The following decisions support planning. The user selected the “Vietnamese si
 | Decision | Proposal for estimation | When it must be finalized |
 | --- | --- | --- |
 | Platform | Windows PC, offline, single-player | Before P1 |
-| Graphics | Stylized 3D, planar 2.5D gameplay, orthographic camera, URP | Before asset production |
+| Graphics | Stylized 3D, planar gameplay, third-person perspective camera, URP | Before asset production |
 | Editor | Unity 6 LTS; exact patch version TBD, compatibility checked before locking | P0 |
 | Controls | Keyboard movement; automatic aiming, firing, and reloading | P0 |
 | Setting | People's Army of Vietnam; a fictional supply station in Trường Sơn, 1972 | Working direction established; uniform, equipment, and opposing-force references require approval before final art |

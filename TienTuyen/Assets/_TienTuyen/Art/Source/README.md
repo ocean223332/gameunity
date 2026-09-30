@@ -9,7 +9,9 @@ The 16 assets are `hero`, `rifle`, `smg`, `shotgun`, `enemy_infantry`,
 `sandbag`, `tarp`, `tree`, `rock`, `bush`, and `grass`. Each has an editable
 `Blend/<name>.blend` source and equivalent `FBX/<name>.fbx` and `GLB/<name>.glb`
 exports. Run the script again with Blender's background Python command to
-regenerate all files. `verify_catalog.py` reimports every FBX and checks its
+regenerate all files, or pass asset names after `--` to rebuild only those
+(`blender --background --python build_stylized_catalog.py -- hero enemy_elite`).
+`verify_catalog.py` reimports every FBX and checks its
 pivot, rotation, scale, character height, and weapon length.
 
 ## Import into Unity
@@ -35,6 +37,11 @@ pivot, rotation, scale, character height, and weapon length.
 - The hero/enemy assets are **static unrigged placeholders**. Animation, hand
   sockets, colliders, materials, and historical reference approval remain
   integration tasks. Supply symbols and elite stripe are role cues only.
+- Faction flags: the hero carries a Vietnamese flag, enemies a US flag, each on
+  a back banner (`banner pole`, `banner cloth <colour>` meshes) plus a sewn
+  `flag patch`. Banner cloth is cut into 5 cm columns so `CombatBanner` can
+  ripple it in Unity; the character FBX files import as readable for that.
+  Character height checks exclude the banner, whose top is at 2.62 m.
 - The tarp roof and tree canopy are separate named meshes so the gameplay
   renderer can fade them when they obstruct the camera. Grass and foliage
   should not receive collision; use simple box/capsule colliders for solid props.

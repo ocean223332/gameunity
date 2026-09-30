@@ -28,8 +28,17 @@ for name in names:
     dims = [hi[i] - lo[i] for i in range(3)]
     triangles = sum(sum(len(face.vertices) - 2 for face in obj.data.polygons) for obj in meshes)
     if name.startswith("enemy_") or name == "hero":
-        assert 1.85 <= dims[2] <= 2.1, name + ": character height changed"
+        # The back banner rises above the figure; measure the body without it.
+        body = [obj.matrix_world @ Vector(corner) for obj in meshes
+                if not obj.name.startswith("banner") for corner in obj.bound_box]
+        body_height = max(p[2] for p in body) - min(p[2] for p in body)
+        assert 1.85 <= body_height <= 2.1, name + ": character height changed"
         assert -.01 <= lo[2] <= .01, name + ": feet not grounded"
+        parts = {obj.name.split(".")[0] for obj in meshes}
+        flag = {"banner cloth red", "banner cloth star"} if name == "hero" else             {"banner cloth red stripes", "banner cloth white stripes", "banner cloth blue canton", "banner cloth stars"}
+        assert flag <= parts, name + ": faction banner missing " + str(flag - parts)
+        assert "banner pole" in parts, name + ": banner pole missing"
+        assert hi[2] <= 2.7, name + ": banner too tall"
     if name in ("rifle", "smg", "shotgun"):
         assert .7 <= dims[1] <= 1.8, name + ": weapon length changed"
         assert lo[1] < 0 < hi[1], name + ": grip pivot moved"

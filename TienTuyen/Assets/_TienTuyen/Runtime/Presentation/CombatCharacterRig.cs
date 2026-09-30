@@ -44,6 +44,7 @@ namespace TienTuyen.Presentation
         private float chestFront = .19f;
         private int shotSequence;
         private readonly Shell[] shells = new Shell[3];
+        private CombatBanner banner;
         private static Mesh limbMesh;
         private static Material flashMaterial;
         private static Material brassMaterial;
@@ -64,6 +65,7 @@ namespace TienTuyen.Presentation
         public Transform PoseRoot => pose;
         public Transform ChestPivot => torso;
         public Transform CurrentWeaponRoot => CurrentWeapon?.root;
+        public CombatBanner Banner => banner;
         private HeldWeapon CurrentWeapon => weapons.Length > 0 ? weapons[selectedWeapon] : null;
 
         public void Initialize(Transform importedModel, Transform[] weaponTransforms)
@@ -131,6 +133,8 @@ namespace TienTuyen.Presentation
                             chestFront = Mathf.Max(chestFront, torso.InverseTransformPoint(mesh.TransformPoint(corner)).z);
                 }
             }
+            // The faction flag rides on the chest pivot so it leans with the body.
+            banner = CombatBanner.Create(torso, renderers, (GetInstanceID() & 1023) * .37f);
             if (!leftBoot) AddShape("Boot", leftLeg.end, new Vector3(0, .1f, .045f), new Vector3(.20f, .20f, .32f), dark);
             if (!rightBoot) AddShape("Boot", rightLeg.end, new Vector3(0, .1f, .045f), new Vector3(.20f, .20f, .32f), dark);
             if (!leftHand) AddShape("Glove", leftArm.end, Vector3.zero, Vector3.one * .16f, skin);
@@ -226,6 +230,7 @@ namespace TienTuyen.Presentation
             if (CurrentWeapon != null) CurrentWeapon.flash.SetActive(flashTime > 0 && death <= 0f);
             Vector3 localVelocity = pose.InverseTransformDirection(smoothedVelocity);
             ApplyPose(localVelocity, reloadProgress, Mathf.Clamp01(hit), Mathf.Clamp01(death));
+            banner?.Tick(dt, localVelocity);
             UpdateShells(dt);
         }
 
@@ -479,6 +484,8 @@ namespace TienTuyen.Presentation
 
         private void OnDestroy()
         {
+            banner?.Dispose();
+            banner = null;
             if (!ownsResources) return;
             if (--resourceUsers > 0) return;
             if (limbMesh != null) Destroy(limbMesh);

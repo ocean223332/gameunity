@@ -7,7 +7,7 @@
 - URP **17.3.0**, Input System **1.20.0**, Test Framework **1.6.0**, and uGUI **2.0.0** came with the template; Pipeline **0.7.0-exp.1** was added via CLI to control the local Editor.
 - The template's auxiliary packages remain unchanged; AI Navigation, Multiplayer Center, Visual Scripting, and Timeline have not been configured as features. No IAP, ads, or backend were added.
 - The baseline scene, `Assets/_TienTuyen/Scenes/Bootstrap.unity`, remains unchanged for project validation.
-- Playable scene, `Assets/_TienTuyen/Scenes/CombatSpike.unity`: a top-down orthographic arena with cover, a player, an enemy pool, projectile/pickup pools, spawn warnings, and URP lighting. Only the combat scene is enabled in Build Settings.
+- Playable scene, `Assets/_TienTuyen/Scenes/CombatSpike.unity`: a third-person arena (perspective shoulder camera set up at runtime) with cover, a player, an enemy pool, projectile/pickup pools, spawn warnings, and URP lighting. Only the combat scene is enabled in Build Settings.
 - PC quality, Linear color, HDR, directional light/soft shadows; Global Volume with ACES, Bloom 0.5/threshold 0.9, and Vignette 0.15. Materials use the URP/Lit shader.
 - Windows64 Mono, 1280×720 windowed; ForceText, Visible Meta Files. CombatSpike is the only scene enabled in build settings.
 - Runtime UI: uGUI + TextMeshPro, Rifle/SMG menu, health/wave/time/XP/currency/ammo/reload HUD, pause, defeat/victory, and restart/menu.

@@ -6,7 +6,8 @@ Date: 25/09/2026. **Proposal for approval**, not implemented art or a benchmark.
 
 **Stylized low-poly 3D with hand-painted colors**, a moderately serious tone, clean shapes, and low-noise materials. Not chibi, photorealistic, or pixel art. Characters have near-realistic human proportions, with slightly oversized hands, weapons, and equipment pouches for readability. Do not give enemies exaggerated, monster-like bodies.
 
-- Fixed orthographic camera, tilted approximately 60° relative to the ground; the arena fits within a single 16:9 frame. Review assets from this camera angle before reviewing close-ups.
+- Third-person perspective camera behind the soldier's right shoulder (FOV 56°, 40° when aiming), with a slow cinematic orbit on menus. Review assets at eye level and from behind the hero, not only from above.
+- The clearing sits in generated jungle hills: laterite ground, grass, banana, palm, bamboo, canopy trees, late-afternoon sun, haze, ACES grading and bloom (`CombatEnvironment`).
 - Muted olive forest, warm brown earth, and soft daylight. Sparse grass along movement paths; concentrate tree canopies around the edges and fade them when they obscure characters or warnings.
 - Soft shadows and minimal reflections; limit bloom, dense fog, and depth of field. Do not add dynamic rain in the MVP.
 - Visual priority: player → danger → supply objective → enemies → obstacles → decoration.
@@ -41,9 +42,22 @@ The quantities below are cumulative totals; share meshes/rigs where appropriate.
 | Supplies | Standard pickups | Add an objective crate | Reuse in waves 3/6/9 |
 | UI/VFX | Minimal HUD and feedback | Menu, shop, upgrades, results | Complete state coverage and accessibility |
 
+### Interface (implemented 2026-09-30)
+
+- Typefaces: Oswald Bold for titles, numbers and captions; Source Sans Pro Semibold for body text. Both are SIL Open Font License fonts with full Vietnamese coverage; the license and copyright notices ship in `Art/Fonts/OFL.txt`.
+- Palette: jungle-night ink panels (`#0C120F`–`#26332A`), parchment text (`#F1EBDC`), brass accent (`#E4B24A`), olive-lime health (`#B7D36A`), red danger (`#E2553F`).
+- The combat HUD keeps the screen centre clear for the shoulder camera: supplies and level top-left, wave clock with six wave pips top-centre, radar top-right, health with 25 HP ticks and a damage trail bottom-left, weapon silhouette, ammo count and magazine pips bottom-right, secondary weapon chips above it. Soft edge gradients replace solid bars.
+- Menus use rounded 9-sliced panels with hairline outlines, keycap hints, animated hover/focus states and short fade/slide transitions on unscaled time. Weapon, item and upgrade icons are vector silhouettes rasterised at runtime (`UiGlyphs`).
+
 The six weapons are a rifle, submachine gun, light machine gun, shotgun, precision rifle, and grenade launcher; specific real-world models will be chosen after verification. Tiers I/II/III use UI labels; do not create 18 meshes yet. All four slots remain visible on the HUD; the proposal is to show one primary weapon in hand, with small effect emitters for the other slots. Validate readability in P1 before committing; do not add AI squadmates.
 
 The six enemy types are melee, charger, shooter, grenadier, heavy, and support. Differentiate them through stance, pouch/weapon size, and attack telegraphs; do not use unsupported costume choices merely to distinguish roles. Emphasize elites through equipment and markers, not by stretching them into giants. The boss is a fictional fire team with normally proportioned soldiers; its behavior still follows SPEC, with no controllable vehicles or new mechanics.
+
+### Faction flags (implemented 2026-10-01)
+
+- The hero carries the flag of Vietnam (red field, centred yellow star, 2:3) and every enemy carries the flag of the United States (13 stripes, blue canton with a simplified star field), matching the resistance-war setting of the SKS and K-50M weapons.
+- Each flag is a back banner on a pole strapped to the backpack, plus a small sewn patch: the hero's on the backpack (seen by the shoulder camera), the enemy's on the left chest (seen as they advance). The hero's flag flies out to the left, clear of the crosshair; an enemy's flies across above its helmet so the player sees the obverse, canton upper left.
+- The geometry is authored in `build_stylized_catalog.py` (`back_banner`, `vietnam_flag`, `us_flag`). `CombatBanner` merges each character's cloth into one mesh and ripples it away from the pole; running makes it trail and flutter harder, and hidden flags skip the vertex update.
 
 ### Modular environment kit
 

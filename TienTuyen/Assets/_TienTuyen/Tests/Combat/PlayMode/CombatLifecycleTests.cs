@@ -70,6 +70,9 @@ namespace TienTuyen.Combat.Tests
             var fireTimers = new float[TienTuyen.Progression.ProgressionRun.MaxWeaponSlots];
             for (var i = 0; i < fireTimers.Length; i++) fireTimers[i] = 999f;
             SetPrivateField("weaponFireTimer", fireTimers);
+            // The run seed is random; keep the idle, unarmed player alive so melee
+            // hits cannot end the run before a charger is rolled.
+            SetPrivateField("invulnerability", 999f);
             var sawCharger = false;
             var sawTelegraph = false;
             var sawDash = false;

@@ -297,6 +297,43 @@ namespace TienTuyen.Combat.Tests
             }
         }
 
+        [Test]
+        public void HeroCarriesAWavingVietnameseFlagAndEnemiesCarryTheUsFlag()
+        {
+            Assert.That(hero.Banner, Is.Not.Null, "The hero model must carry its back banner.");
+            var heroColours = MaterialNames(hero.Banner.Materials);
+            Assert.That(heroColours, Does.Contain("vn_red").And.Contain("vn_star"), heroColours);
+            Assert.That(heroColours, Does.Not.Contain("us_"), heroColours);
+
+            hero.Banner.CullWhenHidden = false;
+            var before = hero.Banner.Mesh.vertices;
+            for (var frame = 0; frame < 12; frame++) hero.Tick(1f / 60f, Vector3.forward * 4f, Vector3.forward);
+            var after = hero.Banner.Mesh.vertices;
+            float ripple = 0;
+            for (var i = 0; i < before.Length; i++) ripple = Mathf.Max(ripple, Vector3.Distance(before[i], after[i]));
+            Assert.That(ripple, Is.GreaterThan(.005f), "The flag cloth must wave as the hero runs.");
+            Assert.That(ripple, Is.LessThan(.25f), "The ripple must not tear the cloth away from its pole.");
+
+            foreach (var model in new[] { "enemy_infantry", "enemy_shooter", "enemy_charger", "enemy_elite" })
+            {
+                var prefab = Resources.Load<GameObject>("Models/" + model);
+                Assert.That(prefab, Is.Not.Null, model);
+                var colours = new List<Material>();
+                foreach (var part in prefab.GetComponentsInChildren<MeshRenderer>(true))
+                    if (part.name.StartsWith("banner cloth", StringComparison.Ordinal)) colours.Add(part.sharedMaterial);
+                string names = MaterialNames(colours.ToArray());
+                Assert.That(names, Does.Contain("us_red").And.Contain("us_white").And.Contain("us_blue"), model + ": " + names);
+                Assert.That(names, Does.Not.Contain("vn_"), model + ": " + names);
+            }
+        }
+
+        private static string MaterialNames(Material[] materials)
+        {
+            var names = new List<string>();
+            foreach (var material in materials) names.Add(material != null ? material.name : "null");
+            return string.Join(", ", names);
+        }
+
         private static MeshRenderer FindMeshPart(MeshRenderer[] parts, string name, bool exact = false)
         {
             foreach (var part in parts)

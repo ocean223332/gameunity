@@ -17,10 +17,22 @@ namespace TienTuyen.Combat
         // Emit once for every accepted shot, including shots while the old tracer is visible.
         public event Action<int, Vector3, Vector3> WeaponFired;
         public event Action<Transform, Vector3> EnemyFired;
+        /// <summary>Where an accepted player shot ended and whether it struck an enemy.</summary>
+        public event Action<Vector3, bool> ShotImpact;
+        /// <summary>Enemy actor, damage applied, critical hit, killed.</summary>
+        public event Action<Transform, float, bool, bool> EnemyDamaged;
+        /// <summary>World position of the attacker and the damage the player took.</summary>
+        public event Action<Vector3, float> PlayerDamaged;
+
+        /// <summary>True once a view controller has supplied manual aim; tests and tools keep auto-aim.</summary>
+        public bool ManualAim => manualAim;
+        /// <summary>Manual aim only: the crosshair ray currently rests on a reachable enemy.</summary>
+        public bool AimOnTarget { get; private set; }
         public Vector3 PlayerAimDirection
         {
             get
             {
+                if (manualAim) return aimDirection;
                 if (player == null || targetIndex < 0 || !enemies[targetIndex].active) return Vector3.zero;
                 Vector3 direction = enemies[targetIndex].body.transform.position - player.position;
                 direction.y = 0;
@@ -34,6 +46,7 @@ namespace TienTuyen.Combat
         public float MaxHealth => CombatRules.PlayerMaxHealth + (Run == null ? 0 : Run.Stats.MaxHealth - 100f);
         public int Wave { get; private set; } = 1;
         public float WaveRemaining { get; private set; } = CombatRules.WaveSeconds;
+        public float WaveLength => WaveDuration(Wave);
         public int MaxWave => CombatRules.MaxWaves;
         public float RunElapsed { get; private set; }
         public int Currency => (int)((Run?.CurrencyMinor ?? 0) / 100);
@@ -79,6 +92,9 @@ namespace TienTuyen.Combat
         private const int EnemyPoolSize = CombatRules.EnemyCap, BulletPoolSize = 48, PickupPoolSize = 48;
         private const float SpawnWarning = 0.6f;
         private const float ChargerDashSpeed = 10f, ChargerDashSeconds = 0.45f;
+        // Hand aiming replaces nearest-target selection, so give it a little more reach
+        // and a forgiving hit radius around the crosshair ray.
+        private const float ManualRangeFactor = 1.5f, ManualAimRadius = 0.62f;
         private static readonly Vector2[] Directions = { Vector2.right, Vector2.left, Vector2.up, Vector2.down };
 
         private struct Cover
@@ -133,6 +149,9 @@ namespace TienTuyen.Combat
         private readonly float[] weaponReload = new float[ProgressionRun.MaxWeaponSlots];
         private readonly float[] weaponFireTimer = new float[ProgressionRun.MaxWeaponSlots];
         private long nextPickupId;
+        private bool manualAim, triggerHeld;
+        private Vector3 aimDirection = Vector3.forward;
+        private float viewYaw;
         private bool bandageUsed;
         private System.Random rng;
         private System.Random shopRng;
@@ -164,8 +183,44 @@ namespace TienTuyen.Combat
                 if (keyboard.dKey.isPressed || keyboard.rightArrowKey.isPressed) movement.x += 1;
                 if (keyboard.sKey.isPressed || keyboard.downArrowKey.isPressed) movement.y -= 1;
                 if (keyboard.wKey.isPressed || keyboard.upArrowKey.isPressed) movement.y += 1;
+                if (keyboard.rKey.wasPressedThisFrame) RequestReload();
             }
+            if (Gamepad.current != null) movement += Gamepad.current.leftStick.ReadValue();
+            // Third-person controls: forward is wherever the camera is looking.
+            if (manualAim) movement = RotatePlanar(movement, viewYaw);
             StepSimulation(Time.deltaTime, movement);
+        }
+
+        /// <summary>
+        /// Third-person view input. The yaw orients WASD; the aim point is where the
+        /// crosshair meets the combat plane. Supplying it switches to manual fire.
+        /// </summary>
+        public void SetViewInput(float yawDegrees, Vector3 aimPoint, bool trigger)
+        {
+            manualAim = true;
+            viewYaw = yawDegrees;
+            triggerHeld = trigger;
+            Vector3 direction = player != null ? aimPoint - player.position : Vector3.zero;
+            direction.y = 0;
+            // A crosshair point almost under the soldier has no stable direction.
+            if (direction.sqrMagnitude < 1f) direction = Quaternion.Euler(0, yawDegrees, 0) * Vector3.forward;
+            aimDirection = direction.normalized;
+        }
+
+        /// <summary>Starts reloading every weapon that is not already full.</summary>
+        public void RequestReload()
+        {
+            if (State != CombatState.Playing) return;
+            for (int slot = 0; slot < WeaponCount; slot++)
+                if (weaponReload[slot] <= 0 && weaponAmmo[slot] < MagazineSizeAt(slot))
+                    weaponReload[slot] = WeaponAt(slot).ReloadSeconds * Stats.ReloadFactor;
+        }
+
+        private static Vector2 RotatePlanar(Vector2 input, float yawDegrees)
+        {
+            float radians = yawDegrees * Mathf.Deg2Rad, sin = Mathf.Sin(radians), cos = Mathf.Cos(radians);
+            // Unity yaw turns clockwise from +Z when seen from above.
+            return new Vector2(input.x * cos + input.y * sin, -input.x * sin + input.y * cos);
         }
 
         public void SelectWeapon(WeaponKind kind)
@@ -275,12 +330,16 @@ namespace TienTuyen.Combat
             return true;
         }
 
-        public void ApplyPlayerDamage(float rawDamage)
+        public void ApplyPlayerDamage(float rawDamage) =>
+            DamagePlayer(rawDamage, player != null ? player.position : Vector3.zero);
+
+        private void DamagePlayer(float rawDamage, Vector3 source)
         {
             if (State != CombatState.Playing || rawDamage <= 0 || invulnerability > 0) return;
             float reduced = rawDamage * 100f / (100f + Stats.Armor);
             Health = Mathf.Max(0, Health - Mathf.Max(1f, reduced));
             invulnerability = 0.35f;
+            PlayerDamaged?.Invoke(source, Mathf.Max(1f, reduced));
             if (Health <= 0)
             {
                 float elapsed = WaveDuration(Wave) - WaveRemaining;
@@ -346,6 +405,7 @@ namespace TienTuyen.Combat
             }
             invulnerability = 0;
             targetIndex = -1;
+            AimOnTarget = false;
             UpdateNavigation();
         }
 
@@ -502,8 +562,10 @@ namespace TienTuyen.Combat
                 {
                     if (enemy.attackTimer <= 0)
                     {
-                        ApplyPlayerDamage(enemy.definition.AttackDamage);
                         enemy.attackTimer = enemy.definition.AttackCooldownSeconds;
+                        DamagePlayer(enemy.definition.AttackDamage, enemy.body.transform.position);
+                        // A killing blow hides every enemy and clears its definition.
+                        if (State != CombatState.Playing) return;
                     }
                 }
                 else MoveEnemy(enemy, dt, enemy.definition.MoveSpeed);
@@ -529,7 +591,7 @@ namespace TienTuyen.Combat
                     !RayHitsCover(start, actualMotion.normalized, actualMotion.magnitude, out _))
                 {
                     enemy.chargeHit = true;
-                    ApplyPlayerDamage(enemy.definition.AttackDamage);
+                    DamagePlayer(enemy.definition.AttackDamage, end);
                     if (State != CombatState.Playing) return;
                 }
                 enemy.chargeRemaining -= dt;
@@ -616,7 +678,7 @@ namespace TienTuyen.Combat
                 var point = ClosestPointOnSegment(player.position, start, start + delta);
                 if ((point - player.position).sqrMagnitude <= 0.47f * 0.47f)
                 {
-                    ApplyPlayerDamage(7f);
+                    DamagePlayer(7f, start - bullet.velocity);
                     Deactivate(bullet);
                     if (State != CombatState.Playing) return;
                     continue;
@@ -644,6 +706,11 @@ namespace TienTuyen.Combat
 
         private void FireWeapon()
         {
+            if (manualAim)
+            {
+                FireManualWeapons();
+                return;
+            }
             for (int slot = 0; slot < WeaponCount; slot++)
             {
                 if (weaponReload[slot] > 0 || weaponFireTimer[slot] > 0) continue;
@@ -663,12 +730,90 @@ namespace TienTuyen.Combat
                 tracerEnd = end;
                 ShowTracer();
                 WeaponFired?.Invoke(slot, start, end);
-                int tier = Run.Weapons[slot].Tier;
-                float tierFactor = tier == 1 ? 1f : tier == 2 ? 1.35f : 1.8f;
-                float criticalFactor = rng.NextDouble() < Stats.CriticalChance ? 1.5f : 1f;
-                DamageEnemy(enemy, weapon.DamagePerHit * weapon.PelletsPerShot * tierFactor * Stats.DamageFactor * criticalFactor);
+                ShotImpact?.Invoke(end, true);
+                ApplyShotDamage(enemy, ShotDamage(slot, weapon, out bool critical), critical);
                 if (weaponAmmo[slot] == 0) weaponReload[slot] = weapon.ReloadSeconds * Stats.ReloadFactor;
             }
+        }
+
+        private float ShotDamage(int slot, WeaponDefinition weapon, out bool critical)
+        {
+            int tier = Run.Weapons[slot].Tier;
+            float tierFactor = tier == 1 ? 1f : tier == 2 ? 1.35f : 1.8f;
+            critical = rng.NextDouble() < Stats.CriticalChance;
+            return weapon.DamagePerHit * weapon.PelletsPerShot * tierFactor * Stats.DamageFactor * (critical ? 1.5f : 1f);
+        }
+
+        /// <summary>Trigger-driven fire along the crosshair ray; misses still spend ammunition.</summary>
+        private void FireManualWeapons()
+        {
+            float longest = 0;
+            for (int slot = 0; slot < WeaponCount; slot++) longest = Mathf.Max(longest, WeaponAt(slot).Range);
+            AimOnTarget = WeaponCount > 0 && FindAimTarget(longest * Stats.RangeFactor * ManualRangeFactor) >= 0;
+            if (!triggerHeld) return;
+            for (int slot = 0; slot < WeaponCount; slot++)
+            {
+                if (weaponReload[slot] > 0 || weaponFireTimer[slot] > 0) continue;
+                WeaponDefinition weapon = WeaponAt(slot);
+                if (weaponAmmo[slot] <= 0) { weaponReload[slot] = weapon.ReloadSeconds * Stats.ReloadFactor; continue; }
+                float range = weapon.Range * Stats.RangeFactor * ManualRangeFactor;
+                int target = FindAimTarget(range);
+                Vector3 start = player.position + Vector3.up * .08f;
+                Vector3 end;
+                if (target >= 0)
+                {
+                    // Keep the hit on the aim ray so the tracer lands where the player pointed.
+                    Vector3 toEnemy = enemies[target].body.transform.position - player.position;
+                    toEnemy.y = 0;
+                    end = start + aimDirection * Vector3.Dot(toEnemy, aimDirection);
+                }
+                else
+                {
+                    float distance = RayHitsCover(start, aimDirection, range, out float hit) ? hit : range;
+                    end = start + aimDirection * distance;
+                }
+                weaponAmmo[slot]--;
+                weaponFireTimer[slot] = weapon.ShotCooldownSeconds / Mathf.Max(.1f, 1 + Stats.AttackSpeedBonus);
+                tracerStart = start;
+                tracerEnd = end;
+                ShowTracer();
+                WeaponFired?.Invoke(slot, start, end);
+                ShotImpact?.Invoke(end, target >= 0);
+                if (target >= 0) ApplyShotDamage(enemies[target], ShotDamage(slot, weapon, out bool critical), critical);
+                if (weaponAmmo[slot] == 0) weaponReload[slot] = weapon.ReloadSeconds * Stats.ReloadFactor;
+            }
+        }
+
+        /// <summary>First enemy whose body meets the aim ray before cover, within range.</summary>
+        private int FindAimTarget(float range)
+        {
+            Vector3 origin = player.position;
+            float reach = RayHitsCover(origin, aimDirection, range, out float coverDistance) ? coverDistance : range;
+            int best = -1;
+            float bestAlong = reach;
+            for (int i = 0; i < enemies.Length; i++)
+            {
+                if (!enemies[i].active) continue;
+                Vector3 offset = enemies[i].body.transform.position - origin;
+                offset.y = 0;
+                float along = Vector3.Dot(offset, aimDirection);
+                if (along <= 0 || along >= bestAlong) continue;
+                float radius = ManualAimRadius * (enemies[i].elite ? 1.3f : 1f);
+                if ((offset - aimDirection * along).sqrMagnitude > radius * radius) continue;
+                best = i;
+                bestAlong = along;
+            }
+            targetIndex = best;
+            return best;
+        }
+
+        /// <summary>Presentation read-out for health bars; 1 for unknown or inactive actors.</summary>
+        public float EnemyHealthFraction(Transform actor)
+        {
+            foreach (var enemy in enemies)
+                if (enemy.body.transform == actor)
+                    return enemy.active && enemy.definition != null ? Mathf.Clamp01(enemy.hp / enemy.definition.MaxHealth) : 1f;
+            return 1f;
         }
 
         public WeaponDefinition WeaponAt(int slot) => Run != null && slot >= 0 && slot < WeaponCount
@@ -700,12 +845,15 @@ namespace TienTuyen.Combat
             return best;
         }
 
-        private void DamageEnemy(Enemy enemy, float damage)
+        private void DamageEnemy(Enemy enemy, float damage) => ApplyShotDamage(enemy, damage, false);
+
+        private void ApplyShotDamage(Enemy enemy, float damage, bool critical)
         {
             if (!enemy.active || enemy.definition == null || damage <= 0 || float.IsNaN(damage) || float.IsInfinity(damage)) return;
             float applied = Mathf.Min(damage, enemy.hp);
             enemy.hp -= damage;
             DamageDealt += applied;
+            EnemyDamaged?.Invoke(enemy.body.transform, applied, critical, enemy.hp <= 0);
             if (enemy.hp > 0) return;
             enemy.active = false;
             enemy.aiming = false;

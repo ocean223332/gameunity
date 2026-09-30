@@ -24,6 +24,10 @@ namespace TienTuyen.Editor
             model.useFileScale = false;
             model.globalScale = 1f;
             model.bakeAxisConversion = false;
+            // CombatBanner merges each character's flag cloth into one waving
+            // mesh at runtime, which needs CPU-readable vertices in the player.
+            string file = System.IO.Path.GetFileNameWithoutExtension(assetPath);
+            model.isReadable = file == "hero" || file.StartsWith("enemy_", StringComparison.Ordinal);
         }
 
     }

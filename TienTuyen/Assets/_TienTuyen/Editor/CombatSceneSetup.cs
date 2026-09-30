@@ -119,12 +119,13 @@ namespace TienTuyen.Editor
             if (!presentation.InterfaceFont.HasCharacters("TIỀN TUYẾN Súng trường Tiểu liên Đợt tiếp tế", out System.Collections.Generic.List<char> missing))
                 Debug.LogWarning("Combat font is missing some Vietnamese glyphs; TMP fallback rendering will be used: " + new string(missing.ToArray()));
             var cameras = roots.SelectMany(root => root.GetComponentsInChildren<Camera>(true)).ToArray();
-            if (cameras.Length != 1 || !cameras[0].orthographic || !cameras[0].CompareTag("MainCamera"))
-                throw new InvalidOperationException("CombatSpike requires one orthographic MainCamera.");
+            // CombatThirdPersonCamera switches this camera to perspective at runtime.
+            if (cameras.Length != 1 || !cameras[0].CompareTag("MainCamera"))
+                throw new InvalidOperationException("CombatSpike requires exactly one MainCamera.");
             var scenes = EditorBuildSettings.scenes;
             if (scenes.Length != 1 || scenes[0].path != ScenePath || !scenes[0].enabled)
                 throw new InvalidOperationException("Windows build must enable only CombatSpike.");
-            return "Combat scene validation passed: runtime controller, Vietnamese HUD font, serialized materials, orthographic camera and combat build entry. Play Mode validation is separate.";
+            return "Combat scene validation passed: runtime controller, Vietnamese HUD font, serialized materials, main camera and combat build entry. Play Mode validation is separate.";
         }
 
         [MenuItem("Tien Tuyen/Combat/Build Windows (Queued)")]

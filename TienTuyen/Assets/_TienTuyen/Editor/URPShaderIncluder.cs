@@ -20,7 +20,10 @@ namespace TienTuyen.Editor
             "Universal Render Pipeline/Blit",
             "Universal Render Pipeline/Complex Lit",
             "Shader Graphs/Lit",
-            "Shader Graphs/Unlit"
+            "Shader Graphs/Unlit",
+            // Runtime-created presentation materials: sky and pooled combat particles.
+            "Skybox/Procedural",
+            "Universal Render Pipeline/Particles/Unlit"
         };
 
         public int callbackOrder => 0;

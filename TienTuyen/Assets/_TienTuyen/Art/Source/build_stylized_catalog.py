@@ -1,13 +1,15 @@
 """Build the Tien Tuyen P2 static low-poly art catalog with Blender.
 
-Run: blender --background --python build_stylized_catalog.py
+Run: blender --background --python build_stylized_catalog.py [-- asset names]
 Source .blend files and interchange exports are written beside this script.
 All figures are unrigged visual placeholders; Blender units are metres.
 """
 
 import math
+import sys
 from pathlib import Path
 
+import bmesh
 import bpy
 from mathutils import Vector
 
@@ -29,6 +31,9 @@ PALETTE = {
     "tarp": "#647458", "leaf": "#354638", "leaf_light": "#596D46",
     "leaf_dark": "#24352D", "rock": "#77776C", "rock_light": "#A09D89",
     "supply": "#E7BD62", "supply_dark": "#9E7138", "danger": "#F17858",
+    # Faction flags: Vietnam (hero) and the United States (enemies).
+    "vn_red": "#D2261C", "vn_star": "#FFDA2E",
+    "us_red": "#B3243A", "us_white": "#EFEBE1", "us_blue": "#283863",
 }
 MATS = {}
 
@@ -118,6 +123,115 @@ def mesh(name, verts, faces, mat):
     return finish(obj, name, mat)
 
 
+def closed_mesh(name, verts, faces, mat):
+    obj = mesh(name, verts, faces, mat)
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bm.to_mesh(obj.data)
+    bm.free()
+    obj.data.update()
+    return obj
+
+
+def cloth(name, rects, y, mat, thickness=.012, step=.05):
+    """Thin cloth rectangles in the XZ plane (normal along Y). Each rectangle is
+    cut into columns along X so Unity can ripple the flag away from its pole."""
+    verts, faces = [], []
+    h = thickness / 2
+    for x0, x1, z0, z1 in rects:
+        x0, x1 = min(x0, x1), max(x0, x1)
+        columns = max(1, math.ceil((x1 - x0) / step - 1e-6))
+        base = len(verts)
+        for i in range(columns + 1):
+            x = x0 + (x1 - x0) * i / columns
+            verts += [(x, y - h, z0), (x, y - h, z1), (x, y + h, z0), (x, y + h, z1)]
+        for i in range(columns):
+            a, b = base + 4 * i, base + 4 * (i + 1)
+            faces += [(a, b, b + 1, a + 1), (a + 2, a + 3, b + 3, b + 2),
+                      (a, a + 2, b + 2, b), (a + 1, b + 1, b + 3, a + 3)]
+        end = base + 4 * columns
+        faces += [(base, base + 1, base + 3, base + 2), (end, end + 2, end + 3, end + 1)]
+    return closed_mesh(name, verts, faces, mat)
+
+
+def stars(name, centers, radius, y, mat, thickness=.02):
+    """Upright five-pointed stars, thicker than the cloth so both faces show them."""
+    verts, faces = [], []
+    h = thickness / 2
+    for cx, cz in centers:
+        base = len(verts)
+        for side in (-h, h):
+            verts.append((cx, y + side, cz))
+            for k in range(10):
+                angle = math.pi / 2 + k * math.pi / 5
+                r = radius if k % 2 == 0 else radius * .382
+                verts.append((cx + math.cos(angle) * r, y + side, cz + math.sin(angle) * r))
+        back, front = base, base + 11
+        for k in range(10):
+            n = (k + 1) % 10
+            faces += [(back, back + 1 + n, back + 1 + k), (front, front + 1 + k, front + 1 + n),
+                      (back + 1 + k, back + 1 + n, front + 1 + n, front + 1 + k)]
+    return closed_mesh(name, verts, faces, mat)
+
+
+def vietnam_flag(prefix, hoist, direction, top, length, y):
+    """Red field with a centred yellow star; the flag is 2:3 as in the Constitution."""
+    height = length * 2 / 3
+    fly = hoist + direction * length
+    cloth(prefix + " red", [(hoist, fly, top - height, top)], y, "vn_red")
+    stars(prefix + " star", [(hoist + direction * length / 2, top - height / 2)], length / 5, y, "vn_star")
+
+
+def us_flag(prefix, hoist, direction, top, length, y, stripe_count=13, star_rows=((4, 3, 4))):
+    """Stripes with a blue canton at the upper hoist; simplified for low poly."""
+    height = length / 1.9
+    stripe = height / stripe_count
+    canton_rows = (stripe_count + 1) // 2
+    canton_end = hoist + direction * length * .4
+    fly = hoist + direction * length
+    red, white = [], []
+    for s in range(stripe_count):
+        z1 = top - s * stripe
+        start = canton_end if s < canton_rows else hoist
+        (red if s % 2 == 0 else white).append((start, fly, z1 - stripe, z1))
+    cloth(prefix + " red stripes", red, y, "us_red")
+    cloth(prefix + " white stripes", white, y, "us_white")
+    canton_bottom = top - canton_rows * stripe
+    cloth(prefix + " blue canton", [(hoist, canton_end, canton_bottom, top)], y, "us_blue")
+    if star_rows:
+        centers = []
+        canton_width = length * .4
+        canton_height = top - canton_bottom
+        for row, count in enumerate(star_rows):
+            z = top - canton_height * (row + .5) / len(star_rows)
+            for i in range(count):
+                x = hoist + direction * canton_width * (i + .5 + (4 - count) * .5) / 4
+                centers.append((x, z))
+        stars(prefix + " stars", centers, canton_height / len(star_rows) * .36, y, "us_white")
+
+
+def back_banner(hero):
+    """Flag carried on a pole strapped to the backpack. The hero's flag flies out
+    to the left, away from the shoulder camera's crosshair. An enemy's pole is on
+    its right and the flag flies across above the helmet, so the player facing
+    it sees the obverse (canton upper left)."""
+    side = -1 if hero else 1
+    direction = -1
+    pole_x, pole_y, top = side * .17, -.43, 2.50
+    segment("banner pole", (pole_x, pole_y, 1.00), (pole_x, pole_y, top + .07), .016,
+            "wood" if hero else "metal", 7)
+    sphere("banner pole tip", (pole_x, pole_y, top + .09), (.035, .035, .035),
+           "supply" if hero else "metal_light")
+    for z in (1.18, 1.42):
+        box("banner pole clamp", (pole_x, -.40, z), (.06, .075, .045), "boot", .008)
+    hoist = pole_x + direction * .02
+    if hero:
+        vietnam_flag("banner cloth", hoist, direction, top, .60, pole_y)
+    else:
+        us_flag("banner cloth", hoist, direction, top, .62, pole_y)
+
+
 def reset():
     bpy.ops.object.select_all(action="SELECT")
     bpy.ops.object.delete(use_global=False)
@@ -194,6 +308,13 @@ def person(role):
         box("elite shoulder stripe", (0, .275, 1.55), (.37, .035, .07), "danger")
         box("elite back radio", (-.22, -.36, 1.45), (.21, .16, .33), "metal", .014)
         segment("elite antenna", (-.22, -.36, 1.53), (-.22, -.36, 1.95), .014, "metal_light", 6)
+    # Faction identity: a Vietnamese flag for the hero, the US flag for enemies,
+    # on a back banner plus a small sewn patch (backpack / left chest).
+    back_banner(hero)
+    if hero:
+        vietnam_flag("flag patch", .11, -1, 1.29, .22, -.385)
+    else:
+        us_flag("flag patch", .195, -1, 1.34, .15, .285, stripe_count=7, star_rows=None)
 
 
 def gun(kind):
@@ -358,7 +479,10 @@ def export(name, builder):
     print(f"EXPORTED {name}: {len(bpy.context.selected_objects)} objects")
 
 
-for asset_name, build in ASSETS.items():
-    export(asset_name, build)
+# Optional asset names after "--" rebuild only those files, e.g.
+# blender --background --python build_stylized_catalog.py -- hero enemy_elite
+selected = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else list(ASSETS)
+for asset_name in selected:
+    export(asset_name, ASSETS[asset_name])
 
-print(f"CATALOG COMPLETE: {len(ASSETS)} assets in {ROOT}")
+print(f"CATALOG COMPLETE: {len(selected)} assets in {ROOT}")

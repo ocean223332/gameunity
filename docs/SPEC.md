@@ -8,7 +8,7 @@ v0.2 update: the user selected “the Vietnamese side” and delegated the choic
 
 ## 1. Product summary
 
-A single-player, top-down survival shooter built around waves of attacks. Players move to evade attacks, their weapons fire automatically, and they collect supplies and develop a build between waves. The player takes the role of a People's Army of Vietnam soldier at a fictional supply station in the Trường Sơn region in 1972; the character, specific unit, station location, and battle are fictional.
+A single-player, third-person survival shooter built around waves of attacks. Players move to evade attacks, aim with the mouse and fire their weapons, and they collect supplies and develop a build between waves. The player takes the role of a People's Army of Vietnam soldier at a fictional supply station in the Trường Sơn region in 1972; the character, specific unit, station location, and battle are fictional.
 
 Working title: **Tiền Tuyến**; the name has not been checked for commercial availability.
 
@@ -17,7 +17,7 @@ Brotato is a reference for the gameplay loop and equipment synergies, not for co
 ### Existing user requirements
 
 - Unity engine.
-- Top-down shooter with mechanics similar to Brotato.
+- Third-person (over-the-shoulder) shooter with a wave/shop loop similar to Brotato.
 - Vietnam War setting.
 - Prepare a plan and specification before programming.
 
@@ -26,7 +26,7 @@ Brotato is a reference for the gameplay loop and equipment synergies, not for co
 | Decision | v0.1 proposal | Rationale |
 |---|---|---|
 | Acceptance platform | Offline Windows PC | Focus on validating combat and builds |
-| Visuals | Stylized 3D, 2.5D view, orthographic camera | Show vegetation and fortifications while keeping projectiles readable |
+| Visuals | Stylized low-poly 3D, third-person perspective camera | Show vegetation and fortifications while keeping projectiles readable |
 | Engine/pipeline | A compatible Unity 6 LTS version at setup time, URP | Pin the patch version and packages after checking the environment |
 | Character/side | People's Army of Vietnam; Trường Sơn, 1972 | Interpretation of “the Vietnamese side”; period selection delegated by the user |
 | Authenticity | Arcade gameplay in a historical setting, not a military simulation | Allows multiple weapons, upgrades, and auto-fire |

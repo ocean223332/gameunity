@@ -57,6 +57,9 @@ namespace TienTuyen.Presentation
         private float shotAimRemaining;
         private int visibleWeaponSlot;
         private readonly List<Transform> bulletTransforms = new List<Transform>();
+        private readonly List<Transform> pickupVisuals = new List<Transform>();
+        private CombatThirdPersonCamera thirdPersonCamera;
+        private Material tracerMaterial, bulletTrailMaterial;
 
         private sealed class EnemyVisual
         {
@@ -126,7 +129,8 @@ namespace TienTuyen.Presentation
             playerMaterial = RuntimeMaterial("Art_Player", Olive);
             enemyMaterial = RuntimeMaterial("Art_Enemy", Enemy);
             shooterMaterial = RuntimeMaterial("Art_Shooter", Hex("#777164"));
-            projectileMaterial = RuntimeMaterial("Art_Projectile", Hex("#F6D27A"), true);
+            projectileMaterial = RuntimeMaterial("Art_Projectile", Hex("#FFB25A"), true);
+            projectileMaterial.SetColor("_EmissionColor", Hex("#FF9A3C") * 4.5f);
             pickupMaterial = RuntimeMaterial("Art_Supply", Gold, true);
             warningMaterial = RuntimeMaterial("Art_Warning", Coral, true);
             AssignCombatMaterials();
@@ -164,16 +168,37 @@ namespace TienTuyen.Presentation
                 else if (child.name.StartsWith("Pickup_", StringComparison.Ordinal))
                     StylePickup(child);
                 else if (child.name == "Ground")
-                    child.GetComponent<Renderer>().sharedMaterial = groundMaterial;
+                {
+                    // The generated clearing replaces the flat slab; keep its collider for the camera.
+                    var renderer = child.GetComponent<Renderer>();
+                    renderer.sharedMaterial = groundMaterial;
+                    renderer.enabled = false;
+                }
                 else if (child.name == "Cover")
                     DecorateCover(child);
             }
             BuildArenaProps();
             if (player != null) lastPlayerPosition = player.position;
             if (playerVisual != null) heroMarker = playerVisual.transform.Find("HeroFootMarker");
+            // Seen from behind the shoulder the hero needs no selection ring.
+            if (heroMarker != null) heroMarker.GetComponent<Renderer>().enabled = false;
             if (game != null) lastHealth = game.Health;
             EnsureTracerBeam();
+            BuildWorldAndCamera();
             arenaBuilt = true;
+        }
+
+        private void BuildWorldAndCamera()
+        {
+            var view = Camera.main;
+            if (view != null && player != null)
+            {
+                thirdPersonCamera = view.GetComponent<CombatThirdPersonCamera>() ?? view.gameObject.AddComponent<CombatThirdPersonCamera>();
+                thirdPersonCamera.Initialize(game, player);
+            }
+            (GetComponent<CombatEnvironment>() ?? gameObject.AddComponent<CombatEnvironment>()).Build(view);
+            var effects = GetComponent<CombatEffects>() ?? gameObject.AddComponent<CombatEffects>();
+            effects.Initialize(game, player, () => playerRig != null ? playerRig.MuzzleTransform : null, thirdPersonCamera);
         }
 
         private GameObject BuildPlayer(Transform actor)
@@ -323,9 +348,8 @@ namespace TienTuyen.Presentation
         {
             var props = new GameObject("ArtProps").transform;
             props.SetParent(transform, false);
-            // Edge foliage keeps the navigation lanes and line of sight open.
-            var treeSpots = new[] { new Vector3(-15.4f, 0, -8.4f), new Vector3(15.2f, 0, -7.8f), new Vector3(-14.8f, 0, 7.6f), new Vector3(14.7f, 0, 8.1f), new Vector3(-7.2f, 0, 8.6f), new Vector3(8.5f, 0, -8.6f) };
-            for (int i = 0; i < treeSpots.Length; i++) BuildTree(props, treeSpots[i], .85f + (i % 3) * .12f);
+            // Trees now stand in the surrounding jungle (CombatEnvironment) so the
+            // over-the-shoulder camera never swings through a crown inside the arena.
             BuildCrateStack(props, new Vector3(-12.5f, .0f, -7.4f));
             BuildCrateStack(props, new Vector3(11.9f, .0f, 6.8f));
             BuildTarp(props, new Vector3(-12f, .0f, 7.1f));
@@ -338,27 +362,12 @@ namespace TienTuyen.Presentation
                 if (!AttachImportedModel(rock, "rock", "RockBlenderModel", Vector3.zero, Vector3.one))
                     MakeSphere("RockFallback", rock, Vector3.up * .14f, new Vector3(1.0f, .38f, .72f), Dirt);
             }
-            for (int i = 0; i < 24; i++)
+            for (int i = 0; i < 12; i++)
             {
-                float a = i * 2.399f, r = 8.3f + (i % 4) * 1.6f;
-                var p = new Vector3(Mathf.Cos(a) * r, 0, Mathf.Sin(a) * r * .55f);
-                BuildBush(props, p, .7f + (i % 3) * .15f);
+                float a = i * 2.399f, r = 11.5f + (i % 3) * 1.4f;
+                var p = new Vector3(Mathf.Cos(a) * r, 0, Mathf.Sin(a) * r * .62f);
+                BuildBush(props, p, .6f + (i % 3) * .12f);
             }
-            // A few painted dirt patches give the arena a hand-authored ground rhythm.
-            var dirt = RuntimeMaterial("Art_Dirt", Dirt);
-            foreach (var p in new[] { new Vector3(-4.4f, -.01f, -1.3f), new Vector3(6.6f, -.01f, 2.2f), new Vector3(-9.3f, -.01f, 5.6f) })
-                MakeCylinder("DirtPatch", props, p, new Vector3(2.0f, .012f, 1.15f), dirt.color, 12).transform.rotation = Quaternion.Euler(0, 25, 0);
-        }
-
-        private void BuildTree(Transform parent, Vector3 p, float scale)
-        {
-            var root = new GameObject("Tree").transform;
-            root.SetParent(parent, false); root.position = p; root.localScale = Vector3.one * scale;
-            MakeCylinder("Trunk", root, new Vector3(0, .72f, 0), new Vector3(.22f, 1.45f, .22f), Wood, 7);
-            MakeSphere("CrownA", root, new Vector3(0, 1.65f, 0), new Vector3(1.15f, .80f, 1.05f), Foliage);
-            MakeSphere("CrownB", root, new Vector3(.25f, 2.0f, .12f), new Vector3(.75f, .66f, .72f), OliveDark);
-            if (AttachImportedModel(root, "tree", "TreeBlenderModel", Vector3.zero, Vector3.one))
-                DisableChildren(root, "Trunk", "CrownA", "CrownB");
         }
 
         private void BuildCrateStack(Transform parent, Vector3 p)
@@ -465,8 +474,6 @@ namespace TienTuyen.Presentation
                 Transform actor = pair.Key; EnemyVisual visual = pair.Value;
                 bool active = actor.gameObject.activeSelf;
                 bool wasActive = previousEnemyActive[actor];
-                if (active != previousEnemyActive[actor] && !active && previousEnemyActive[actor])
-                    SpawnBurst(previousEnemyPositions[actor], Coral);
                 previousEnemyActive[actor] = active;
                 float dt = Mathf.Max(Time.unscaledDeltaTime, .0001f);
                 Vector3 velocity = active && wasActive ? (actor.position - previousEnemyPositions[actor]) / dt : Vector3.zero;
@@ -524,8 +531,21 @@ namespace TienTuyen.Presentation
         {
             bulletTransforms.Add(bullet);
             var renderer = bullet.GetComponent<Renderer>();
-            if (renderer != null) renderer.sharedMaterial = projectileMaterial;
+            if (renderer != null)
+            {
+                renderer.sharedMaterial = projectileMaterial;
+                renderer.shadowCastingMode = ShadowCastingMode.Off;
+            }
             bullet.localScale = Vector3.one * .17f;
+            if (bulletTrailMaterial == null) bulletTrailMaterial = ProceduralArt.Particle("Art_BulletTrail", true, new Color(4f, 1.6f, .5f, 1f));
+            var trail = bullet.gameObject.AddComponent<TrailRenderer>();
+            trail.sharedMaterial = bulletTrailMaterial;
+            trail.time = .14f;
+            trail.startWidth = .09f;
+            trail.endWidth = 0f;
+            trail.minVertexDistance = .05f;
+            trail.shadowCastingMode = ShadowCastingMode.Off;
+            trail.emitting = false;
         }
 
         private void StylePickup(Transform pickup)
@@ -533,12 +553,19 @@ namespace TienTuyen.Presentation
             var renderer = pickup.GetComponent<Renderer>();
             if (renderer != null) renderer.enabled = false;
             var root = new GameObject("PickupVisual").transform; root.SetParent(pickup, false);
+            pickupVisuals.Add(root);
             MakeCube("Shard", root, Vector3.zero, new Vector3(.30f, .52f, .30f), Gold, .03f).transform.localRotation = Quaternion.Euler(0, 45, 0);
             AddMarkerRing(root, Gold, .68f, "PickupRing");
         }
 
         private void UpdateTracerAndBullets()
         {
+            foreach (var visual in pickupVisuals)
+            {
+                if (!visual.gameObject.activeInHierarchy) continue;
+                visual.localRotation = Quaternion.Euler(0, time * 120f, 0);
+                visual.localPosition = new Vector3(0, .12f + Mathf.Sin(time * 3.2f + visual.GetInstanceID()) * .06f, 0);
+            }
             if (tracer != null && tracer.gameObject.activeSelf)
             {
                 var renderer = tracer.GetComponent<Renderer>();
@@ -552,13 +579,14 @@ namespace TienTuyen.Presentation
                         ? playerRig.MuzzleTransform.position : tracer.position - tracer.forward * length * .5f;
                     tracerBeam.SetPosition(0, origin);
                     tracerBeam.SetPosition(1, presentationTracerEnd);
-                    float width = Mathf.Clamp(length * .008f, .025f, .045f);
-                    tracerBeam.startWidth = width; tracerBeam.endWidth = width * .52f;
+                    float width = Mathf.Clamp(length * .004f, .018f, .03f);
+                    tracerBeam.startWidth = width; tracerBeam.endWidth = width * .6f;
                 }
             }
             else if (tracerBeam != null) tracerBeam.enabled = false;
             foreach (Transform child in bulletTransforms)
             {
+                var trail = child.GetComponent<TrailRenderer>();
                 if (!child.gameObject.activeSelf)
                 {
                     previousBulletPositions.Remove(child);
@@ -566,6 +594,12 @@ namespace TienTuyen.Presentation
                 }
                 Vector3 previous;
                 bool hadPrevious = previousBulletPositions.TryGetValue(child, out previous);
+                if (trail != null && !hadPrevious)
+                {
+                    // Pooled bullets teleport on reuse; never streak from the old spot.
+                    trail.Clear();
+                    trail.emitting = true;
+                }
                 Vector3 delta = child.position - previous;
                 if (!hadPrevious || delta.sqrMagnitude < .000001f) delta = child.forward;
                 if (delta.sqrMagnitude > .000001f) child.rotation = Quaternion.LookRotation(delta.normalized, Vector3.up);
@@ -585,7 +619,9 @@ namespace TienTuyen.Presentation
             tracerBeam.alignment = LineAlignment.View;
             tracerBeam.textureMode = LineTextureMode.Stretch;
             tracerBeam.numCapVertices = 2;
-            tracerBeam.sharedMaterial = projectileMaterial;
+            tracerMaterial = ProceduralArt.Particle("Art_TracerBeam", true, new Color(4.5f, 3.2f, 1.4f, 1f));
+            tracerBeam.sharedMaterial = tracerMaterial;
+            tracerBeam.shadowCastingMode = ShadowCastingMode.Off;
             tracerBeam.startWidth = .06f;
             tracerBeam.endWidth = .03f;
             tracerBeam.enabled = false;

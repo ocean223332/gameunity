@@ -110,6 +110,7 @@ namespace TienTuyen.Editor
             // Keep the runtime Resources catalog aligned even when CI/builds are
             // invoked without first clicking the presentation installer menu item.
             InstallRuntimeModels();
+            CombatUiFontSetup.EnsureFonts();
             EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
             Debug.Log(CombatSceneSetup.BuildWindows());
         }
