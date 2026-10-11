@@ -16,7 +16,7 @@
 
 ## Verification evidence
 
-Animation update, 2026-09-27: **57/57 Edit Mode** and **24/24 Play Mode** tests passed. Added articulated low-poly animation, two-handed weapon handling, recoil/reload, muzzle flashes/casings, and geometry checks for all three guns against clothing/armor. Reviewed close-ups from two angles in idle, running, firing, and reloading poses. The build figures in the table below refer to the P2 build before the animation update, not confirmation of a new build. New test logs and images are stored locally in `TestResults/`.
+Animation update, 2026-09-27: **57/57 Edit Mode** and **24/24 Play Mode** tests passed. Added articulated low-poly animation, two-handed weapon handling, recoil/reload, muzzle flashes/casings, and geometry checks for all three guns against clothing/armor. Reviewed close-ups from two angles in idle, running, firing, and reloading poses. The build figures in the table below refer to the P2 build before the animation update, not confirmation of a new build.
 
 | Check | Result |
 |---|---|

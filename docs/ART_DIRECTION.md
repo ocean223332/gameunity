@@ -4,10 +4,11 @@ Date: 25/09/2026. **Proposal for approval**, not implemented art or a benchmark.
 
 ## 1. Visual direction
 
-**Stylized low-poly 3D with hand-painted colors**, a moderately serious tone, clean shapes, and low-noise materials. Not chibi, photorealistic, or pixel art. Characters have near-realistic human proportions, with slightly oversized hands, weapons, and equipment pouches for readability. Do not give enemies exaggerated, monster-like bodies.
+**Semi-realistic 3D**: scanned PBR ground and vegetation, physically based light with height haze and colour grading, and a backdrop built from real terrain, with a moderately serious tone and shapes that stay readable at combat distance. Not chibi, toy-like, or pixel art. Characters, weapons and props are moving from the earlier hand-painted low-poly look to the same standard in later stages. Characters have near-realistic human proportions, with slightly oversized hands, weapons, and equipment pouches for readability. Do not give enemies exaggerated, monster-like bodies.
 
 - Third-person perspective camera behind the soldier's right shoulder (FOV 56°, 40° when aiming), with a slow cinematic orbit on menus. Review assets at eye level and from behind the hero, not only from above.
-- The clearing sits in generated jungle hills: laterite ground, grass, banana, palm, bamboo, canopy trees, late-afternoon sun, haze, ACES grading and bloom (`CombatEnvironment`).
+- The clearing is a supply station at golden hour. The ground, structures and backdrop are built once at startup by `CombatEnvironment` and the `Environment*` builders, which all read one map (`EnvironmentLayout`); the vegetation is authored prefabs (`Art/Flora`, listed in `Resources/Environment/FloraBiome`), placed by `EnvironmentFlora` from a fixed seed and drawn instanced by `FloraScatter`. The low south-west sun throws long shadows; a truck road crosses the station; sandbag emplacements replace the cover boxes, whose colliders stay put. Around it stand a shed, a bunker, a watchtower, a cook fire, a truck depot under camouflage netting, a bamboo trellis and an anti-aircraft pit. Jungle hills ring the station, a bombed valley with water-filled craters and mist falls away to the south, and layered Annamite ranges (real elevation data) with a group of forested tower-karst peaks, bare pale limestone only on their cliff bands, to the south fill the horizon, each range paler and bluer behind the haze, with light shafts, smoke and dust in the air. The playfield stays flat. Structures stand more than 4.5 m outside it and plants taller than 1.8 m more than 5.5 m out; nearer than that only knee-high ground cover grows, which the trailing camera can still dip into at the edges. No plant has a collider.
+- The environment shaders (`Art/Shaders`, `TienTuyen/Environment/*`) are found by name at runtime, so they must stay listed in `Editor/URPShaderIncluder.cs` to survive build stripping; if one is missing, surfaces fall back to URP Lit, the sky to a flat haze colour, and light shafts are left out.
 - Muted olive forest, warm brown earth, and soft daylight. Sparse grass along movement paths; concentrate tree canopies around the edges and fade them when they obscure characters or warnings.
 - Soft shadows and minimal reflections; limit bloom, dense fog, and depth of field. Do not add dynamic rain in the MVP.
 - Visual priority: player → danger → supply objective → enemies → obstacles → decoration.
@@ -71,7 +72,8 @@ Use a shared humanoid skeleton where appropriate, with equipment and mesh varian
 |---|---|
 | Character | 2,000–4,000 triangles; 1–2 materials |
 | Weapon | 300–1,000 triangles/model |
-| Small prop / tree | 100–800 / 500–1,500 triangles |
+| Prop, plant or tree | LOD0 at most 15,000 triangles per asset |
+| Flora LODs | Current species 240–5,500 triangles at LOD0; LOD1 about 40 % of LOD0; then a 4-triangle cross-card that casts no shadow |
 | Texture | 1K character atlas; 1K–2K environment; 256–512 VFX |
 | Icon | 256×256 source; check at the displayed size of 48–64 px |
 
@@ -81,7 +83,7 @@ Prioritize atlases, shared materials, pooled VFX, and few layers of transparent 
 
 The UI suggests a quartermaster board through paper/olive colors, without placing aged textures over text. The shop has four item cards; the inventory has four weapon slots. Equipment tiers use Roman numerals; locked states use icons; explosion warnings use rings, lines, and timing, rather than relying on red/green. Keep hit flashes short and do not obscure telegraphs; allow shake/damage numbers to be disabled. Danger sounds supplement visuals rather than replace them.
 
-Possible sources include self-authored assets, commissioned artists, appropriately licensed libraries, or generated models after cost approval. Do not assume free assets are licensed for commercial use. Record the source, author, license, evidence of usage rights, and modifications in the manifest; check music/fonts/animation separately. No purchases, asset-pack downloads, tool installations, or model generation at this stage.
+Third-party assets are welcome wherever they are good and save work; the project is non-commercial classwork, so the licence type is not a filter. Record the source, author, licence as stated and modifications in a manifest for each download, and credit every source in the README. Anything that costs money needs approval first.
 
 Concept/keyframe images are for approving color, composition, and style; they are **not meshes, rigs, texture atlases, or Unity gameplay screenshots**. The visualization supports discussion of density, HUD layout, and viewing areas; it does not establish performance or navigability.
 

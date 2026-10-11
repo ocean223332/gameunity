@@ -43,5 +43,6 @@ Building and compiling do not replace a full 6-wave playtest. Automated lifecycl
 - [SPEC — gameplay and acceptance criteria](docs/SPEC.md)
 - [PLAN — milestones and architecture](docs/PLAN.md)
 - [ART_DIRECTION — style and assets](docs/ART_DIRECTION.md)
+- [CREDITS — third-party and derived assets](docs/CREDITS.md)
 
 The design documents describe the target experience; features are only considered available once implemented and verified. The confirmed configuration above supersedes the corresponding "undecided" notes in earlier proposal documents.
