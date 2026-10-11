@@ -5,7 +5,7 @@ using UnityEngine;
 namespace TienTuyen.Presentation
 {
     /// <summary>
-    /// Pooled combat feedback: muzzle light and smoke, bullet impacts, death dust,
+    /// Pooled combat feedback: muzzle light and smoke, bullet impacts and blood,
     /// footstep puffs and camera kick. Observes CombatGame events only.
     /// </summary>
     [DisallowMultipleComponent]
@@ -16,8 +16,14 @@ namespace TienTuyen.Presentation
         private Transform player;
         private CombatThirdPersonCamera view;
         private ParticleSystem sparks, dust, smoke, debris;
+        private CombatBloodEffects blood;
+        private Vector3 shotDirection = Vector3.forward, enemyImpact;
+        private int impactFrame = -1;
+        private bool hasEnemyImpact;
+        private object presentedRun;
         private Light muzzleLight;
-        private float muzzleLightTime;
+        private float muzzleLightTime, muzzleLightShare = 1f;
+        private CombatFirstPersonView firstPerson;
         private Vector3 lastStep;
         private readonly System.Random random = new System.Random(4242);
         private static readonly Color LateriteDust = new Color(.69f, .47f, .32f, .55f);
@@ -32,6 +38,9 @@ namespace TienTuyen.Presentation
             dust = CreateSystem("ImpactDust", false, -.06f, 220, false, Color.white);
             smoke = CreateSystem("MuzzleSmoke", false, -.12f, 80, false, Color.white);
             debris = CreateSystem("ImpactDebris", false, 2.2f, 120, false, Color.white);
+            blood = gameObject.AddComponent<CombatBloodEffects>();
+            blood.Initialize();
+            presentedRun = game.Run;
             muzzleLight = new GameObject("MuzzleLight").AddComponent<Light>();
             muzzleLight.transform.SetParent(transform, false);
             muzzleLight.type = LightType.Point;
@@ -62,10 +71,12 @@ namespace TienTuyen.Presentation
         {
             if (game == null || game.State == CombatState.Paused) return;
             float dt = Time.unscaledDeltaTime;
+            ResetBloodForRun();
+            blood.Tick(dt);
             if (muzzleLightTime > 0)
             {
                 muzzleLightTime = Mathf.Max(0, muzzleLightTime - dt);
-                muzzleLight.intensity = 7f * (muzzleLightTime / .06f);
+                muzzleLight.intensity = 7f * muzzleLightShare * (muzzleLightTime / .06f);
                 muzzleLight.enabled = muzzleLightTime > 0;
             }
             // Laterite dust kicked up by running boots.
@@ -84,12 +95,20 @@ namespace TienTuyen.Presentation
 
         private void OnWeaponFired(int slot, Vector3 start, Vector3 end)
         {
+            shotDirection = (end - start).normalized;
+            hasEnemyImpact = false;
             Transform socket = muzzle?.Invoke();
             Vector3 origin = socket != null ? socket.position : start + Vector3.up * .5f;
             muzzleLight.transform.position = origin + (end - start).normalized * .15f;
             muzzleLight.enabled = true;
             muzzleLightTime = .06f;
-            Puff(smoke, origin, 2, .2f, .35f, .9f, new Color(.8f, .8f, .78f, .25f));
+            // The same light shows on the first-person gun and hands; a suppressed gun gives little of it.
+            if (firstPerson == null && view != null) firstPerson = view.GetComponent<CombatFirstPersonView>();
+            muzzleLightShare = firstPerson != null ? firstPerson.MuzzleLight : 1f;
+            // In first person the muzzle is under a metre from the eye, not three or four: smoke sized for the shoulder
+            // camera would fill the view, and more so in ADS, where the world zooms but the viewmodel does not.
+            float puff = view != null && view.FirstPersonWeight > .5f ? .3f : 1f;
+            Puff(smoke, origin, 2, .2f * puff, .35f * puff, .9f, new Color(.8f, .8f, .78f, .25f));
             var weapon = game.WeaponAt(slot);
             float kick = weapon == null ? .3f : weapon.PelletsPerShot > 1 ? .9f : weapon.ShotCooldownSeconds < .2f ? .18f : .38f;
             if (view != null) view.Kick(kick, kick * .12f);
@@ -99,8 +118,9 @@ namespace TienTuyen.Presentation
         {
             if (hitEnemy)
             {
-                Burst(sparks, point, 7, 2.5f, 5.5f, .06f, .18f, .28f, new Color(1f, .85f, .6f, 1f));
-                Puff(dust, point, 3, .3f, .6f, .45f, new Color(.62f, .52f, .42f, .5f));
+                enemyImpact = point;
+                impactFrame = Time.frameCount;
+                hasEnemyImpact = true;
             }
             else
             {
@@ -114,10 +134,20 @@ namespace TienTuyen.Presentation
 
         private void OnEnemyDamaged(Transform actor, float damage, bool critical, bool killed)
         {
-            if (!killed) return;
-            Vector3 feet = actor.position + Vector3.down * .7f;
-            Puff(dust, feet, 12, .7f, 1.6f, 1.1f, LateriteDust);
-            Burst(debris, actor.position, 10, 2f, 4.5f, .05f, .1f, .8f, new Color(.3f, .26f, .2f, 1f));
+            if (actor == null) return;
+            ResetBloodForRun();
+            bool fresh = hasEnemyImpact && impactFrame == Time.frameCount && (enemyImpact - actor.position).sqrMagnitude < 3f;
+            Vector3 point = fresh ? enemyImpact : actor.position + Vector3.up * .2f;
+            Vector3 direction = fresh ? shotDirection : player != null ? (actor.position - player.position).normalized : actor.forward;
+            hasEnemyImpact = false;
+            blood.Hit(actor, point, direction, critical, killed);
+        }
+
+        private void ResetBloodForRun()
+        {
+            if (ReferenceEquals(presentedRun, game.Run)) return;
+            presentedRun = game.Run;
+            blood.Clear();
         }
 
         private void OnPlayerDamaged(Vector3 source, float damage)

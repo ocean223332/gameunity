@@ -27,8 +27,6 @@ namespace TienTuyen.Presentation
         private static readonly Color Coral = Hex("#E57A5B");
         private static readonly Color Gold = Hex("#E2B65A");
         private static readonly Color Ground = Hex("#5E674F");
-        private static readonly Color Dirt = Hex("#765B45");
-        private static readonly Color Foliage = Hex("#314638");
         private const float HeroMarkerDiameter = .72f;
         private const float EnemyMarkerDiameter = .55f;
         private const float MarkerThicknessScale = .025f;
@@ -55,11 +53,17 @@ namespace TienTuyen.Presentation
         private CombatCharacterRig playerRig;
         private Vector3 lastShotDirection = Vector3.forward, presentationTracerEnd;
         private float shotAimRemaining;
-        private int visibleWeaponSlot;
         private readonly List<Transform> bulletTransforms = new List<Transform>();
         private readonly List<Transform> pickupVisuals = new List<Transform>();
         private CombatThirdPersonCamera thirdPersonCamera;
-        private Material tracerMaterial, bulletTrailMaterial;
+        private CombatFirstPersonView firstPersonView;
+        // Where first-person shots leave the viewmodel, as a transform for the muzzle provider.
+        private Transform firstPersonMuzzle;
+        private Material tracerMaterial, bulletTrailMaterial, swishMaterial;
+        // Seconds of the strike before and after contact during which the knife leaves a swish.
+        private const float SwishLead = .2f, SwishFollow = .12f;
+        private CombatCorpsePool corpses;
+        private object presentedRun;
 
         private sealed class EnemyVisual
         {
@@ -69,8 +73,14 @@ namespace TienTuyen.Presentation
             public Renderer bodyRenderer;
             public Transform chargerMarker;
             public CombatCharacterRig infantryRig, shooterRig, chargerRig, eliteRig;
+            // Swish on the knife tip of the melee bodies, emitting through the strike.
+            public TrailRenderer infantrySwish, chargerSwish;
             public Vector3 shotDirection;
-            public float shotAimRemaining;
+            public float shotAimRemaining, hitRemaining;
+            // Action clip clocks; negative is idle. Gameplay supplies the timing, these only
+            // carry follow-through past the damage tick and the dash cycle.
+            public float meleeTime = -1f, recoveryTime = -1f, dashTime;
+            public bool struck, followThrough, dashing;
         }
 
         private void Awake()
@@ -92,6 +102,8 @@ namespace TienTuyen.Presentation
             if (game == null) game = GetComponent<CombatGame>();
             game.WeaponFired += OnWeaponFired;
             game.EnemyFired += OnEnemyFired;
+            game.EnemyDamaged += OnEnemyDamaged;
+            game.EnemyMeleeStruck += OnEnemyMeleeStruck;
         }
 
         private void OnDisable()
@@ -99,12 +111,23 @@ namespace TienTuyen.Presentation
             if (game == null) return;
             game.WeaponFired -= OnWeaponFired;
             game.EnemyFired -= OnEnemyFired;
+            game.EnemyDamaged -= OnEnemyDamaged;
+            game.EnemyMeleeStruck -= OnEnemyMeleeStruck;
         }
 
         private void LateUpdate()
         {
             if (!arenaBuilt) return;
             if (game != null && game.State == CombatState.Paused) return;
+            if (!ReferenceEquals(presentedRun, game.Run))
+            {
+                presentedRun = game.Run;
+                playerRig?.ResetPose();
+                corpses?.Clear();
+                hitTimer = shotAimRemaining = 0;
+                lastHealth = game.Health;
+                if (player != null) lastPlayerPosition = player.position;
+            }
             time += Time.unscaledDeltaTime;
             if (game != null && game.State != lastState)
             {
@@ -117,6 +140,7 @@ namespace TienTuyen.Presentation
             if (game != null) lastChargerDash = game.ChargerDashActive;
             UpdatePlayer();
             UpdateEnemies();
+            corpses?.Tick(Time.unscaledDeltaTime);
             UpdateWarnings();
             UpdateSupply();
             UpdateTracerAndBullets();
@@ -174,15 +198,14 @@ namespace TienTuyen.Presentation
                     renderer.sharedMaterial = groundMaterial;
                     renderer.enabled = false;
                 }
-                else if (child.name == "Cover")
-                    DecorateCover(child);
             }
-            BuildArenaProps();
+            // Cover emplacements and all scenery are built by CombatEnvironment.
             if (player != null) lastPlayerPosition = player.position;
             if (playerVisual != null) heroMarker = playerVisual.transform.Find("HeroFootMarker");
             // Seen from behind the shoulder the hero needs no selection ring.
             if (heroMarker != null) heroMarker.GetComponent<Renderer>().enabled = false;
             if (game != null) lastHealth = game.Health;
+            presentedRun = game.Run;
             EnsureTracerBeam();
             BuildWorldAndCamera();
             arenaBuilt = true;
@@ -195,10 +218,27 @@ namespace TienTuyen.Presentation
             {
                 thirdPersonCamera = view.GetComponent<CombatThirdPersonCamera>() ?? view.gameObject.AddComponent<CombatThirdPersonCamera>();
                 thirdPersonCamera.Initialize(game, player);
+                firstPersonView = view.GetComponent<CombatFirstPersonView>();
             }
             (GetComponent<CombatEnvironment>() ?? gameObject.AddComponent<CombatEnvironment>()).Build(view);
             var effects = GetComponent<CombatEffects>() ?? gameObject.AddComponent<CombatEffects>();
-            effects.Initialize(game, player, () => playerRig != null ? playerRig.MuzzleTransform : null, thirdPersonCamera);
+            effects.Initialize(game, player, PlayerMuzzle, thirdPersonCamera);
+        }
+
+        /// <summary>The muzzle shots appear to leave: the viewmodel's in first person, otherwise the hero's weapon.</summary>
+        private Transform PlayerMuzzle()
+        {
+            if (firstPersonView != null && firstPersonView.TryGetMuzzle(out Vector3 position))
+            {
+                if (firstPersonMuzzle == null)
+                {
+                    firstPersonMuzzle = new GameObject("FirstPersonMuzzle").transform;
+                    firstPersonMuzzle.SetParent(transform, false);
+                }
+                firstPersonMuzzle.position = position;
+                return firstPersonMuzzle;
+            }
+            return playerRig != null ? playerRig.MuzzleTransform : null;
         }
 
         private GameObject BuildPlayer(Transform actor)
@@ -220,8 +260,6 @@ namespace TienTuyen.Presentation
             // CombatGame's actor transform is at capsule center (Y=.8), while the
             // Blender asset pivot is at the feet.  Keep gameplay transforms intact
             // and compensate only in the presentation child.
-            if (AttachImportedModel(root, "hero", "HeroBlenderModel", new Vector3(0, -.8f, 0), Vector3.one))
-                DisableChildren(root, "Torso", "Backpack", "Head", "Helmet", "LegL", "LegR");
             if (AttachImportedModel(root.Find("RifleVisual"), "rifle", "RifleBlenderModel", Vector3.zero, Quaternion.Euler(0, -90, 0), Vector3.one * .72f))
                 DisableChildren(root.Find("RifleVisual"), "Stock", "Barrel", "Sight");
             if (AttachImportedModel(root.Find("SmgVisual"), "smg", "SmgBlenderModel", Vector3.zero, Quaternion.Euler(0, -90, 0), Vector3.one * .72f))
@@ -230,10 +268,21 @@ namespace TienTuyen.Presentation
                 DisableChildren(root.Find("ShotgunVisual"), "Stock", "Barrel", "Sight");
             root.localScale = InverseScale(actor.localScale);
             playerRig = root.gameObject.AddComponent<CombatCharacterRig>();
-            playerRig.Initialize(root.Find("HeroBlenderModel"), new[]
+            var weapons = new[]
             {
                 root.Find("RifleVisual"), root.Find("SmgVisual"), root.Find("ShotgunVisual")
-            });
+            };
+            // The hero on the ValveBiped bind (HeroValveImporter); the older hand-rig hero until it is imported.
+            var profile = Resources.Load<SkinnedCharacterProfile>("Characters/PAVN/PAVN_ValveProfile")
+                ?? Resources.Load<SkinnedCharacterProfile>("Characters/PAVN/PAVN_HeroProfile");
+            if (playerRig.InitializeSkinned(profile, weapons, new Vector3(0, -.8f, 0)))
+                DisableChildren(root, "Torso", "Backpack", "Head", "Helmet", "LegL", "LegR");
+            else
+            {
+                if (AttachImportedModel(root, "hero", "HeroBlenderModel", new Vector3(0, -.8f, 0), Vector3.one))
+                    DisableChildren(root, "Torso", "Backpack", "Head", "Helmet", "LegL", "LegR");
+                playerRig.Initialize(root.Find("HeroBlenderModel"), weapons);
+            }
             return root.gameObject;
         }
 
@@ -256,15 +305,19 @@ namespace TienTuyen.Presentation
             root.SetParent(actor, false);
             root.localScale = InverseScale(actor.localScale);
             var visual = new EnemyVisual { root = root, bodyRenderer = old };
-            visual.infantry = BuildEnemyVariant(root, "Infantry", Enemy, false, false);
+            visual.infantry = BuildEnemyVariant(root, "Infantry", Enemy, true, false);
             visual.shooter = BuildEnemyVariant(root, "Shooter", shooterMaterial.color, true, false);
-            visual.charger = BuildEnemyVariant(root, "Charger", Hex("#6E6350"), false, true);
+            visual.charger = BuildEnemyVariant(root, "Charger", Hex("#6E6350"), true, true);
             visual.elite = BuildEnemyVariant(root, "Elite", EnemyDark, true, true);
             visual.infantryRig = visual.infantry.GetComponent<CombatCharacterRig>();
             visual.shooterRig = visual.shooter.GetComponent<CombatCharacterRig>();
             visual.chargerRig = visual.charger.GetComponent<CombatCharacterRig>();
+            visual.infantrySwish = visual.infantry.GetComponentInChildren<TrailRenderer>(true);
+            visual.chargerSwish = visual.charger.GetComponentInChildren<TrailRenderer>(true);
             visual.eliteRig = visual.elite.GetComponent<CombatCharacterRig>();
             visual.chargerMarker = actor.Find("ChargerMarker_" + actor.name.Substring("Enemy_".Length));
+            // Only a role flag here: the gameplay cube would sit in the Charger's chest.
+            if (visual.chargerMarker != null) visual.chargerMarker.GetComponent<Renderer>().enabled = false;
             visual.ring = AddMarkerRing(root, EnemyDark, EnemyMarkerDiameter, "EnemyFootMarker");
             enemyVisuals.Add(actor, visual);
             previousEnemyActive[actor] = false;
@@ -273,6 +326,7 @@ namespace TienTuyen.Presentation
 
         private GameObject BuildEnemyVariant(Transform parent, string name, Color clothColor, bool weapon, bool accent)
         {
+            bool ranged = name == "Shooter" || name == "Elite";
             var group = new GameObject(name);
             group.transform.SetParent(parent, false);
             MakeCapsule("Body", group.transform, new Vector3(0, .50f, 0), accent ? new Vector3(.52f, .72f, .40f) : new Vector3(.44f, .62f, .34f), clothColor);
@@ -280,22 +334,62 @@ namespace TienTuyen.Presentation
             MakeCylinder("Cap", group.transform, new Vector3(0, 1.18f, 0), new Vector3(.31f, .09f, .31f), accent ? Coral : EnemyDark, 8);
             MakeCube("LegL", group.transform, new Vector3(-.13f, .12f, 0), new Vector3(.13f, .34f, .16f), EnemyDark, .04f);
             MakeCube("LegR", group.transform, new Vector3(.13f, .12f, 0), new Vector3(.13f, .34f, .16f), EnemyDark, .04f);
-            if (weapon) BuildWeapon(group.transform, "Weapon", new Vector3(.28f, .65f, .13f), new Vector3(.62f, .08f, .08f), Metal, .10f);
+            if (weapon)
+            {
+                if (ranged) BuildWeapon(group.transform, "Weapon", new Vector3(.28f, .65f, .13f), new Vector3(.62f, .08f, .08f), Metal, .10f);
+                else BuildDagger(group.transform, "Weapon", new Vector3(.27f, .61f, .12f));
+            }
             if (accent)
             {
                 MakeCube("Shoulder", group.transform, new Vector3(.34f, .66f, 0), new Vector3(.18f, .18f, .42f), Coral, .05f);
                 MakeCube("ChestPlate", group.transform, new Vector3(0, .63f, .18f), new Vector3(.42f, .24f, .08f), EnemyDark, .03f);
             }
             string modelName = name == "Infantry" ? "enemy_infantry" : name == "Shooter" ? "enemy_shooter" : name == "Charger" ? "enemy_charger" : "enemy_elite";
-            if (AttachImportedModel(group.transform, modelName, name + "BlenderModel", new Vector3(0, -.8f, 0), Vector3.one * .96f))
-                DisableChildren(group.transform, "Body", "Head", "Cap", "LegL", "LegR", "Shoulder", "ChestPlate");
-            if (weapon && AttachImportedModel(group.transform.Find("Weapon"), name == "Shooter" ? "rifle" : "smg", name + "WeaponBlenderModel", Vector3.zero, Quaternion.Euler(0, -90, 0), Vector3.one * .58f))
+            // The Shooter carries the SMG (its profile's MP5-SD clip set), the Elite the rifle (the AK).
+            string gun = name == "Shooter" ? "smg" : "rifle";
+            if (weapon && ranged && AttachImportedModel(group.transform.Find("Weapon"), gun, name == "Shooter" ? "SmgWeaponBlenderModel" : "RifleWeaponBlenderModel",
+                    Vector3.zero, Quaternion.Euler(0, -90, 0), Vector3.one * .58f))
                 DisableChildren(group.transform.Find("Weapon"), "Stock", "Barrel", "Sight");
             var rig = group.AddComponent<CombatCharacterRig>();
-            rig.Initialize(group.transform.Find(name + "BlenderModel"),
-                weapon ? new[] { group.transform.Find("Weapon") } : Array.Empty<Transform>());
+            var weapons = weapon ? new[] { group.transform.Find("Weapon") } : Array.Empty<Transform>();
+            var profile = Resources.Load<SkinnedCharacterProfile>("Characters/Enemies/" + name + "ValveProfile");
+            if (rig.InitializeSkinned(profile, weapons, new Vector3(0, -.8f, 0)))
+                DisableChildren(group.transform, "Body", "Head", "Cap", "LegL", "LegR", "Shoulder", "ChestPlate");
+            else
+            {
+                if (AttachImportedModel(group.transform, modelName, name + "BlenderModel", new Vector3(0, -.8f, 0), Vector3.one * .96f))
+                    DisableChildren(group.transform, "Body", "Head", "Cap", "LegL", "LegR", "Shoulder", "ChestPlate");
+                rig.Initialize(group.transform.Find(name + "BlenderModel"), weapons);
+            }
             group.SetActive(false);
             return group;
+        }
+
+        /// <summary>
+        /// A USMC Ka-Bar (Wenedi, CC BY): native +X is the blade, spine up; its handle renderer is named Grip so the
+        /// rig closes the fist on its centre.
+        /// </summary>
+        private void BuildDagger(Transform parent, string name, Vector3 position)
+        {
+            var root = new GameObject(name);
+            root.transform.SetParent(parent, false);
+            root.transform.localPosition = position;
+            root.transform.localRotation = Quaternion.Euler(0, -90, 0);
+            // The FBX is in centimetres with the blade along -Z, spine +Y.
+            AttachImportedModel(root.transform, "knife", "KnifeModel", Vector3.zero, Quaternion.Euler(0, -90, 0) * Quaternion.Euler(90, 0, 0), Vector3.one * .01f);
+            // At gameplay distance a 30 cm knife is a few pixels: a short steel swish carries the strike.
+            var tip = new GameObject("DaggerSwish").transform;
+            tip.SetParent(root.transform, false);
+            tip.localPosition = new Vector3(.15f, 0, 0);
+            if (swishMaterial == null) swishMaterial = ProceduralArt.Particle("Art_KnifeSwish", true, new Color(1.3f, 1.35f, 1.4f, .55f));
+            var trail = tip.gameObject.AddComponent<TrailRenderer>();
+            trail.sharedMaterial = swishMaterial;
+            trail.time = .09f;
+            trail.startWidth = .05f;
+            trail.endWidth = 0f;
+            trail.minVertexDistance = .02f;
+            trail.shadowCastingMode = ShadowCastingMode.Off;
+            trail.emitting = false;
         }
 
         private GameObject BuildSupply(Transform crate)
@@ -308,100 +402,15 @@ namespace TienTuyen.Presentation
             MakeCube("Lid", root, new Vector3(0, .63f, 0), new Vector3(.91f, .08f, .77f), Gold, .03f);
             MakeCube("BandX", root, new Vector3(0, .36f, 0), new Vector3(.10f, .70f, .77f), Gold, .02f);
             MakeCube("BandZ", root, new Vector3(0, .36f, 0), new Vector3(.91f, .70f, .10f), Gold, .02f);
-            if (AttachImportedModel(root, "supply_crate", "SupplyBlenderModel", Vector3.zero, Vector3.one * 1.02f))
+            // The model's pivot is its base: stand it, and the glow above its lid, on the ground under the crate's
+            // spawn height (.36).
+            var ground = new Vector3(0, -.36f / crate.lossyScale.y, 0);
+            if (AttachImportedModel(root, "supply_crate", "SupplyBlenderModel", ground, Vector3.one * 1.02f))
                 DisableChildren(root, "Crate", "Lid", "BandX", "BandZ");
-            AddMarkerRing(root, Gold, 1.25f, "SupplyRing");
-            var glow = MakeSphere("Glow", root, new Vector3(0, .82f, 0), Vector3.one * .12f, Gold);
+            AddGlowRing(root, Gold, 1.25f, "SupplyRing", .36f);
+            var glow = MakeSphere("Glow", root, ground + new Vector3(0, .82f, 0), Vector3.one * .12f, Gold);
             glow.GetComponent<Renderer>().sharedMaterial = pickupMaterial;
             return root.gameObject;
-        }
-
-        private void DecorateCover(Transform cover)
-        {
-            var old = cover.GetComponent<Renderer>();
-            if (old != null) old.enabled = false;
-            var root = new GameObject("SandbagVisual").transform;
-            root.SetParent(cover, false);
-            // The cover cube is scaled to its collision size. Cancel that scale on
-            // the art child so each imported sandbag retains its intended shape.
-            root.localScale = InverseScale(cover.localScale);
-            Vector3 size = cover.localScale;
-            int count = Mathf.Max(1, Mathf.CeilToInt(size.x / 1.67f));
-            float segmentWidth = size.x / count;
-            float horizontalScale = segmentWidth / 1.67f;
-            for (int i = 0; i < count; i++)
-            {
-                float x = -size.x * .5f + segmentWidth * (i + .5f);
-                for (int layer = 0; layer < 2; layer++)
-                {
-                    var position = new Vector3(x, -.55f + layer * .52f, 0);
-                    var modelScale = new Vector3(horizontalScale, 1f, Mathf.Min(1.15f, size.z / .56f));
-                    if (AttachImportedModel(root, "sandbag", "SandbagBlenderModel", position, modelScale)) continue;
-                    // A failed import must still leave visible cover art.
-                    MakeCapsule("BagFallback", root, position + Vector3.up * .28f,
-                        new Vector3(segmentWidth * .92f, .22f, Mathf.Min(size.z, .7f)), Sand);
-                }
-            }
-        }
-
-        private void BuildArenaProps()
-        {
-            var props = new GameObject("ArtProps").transform;
-            props.SetParent(transform, false);
-            // Trees now stand in the surrounding jungle (CombatEnvironment) so the
-            // over-the-shoulder camera never swings through a crown inside the arena.
-            BuildCrateStack(props, new Vector3(-12.5f, .0f, -7.4f));
-            BuildCrateStack(props, new Vector3(11.9f, .0f, 6.8f));
-            BuildTarp(props, new Vector3(-12f, .0f, 7.1f));
-            var rocks = new[] { new Vector3(-5.8f, .1f, -8.0f), new Vector3(5.8f, .1f, 7.9f), new Vector3(13.2f, .1f, -1.7f), new Vector3(-13.2f, .1f, 1.6f) };
-            foreach (var p in rocks)
-            {
-                var rock = new GameObject("Rock").transform;
-                rock.SetParent(props, false);
-                rock.localPosition = p;
-                if (!AttachImportedModel(rock, "rock", "RockBlenderModel", Vector3.zero, Vector3.one))
-                    MakeSphere("RockFallback", rock, Vector3.up * .14f, new Vector3(1.0f, .38f, .72f), Dirt);
-            }
-            for (int i = 0; i < 12; i++)
-            {
-                float a = i * 2.399f, r = 11.5f + (i % 3) * 1.4f;
-                var p = new Vector3(Mathf.Cos(a) * r, 0, Mathf.Sin(a) * r * .62f);
-                BuildBush(props, p, .6f + (i % 3) * .12f);
-            }
-        }
-
-        private void BuildCrateStack(Transform parent, Vector3 p)
-        {
-            var a = MakeCube("WoodCrate_A", parent, p + new Vector3(0, .33f, 0), new Vector3(.75f, .66f, .75f), Wood, .06f);
-            var b = MakeCube("WoodCrate_B", parent, p + new Vector3(.42f, .33f, .16f), new Vector3(.65f, .66f, .65f), Wood, .06f);
-            var c = MakeCube("WoodCrate_C", parent, p + new Vector3(.16f, .98f, .05f), new Vector3(.62f, .58f, .62f), Wood, .06f);
-            if (AttachImportedModel(parent, "crate", "CrateBlenderModel", p + new Vector3(0, .38f, 0), Vector3.one * .82f))
-            {
-                DisableChildren(parent, a.name, b.name, c.name);
-                AttachImportedModel(parent, "crate", "CrateBlenderModel_2", p + new Vector3(.44f, .38f, .16f), Vector3.one * .70f);
-                AttachImportedModel(parent, "crate", "CrateBlenderModel_3", p + new Vector3(.16f, 1.0f, .05f), Vector3.one * .68f);
-            }
-        }
-
-        private void BuildTarp(Transform parent, Vector3 p)
-        {
-            var tarp = RuntimeMaterial("Art_Tarp", Hex("#405447"));
-            MakeCube("TarpShelter", parent, p + new Vector3(0, 1.65f, 0), new Vector3(3.0f, .08f, 1.8f), tarp.color, .02f);
-            MakeCylinder("Pole", parent, p + new Vector3(-1.2f, .9f, 0), new Vector3(.06f, 1.8f, .06f), Wood, 6);
-            MakeCylinder("Pole", parent, p + new Vector3(1.2f, .9f, 0), new Vector3(.06f, 1.8f, .06f), Wood, 6);
-            if (AttachImportedModel(parent, "tarp", "TarpBlenderModel", p + new Vector3(0, 0, 0), Vector3.one * 1.05f))
-            {
-                DisableChildren(parent, "TarpShelter", "Pole");
-            }
-        }
-
-        private void BuildBush(Transform parent, Vector3 p, float scale)
-        {
-            var root = new GameObject("Bush").transform; root.SetParent(parent, false); root.position = p; root.localScale = Vector3.one * scale;
-            MakeSphere("Leaf", root, new Vector3(0, .28f, 0), new Vector3(1.1f, .45f, .72f), Foliage);
-            MakeSphere("LeafSmall", root, new Vector3(.35f, .42f, .08f), new Vector3(.55f, .35f, .48f), OliveDark);
-            if (AttachImportedModel(root, "bush", "BushBlenderModel", Vector3.zero, Vector3.one))
-                DisableChildren(root, "Leaf", "LeafSmall");
         }
 
         private void UpdatePlayer()
@@ -415,18 +424,28 @@ namespace TienTuyen.Presentation
             hitTimer = Mathf.Max(0, hitTimer - dt);
             shotAimRemaining = Mathf.Max(0, shotAimRemaining - dt);
             playerVisual.transform.localScale = InverseScale(player.localScale);
-            if (game.State == CombatState.Menu || game.WeaponCount == 0) visibleWeaponSlot = 0;
-            else visibleWeaponSlot = Mathf.Clamp(visibleWeaponSlot, 0, game.WeaponCount - 1);
-            int weaponIndex = WeaponVisualIndex(visibleWeaponSlot);
+            // The weapon in hand is the game's active slot; during a draw that is already the new one.
+            int slot = game.State == CombatState.Menu || game.WeaponCount == 0 ? 0 : Mathf.Clamp(game.ActiveWeaponSlot, 0, game.WeaponCount - 1);
+            int weaponIndex = WeaponVisualIndex(slot);
             if (playerRig != null)
             {
                 playerRig.SelectWeapon(weaponIndex);
-                Vector3 aim = shotAimRemaining > 0 ? lastShotDirection : game.PlayerAimDirection;
+                playerRig.DrawProgress = game.State == CombatState.Playing && game.IsSwitching ? game.SwitchProgress : -1f;
+                // On the menu shot the hero stands relaxed and turned to the camera; gameplay aim and fire stay out of it.
+                bool menuShot = thirdPersonCamera != null && thirdPersonCamera.MenuBlend > .4f;
+                playerRig.Relaxed = menuShot;
+                // Aiming down the sights shoulders the weapon with the bore on the crosshair; otherwise it rides the low-ready.
+                playerRig.AimWeight = thirdPersonCamera != null ? thirdPersonCamera.AimBlend : 0f;
+                playerRig.AimPoint = shotAimRemaining > 0 ? presentationTracerEnd :
+                    thirdPersonCamera != null ? thirdPersonCamera.AimPoint : (Vector3?)null;
+                Vector3 aim = menuShot ? CombatThirdPersonCamera.MenuHeroFacing :
+                    shotAimRemaining > 0 ? lastShotDirection : game.PlayerAimDirection;
                 if (aim.sqrMagnitude < .001f) aim = velocity;
-                float remaining = game.ReloadAt(visibleWeaponSlot);
-                var definition = game.WeaponAt(visibleWeaponSlot);
-                float reload = remaining > 0 && definition != null
-                    ? 1f - remaining / Mathf.Max(.01f, definition.ReloadSeconds * game.Stats.ReloadFactor) : -1f;
+                float remaining = game.ReloadAt(slot);
+                playerRig.ReloadSeconds = game.ReloadDurationAt(slot);
+                var rounds = game.WeaponAt(slot)?.RoundReload;
+                playerRig.ReloadPhases = rounds.HasValue ? new Vector2(rounds.Value.StartSeconds, rounds.Value.EndSeconds) : Vector2.zero;
+                float reload = remaining > 0 ? 1f - remaining / Mathf.Max(.01f, playerRig.ReloadSeconds) : -1f;
                 playerRig.Tick(dt, velocity, aim, reload, hitTimer / .18f, game.Health <= 0 ? 1f : 0f);
             }
             if (heroMarker != null) heroMarker.localScale = MarkerScale(HeroMarkerDiameter, 1f + Mathf.Sin(time * 4f) * .035f);
@@ -444,11 +463,12 @@ namespace TienTuyen.Presentation
         private void OnWeaponFired(int slot, Vector3 start, Vector3 end)
         {
             if (!arenaBuilt || playerRig == null) return;
-            visibleWeaponSlot = slot;
             lastShotDirection = end - start;
             lastShotDirection.y = 0;
             shotAimRemaining = .35f;
             presentationTracerEnd = end;
+            // The shouldered bore follows the shot actually taken (auto-aim can differ from the crosshair).
+            playerRig.AimPoint = end;
             playerRig.SnapAim(lastShotDirection);
             playerRig.Fire(WeaponVisualIndex(slot));
         }
@@ -494,15 +514,122 @@ namespace TienTuyen.Presentation
                 }
                 if (active)
                 {
-                    if (!wasActive) visual.shotAimRemaining = 0;
+                    if (!wasActive)
+                    {
+                        visual.shotAimRemaining = visual.hitRemaining = 0;
+                        visual.meleeTime = visual.recoveryTime = -1f;
+                        visual.dashTime = 0;
+                        visual.struck = visual.followThrough = visual.dashing = false;
+                        if (visual.infantrySwish != null) visual.infantrySwish.Clear();
+                        if (visual.chargerSwish != null) visual.chargerSwish.Clear();
+                    }
                     visual.shotAimRemaining = Mathf.Max(0, visual.shotAimRemaining - dt);
+                    visual.hitRemaining = Mathf.Max(0, visual.hitRemaining - dt);
                     Vector3 aim = visual.shotAimRemaining > 0 ? visual.shotDirection :
                         shooter && player != null ? player.position - actor.position : velocity;
                     aim.y = 0;
                     var rig = elite ? visual.eliteRig : charger ? visual.chargerRig : shooter ? visual.shooterRig : visual.infantryRig;
-                    if (rig != null) rig.Tick(dt, velocity, aim);
+                    if (rig == null) continue;
+                    var action = shooter ? default : EnemyAction(actor, visual, rig.Profile, dt, velocity.magnitude, ref aim);
+                    // Ranged enemies change magazines on the game's reload timer.
+                    float reload = -1f;
+                    if (shooter && game.TryGetEnemyAction(actor, out var ranged) && ranged.ReloadRemaining > 0f)
+                    {
+                        rig.ReloadSeconds = ranged.ReloadSeconds;
+                        reload = 1f - ranged.ReloadRemaining / Mathf.Max(.01f, ranged.ReloadSeconds);
+                    }
+                    rig.Tick(dt, velocity, aim, reload, visual.hitRemaining / .18f, 0f, action);
+                    var swish = rig == visual.infantryRig ? visual.infantrySwish : rig == visual.chargerRig ? visual.chargerSwish : null;
+                    if (swish != null)
+                        swish.emitting = action.kind == CharacterActionKind.Melee &&
+                            action.time >= rig.Profile.meleeContactTime - SwishLead && action.time <= rig.Profile.meleeContactTime + SwishFollow;
                 }
             }
+        }
+
+        private void OnEnemyMeleeStruck(Transform actor)
+        {
+            if (enemyVisuals.TryGetValue(actor, out var visual)) visual.struck = true;
+        }
+
+        /// <summary>
+        /// Clip and time of the melee or charge action this tick. The windup is read from the
+        /// gameplay cooldown so the contact frame lands on the damage tick; the telegraph from its
+        /// progress; the dash cycle from the distance actually travelled.
+        /// </summary>
+        private CharacterAction EnemyAction(Transform actor, EnemyVisual visual, SkinnedCharacterProfile profile, float dt, float speed, ref Vector3 aim)
+        {
+            if (profile == null || !game.TryGetEnemyAction(actor, out var state)) return default;
+            if (state.Kind == EnemyActionKind.Melee && profile.meleeAttack != null)
+            {
+                float contact = profile.meleeContactTime;
+                if (visual.struck)
+                {
+                    visual.struck = false;
+                    visual.followThrough = true;
+                    visual.meleeTime = contact;
+                }
+                else if (visual.followThrough)
+                {
+                    visual.meleeTime += dt;
+                    if (visual.meleeTime >= profile.meleeAttack.length) visual.followThrough = false;
+                }
+                if (!visual.followThrough)
+                    visual.meleeTime = state.InMeleeReach && state.AttackCooldownRemaining <= contact ? contact - state.AttackCooldownRemaining : -1f;
+                // In reach the guard already faces the player, so the windup never starts with a turn.
+                if (player != null && (state.InMeleeReach || visual.meleeTime >= 0f)) aim = player.position - actor.position;
+                if (visual.meleeTime < 0f) return default;
+                return new CharacterAction(CharacterActionKind.Melee, visual.meleeTime);
+            }
+            if (state.Kind == EnemyActionKind.ChargeTelegraph || state.Kind == EnemyActionKind.ChargeDash)
+            {
+                aim = state.ChargeDirection;
+                visual.recoveryTime = -1f;
+                if (state.Kind == EnemyActionKind.ChargeTelegraph)
+                {
+                    visual.dashing = false;
+                    visual.dashTime = 0;
+                    return profile.chargeTelegraph != null
+                        ? new CharacterAction(CharacterActionKind.ChargeTelegraph, state.TelegraphProgress * profile.chargeTelegraph.length) : default;
+                }
+                visual.dashing = true;
+                if (profile.chargeDash == null || profile.chargeDashCycleDistance <= 0f) return default;
+                visual.dashTime += speed * dt / profile.chargeDashCycleDistance * profile.chargeDash.length;
+                return new CharacterAction(CharacterActionKind.ChargeDash, visual.dashTime);
+            }
+            if (visual.dashing)
+            {
+                visual.dashing = false;
+                visual.recoveryTime = 0f;
+            }
+            if (visual.recoveryTime < 0f || profile.chargeRecovery == null) return default;
+            // Walking off cancels the recovery; locomotion takes over. The first frame still
+            // measures the last dash step, so it never cancels.
+            if (speed > .5f && visual.recoveryTime > 0f || visual.recoveryTime >= profile.chargeRecovery.length)
+            {
+                visual.recoveryTime = -1f;
+                return default;
+            }
+            var recovery = new CharacterAction(CharacterActionKind.ChargeRecovery, visual.recoveryTime);
+            visual.recoveryTime += dt;
+            return recovery;
+        }
+
+        private void OnEnemyDamaged(Transform actor, float damage, bool critical, bool killed)
+        {
+            if (!enemyVisuals.TryGetValue(actor, out var visual)) return;
+            visual.hitRemaining = .18f;
+            if (!killed) return;
+            // The event is emitted before the actor is returned to the gameplay pool.
+            // Copy presentation data, never retain the pooled actor as a corpse parent.
+            bool shooter = visual.bodyRenderer != null && visual.bodyRenderer.sharedMaterial != null &&
+                visual.bodyRenderer.sharedMaterial.name.IndexOf("Shooter", StringComparison.OrdinalIgnoreCase) >= 0;
+            var rig = actor.localScale.x > .85f ? visual.eliteRig : shooter ? visual.shooterRig :
+                visual.chargerMarker != null && visual.chargerMarker.gameObject.activeSelf ? visual.chargerRig : visual.infantryRig;
+            if (rig == null || !rig.IsSkinned) return;
+            if (corpses == null) corpses = gameObject.AddComponent<CombatCorpsePool>();
+            Vector3 facing = rig.PoseRoot != null ? rig.PoseRoot.forward : actor.forward;
+            corpses.Spawn(rig.Profile, actor.position, facing);
         }
 
         private void UpdateWarnings()
@@ -555,7 +682,7 @@ namespace TienTuyen.Presentation
             var root = new GameObject("PickupVisual").transform; root.SetParent(pickup, false);
             pickupVisuals.Add(root);
             MakeCube("Shard", root, Vector3.zero, new Vector3(.30f, .52f, .30f), Gold, .03f).transform.localRotation = Quaternion.Euler(0, 45, 0);
-            AddMarkerRing(root, Gold, .68f, "PickupRing");
+            AddGlowRing(root, Gold, .68f, "PickupRing", .23f);
         }
 
         private void UpdateTracerAndBullets()
@@ -575,8 +702,8 @@ namespace TienTuyen.Presentation
                 if (tracerBeam != null)
                 {
                     tracerBeam.enabled = true;
-                    Vector3 origin = playerRig != null && playerRig.MuzzleTransform != null
-                        ? playerRig.MuzzleTransform.position : tracer.position - tracer.forward * length * .5f;
+                    Transform muzzle = PlayerMuzzle();
+                    Vector3 origin = muzzle != null ? muzzle.position : tracer.position - tracer.forward * length * .5f;
                     tracerBeam.SetPosition(0, origin);
                     tracerBeam.SetPosition(1, presentationTracerEnd);
                     float width = Mathf.Clamp(length * .004f, .018f, .03f);
@@ -757,6 +884,61 @@ namespace TienTuyen.Presentation
             var ring = MakeCylinder(name, parent, new Vector3(0, height, 0), MarkerScale(diameter, 1f), color, 16);
             ring.GetComponent<Renderer>().sharedMaterial = RuntimeMaterial(name + "Mat", color, true);
             return ring;
+        }
+        // Supply and pickup rings: a soft glowing rim over a faint fill, a quad at a marker cylinder's top face,
+        // so the same scale pulses it. Lifted to rest just above the ground under a parent standing restHeight
+        // above it (its spawn height); the -.67 of the foot markers sank it or left it z-fighting the ground.
+        private static GameObject AddGlowRing(Transform parent, Color color, float diameter, string name, float restHeight)
+        {
+            var ring = new GameObject(name, typeof(MeshFilter), typeof(MeshRenderer));
+            ring.transform.SetParent(parent, false);
+            ring.transform.localPosition = new Vector3(0, (.035f - restHeight) / parent.lossyScale.y - MarkerThicknessScale, 0);
+            ring.transform.localScale = MarkerScale(diameter, 1f);
+            if (glowRingQuad == null)
+            {
+                glowRingQuad = new Mesh { name = "GlowRingQuad" };
+                glowRingQuad.SetVertices(new[] { new Vector3(-.5f, 1f, -.5f), new Vector3(-.5f, 1f, .5f), new Vector3(.5f, 1f, .5f), new Vector3(.5f, 1f, -.5f) });
+                glowRingQuad.SetUVs(0, new[] { new Vector2(0, 0), new Vector2(0, 1), new Vector2(1, 1), new Vector2(1, 0) });
+                glowRingQuad.SetNormals(new[] { Vector3.up, Vector3.up, Vector3.up, Vector3.up });
+                glowRingQuad.SetTriangles(new[] { 0, 1, 2, 0, 2, 3 }, 0);
+                glowRingQuad.RecalculateBounds();
+            }
+            ring.GetComponent<MeshFilter>().sharedMesh = glowRingQuad;
+            string key = "GlowRing|" + color;
+            if (!MaterialCache.TryGetValue(key, out var material) || material == null)
+            {
+                // Bright enough to stay the supply cue in the shade and at dusk, below the bloom threshold in full sun.
+                MaterialCache[key] = material = ProceduralArt.Particle("Art_" + name, false, new Color(color.r * 1.5f, color.g * 1.4f, color.b * 1.1f, 1f));
+                material.SetTexture("_BaseMap", GlowRingTexture());
+                material.mainTexture = GlowRingTexture();
+            }
+            var renderer = ring.GetComponent<MeshRenderer>();
+            renderer.sharedMaterial = material;
+            renderer.shadowCastingMode = ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+            return ring;
+        }
+        private static Mesh glowRingQuad;
+        private static Texture2D glowRing;
+        private static Texture2D GlowRingTexture()
+        {
+            if (glowRing != null) return glowRing;
+            const int size = 128;
+            glowRing = new Texture2D(size, size, TextureFormat.RGBA32, true) { name = "GlowRing", wrapMode = TextureWrapMode.Clamp, anisoLevel = 4 };
+            var pixels = new Color32[size * size];
+            for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
+            {
+                float dx = (x + .5f) / size * 2f - 1f, dy = (y + .5f) / size * 2f - 1f, r = Mathf.Sqrt(dx * dx + dy * dy);
+                float rim = Mathf.Exp(-Mathf.Pow((r - .84f) / .06f, 2f));
+                float halo = Mathf.Exp(-Mathf.Pow((r - .84f) / .15f, 2f)) * .35f;
+                float fill = r < .84f ? .16f * Mathf.Pow(r / .84f, 1.5f) : 0f;
+                float alpha = Mathf.Clamp01(Mathf.Max(rim, Mathf.Max(halo, fill))) * (1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(.95f, 1f, r)));
+                pixels[y * size + x] = new Color32(255, 255, 255, (byte)(alpha * 255f));
+            }
+            glowRing.SetPixels32(pixels);
+            glowRing.Apply(true, true);
+            return glowRing;
         }
         // Pulse the footprint only; a uniform scale turns this flat cylinder into
         // a full-height column that hides the imported character's legs.

@@ -39,8 +39,12 @@ namespace TienTuyen.Presentation.Interface
             if (offer.Kind == OfferKind.Weapon)
             {
                 var weapon = ContentCatalog.P2.GetWeapon(offer.Id);
+                // Only the weapon in hand fires, so compare with the best one owned instead of adding up.
+                float best = 0;
+                for (int slot = 0; slot < game.WeaponCount; slot++)
+                    best = System.Math.Max(best, WeaponDps(game, game.WeaponAt(slot), game.Run.Weapons[slot].Tier));
                 return $"<b>{weapon.DisplayName}</b> · bậc {offer.Tier}\n" +
-                    $"DPS vũ khí mới: 0 → {WeaponDps(game, weapon, offer.Tier):0.0}   ·   Băng đạn: {weapon.MagazineSize}   ·   Tầm bắn: {weapon.Range:0.#} m\n" +
+                    $"DPS khi cầm: {WeaponDps(game, weapon, offer.Tier):0.0} (súng mạnh nhất đang có: {best:0.0})   ·   Băng đạn: {weapon.MagazineSize}   ·   Tầm bắn: {weapon.Range:0.#} m\n" +
                     $"Ô vũ khí: {game.WeaponCount} → {game.WeaponCount + 1}/4   ·   Tiếp tế: {game.Currency} → {game.Currency - offer.Price}";
             }
             ProgressionStats before = game.Stats, after = game.Run.PreviewStats(offer.Modifier);

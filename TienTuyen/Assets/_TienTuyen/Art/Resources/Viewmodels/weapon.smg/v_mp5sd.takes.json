@@ -1,0 +1,225 @@
+[
+ {
+  "take": "idle",
+  "source_sequence": "idle",
+  "fps": 30.0,
+  "frame_count": 2,
+  "duration_s": 0.0333,
+  "fbx_time_note": "FBX take is resampled to 30 fps over the same duration; event time_s holds",
+  "events": "none"
+ },
+ {
+  "take": "reload",
+  "source_sequence": "reload",
+  "fps": 35.0,
+  "frame_count": 104,
+  "duration_s": 2.9429,
+  "fbx_time_note": "FBX take is resampled to 30 fps over the same duration; event time_s holds",
+  "events": [
+   {
+    "frame": 4.0,
+    "time_s": 0.1143,
+    "cycle": 0.0388,
+    "id": 5004,
+    "name": "",
+    "options": "MP5sd.Slideback"
+   },
+   {
+    "frame": 27.0,
+    "time_s": 0.7714,
+    "cycle": 0.2621,
+    "id": 5004,
+    "name": "",
+    "options": "MP5sd.Clipout"
+   },
+   {
+    "frame": 69.0,
+    "time_s": 1.9714,
+    "cycle": 0.6699,
+    "id": 5004,
+    "name": "",
+    "options": "MP5sd.Clipin"
+   },
+   {
+    "frame": 84.0,
+    "time_s": 2.4,
+    "cycle": 0.8155,
+    "id": 5004,
+    "name": "",
+    "options": "MP5sd.SlideForward"
+   }
+  ],
+  "done": {
+   "frame": 84.0,
+   "time_s": 2.4,
+   "from": "event MP5sd.SlideForward"
+  }
+ },
+ {
+  "take": "draw",
+  "source_sequence": "draw",
+  "fps": 40.0,
+  "frame_count": 40,
+  "duration_s": 0.975,
+  "fbx_time_note": "FBX take is resampled to 30 fps over the same duration; event time_s holds",
+  "events": [
+   {
+    "frame": 7.0,
+    "time_s": 0.175,
+    "cycle": 0.1795,
+    "id": 5004,
+    "name": "",
+    "options": "MP5sd.Draw"
+   },
+   {
+    "frame": 20.0,
+    "time_s": 0.5,
+    "cycle": 0.5128,
+    "id": 5004,
+    "name": "",
+    "options": "MP5sd.SlideForward"
+   }
+  ],
+  "done": {
+   "frame": 37,
+   "time_s": 0.925,
+   "from": "first frame after which every hand and finger bone stays within 0.4 in (1 cm) of the idle grip, measured in the gun frame (grip_settle.py)"
+  }
+ },
+ {
+  "take": "fire1",
+  "source_sequence": "fire01",
+  "fps": 45.0,
+  "frame_count": 20,
+  "duration_s": 0.4222,
+  "fbx_time_note": "FBX take is resampled to 30 fps over the same duration; event time_s holds",
+  "events": [
+   {
+    "frame": 0.0,
+    "time_s": 0.0,
+    "cycle": 0.0,
+    "id": 0,
+    "name": "AE_MUZZLEFLASH",
+    "options": "357 1"
+   },
+   {
+    "frame": 0.0,
+    "time_s": 0.0,
+    "cycle": 0.0,
+    "id": 0,
+    "name": "AE_CLIENT_EFFECT_ATTACH",
+    "options": "EjectBrass_9mm 2 100"
+   },
+   {
+    "frame": 0.0,
+    "time_s": 0.0,
+    "cycle": 0.0,
+    "id": 5001,
+    "name": "",
+    "options": "1"
+   }
+  ]
+ },
+ {
+  "take": "fire2",
+  "source_sequence": "fire02",
+  "fps": 45.0,
+  "frame_count": 20,
+  "duration_s": 0.4222,
+  "fbx_time_note": "FBX take is resampled to 30 fps over the same duration; event time_s holds",
+  "events": [
+   {
+    "frame": 0.0,
+    "time_s": 0.0,
+    "cycle": 0.0,
+    "id": 0,
+    "name": "AE_MUZZLEFLASH",
+    "options": "357 1"
+   },
+   {
+    "frame": 0.0,
+    "time_s": 0.0,
+    "cycle": 0.0,
+    "id": 0,
+    "name": "AE_CLIENT_EFFECT_ATTACH",
+    "options": "EjectBrass_9mm 2 100"
+   },
+   {
+    "frame": 0.0,
+    "time_s": 0.0,
+    "cycle": 0.0,
+    "id": 5001,
+    "name": "",
+    "options": "1"
+   }
+  ]
+ },
+ {
+  "take": "fire3",
+  "source_sequence": "fire03",
+  "fps": 45.0,
+  "frame_count": 20,
+  "duration_s": 0.4222,
+  "fbx_time_note": "FBX take is resampled to 30 fps over the same duration; event time_s holds",
+  "events": [
+   {
+    "frame": 0.0,
+    "time_s": 0.0,
+    "cycle": 0.0,
+    "id": 0,
+    "name": "AE_MUZZLEFLASH",
+    "options": "357 1"
+   },
+   {
+    "frame": 0.0,
+    "time_s": 0.0,
+    "cycle": 0.0,
+    "id": 0,
+    "name": "AE_CLIENT_EFFECT_ATTACH",
+    "options": "EjectBrass_9mm 2 100"
+   },
+   {
+    "frame": 0.0,
+    "time_s": 0.0,
+    "cycle": 0.0,
+    "id": 5001,
+    "name": "",
+    "options": "1"
+   }
+  ]
+ },
+ {
+  "take": "fire4",
+  "source_sequence": "fire04",
+  "fps": 45.0,
+  "frame_count": 20,
+  "duration_s": 0.4222,
+  "fbx_time_note": "FBX take is resampled to 30 fps over the same duration; event time_s holds",
+  "events": [
+   {
+    "frame": 0.0,
+    "time_s": 0.0,
+    "cycle": 0.0,
+    "id": 0,
+    "name": "AE_MUZZLEFLASH",
+    "options": "357 1"
+   },
+   {
+    "frame": 0.0,
+    "time_s": 0.0,
+    "cycle": 0.0,
+    "id": 0,
+    "name": "AE_CLIENT_EFFECT_ATTACH",
+    "options": "EjectBrass_9mm 2 100"
+   },
+   {
+    "frame": 0.0,
+    "time_s": 0.0,
+    "cycle": 0.0,
+    "id": 5001,
+    "name": "",
+    "options": "1"
+   }
+  ]
+ }
+]

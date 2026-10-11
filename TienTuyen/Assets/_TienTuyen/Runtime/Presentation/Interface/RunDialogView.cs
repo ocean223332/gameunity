@@ -30,17 +30,19 @@ namespace TienTuyen.Presentation.Interface
                 new[] { "CHUỘT TRÁI", "Bắn" },
                 new[] { "CHUỘT PHẢI", "Ngắm kỹ" },
                 new[] { "R", "Nạp đạn" },
+                new[] { "1-4+Q+CUỘN", "Đổi súng" },
+                new[] { "V", "Góc nhìn" },
                 new[] { "ESC", "Tiếp tục" },
             };
             for (int i = 0; i < rows.Length; i++)
             {
                 var row = UiKit.HintRow("Row" + i, pauseBody, 14f, rows[i][0], rows[i][1]);
                 row.GetComponent<HorizontalLayoutGroup>().childAlignment = TextAnchor.MiddleLeft;
-                UiKit.Place(row, UiKit.TopLeft, UiKit.TopLeft, new Vector2(i % 2 * 280, -(i / 2) * 36), new Vector2(270, 26));
+                UiKit.Place(row, UiKit.TopLeft, UiKit.TopLeft, new Vector2(i % 2 * 280, -(i / 2) * 32), new Vector2(270, 26));
             }
             var tip = UiKit.Text("Tip", pauseBody, "Bao cát chặn cả di chuyển lẫn đường đạn — hãy núp sau chúng khi nạp đạn.",
                 UiTheme.Body, 15, UiTheme.Muted, TextAlignmentOptions.TopLeft);
-            UiKit.Place(tip, UiKit.TopLeft, UiKit.TopLeft, new Vector2(0, -124), new Vector2(Size.x - 68, 44));
+            UiKit.Place(tip, UiKit.TopLeft, UiKit.TopLeft, new Vector2(0, -134), new Vector2(Size.x - 68, 44));
 
             resultBody = UiKit.Node("Results", Panel, UiKit.TopLeft, UiKit.TopLeft, new Vector2(34, -118), new Vector2(Size.x - 68, 200));
             string[] captions = { "ĐỢT", "THỜI GIAN", "HẠ ĐỊCH", "SÁT THƯƠNG", "TIẾP TẾ", "CẤP ĐỘ" };

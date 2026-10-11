@@ -1,0 +1,13 @@
+# CSGO WEAPONS PACK (Half-Life 2: Deathmatch)
+- URL: https://gamebanana.com/mods/552059
+- Downloaded: 2026-10-11 (anonymous GameBanana download; no account)
+- Page date added: 2024-10-29
+- Author: RAGNA SS (submitter; only credit listed: "RAGNA SS - UNKNOWN")
+- Files: csgo_hl2dm.zip (40,843,222 B)
+- Licence as stated: CC BY-NC-ND 4.0 (https://creativecommons.org/licenses/by-nc-nd/4.0/). GameBanana permissions checklist: yes = download and install; ask = redistribute, modify and distribute, use parts in another mod; no = commercial use. Valve owns the original CS:GO models and animations; the porters' permission is not Valve's. The Human has accepted these sources for this non-commercial coursework on condition of full README credit (elon #1198).
+- Required credit (page credits, as listed): RAGNA SS (pack); Valve / Hidden Path Entertainment (original CS:GO models, textures, animations). The page names no other porters.
+- Contents / use: Source MDL v49 CS:GO viewmodels with v_glove_sporty arms: v_irifle = AK-47, v_smg1 = MP5-SD, v_shotgun = XM1014, v_pistol = Glock-18, v_357 = Deagle, v_rif_famas, v_crossbow = AWP, v_crowbar = butterfly knife; w_ world models for AK-47 and MP5-SD (ValveBiped.weapon_bone). Decoded with own readers into conv/, decoded/, preview/. Recommended first-person source.
+- Textures used with this pack's meshes:
+  - AK-47 base texture: ak47.vtf from GameBanana 209388 "CSGO AK-47 on CSS Hands" (https://gamebanana.com/mods/209388; submitter Bernari; credits: Bernari (compiler), Ninja (model), Soldier11 (animations), Valve / Turtle Rock Studios (model, texture), Hidden Path Entertainment (CS:GO model and texture); licence as stated CC BY-NC-ND 4.0, commercial use no, modification/reuse "ask"). Changed: decoded VTF (DXT3) to PNG only; it replaces this pack's black AK skin on the same UVs. Normal map not used.
+  - MP5-SD and XM1014 base textures: this pack's own skins, recoloured by clip-source to plain finishes (_scripts/plain_tex.py: MP5-SD orange parts desaturated to black polymer; XM1014 camo pattern removed to a flat parkerised grey). Derived from the pack's textures; credit as for this pack.
+- v_ak47.sights.json (beside the model): rear and front sight, gun up and eye distance, measured by clip-source from this pack's mesh in the "Viewmodel" frame at idle frame 0. Derived data; credit as for this pack.

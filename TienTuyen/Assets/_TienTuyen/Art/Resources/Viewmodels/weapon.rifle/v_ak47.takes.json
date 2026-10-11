@@ -1,0 +1,225 @@
+[
+ {
+  "take": "idle",
+  "source_sequence": "ak47_idle",
+  "fps": 30.0,
+  "frame_count": 2,
+  "duration_s": 0.0333,
+  "fbx_time_note": "FBX take is resampled to 30 fps over the same duration; event time_s holds",
+  "events": "none"
+ },
+ {
+  "take": "fire1",
+  "source_sequence": "IR_fire",
+  "fps": 30.0,
+  "frame_count": 23,
+  "duration_s": 0.7333,
+  "fbx_time_note": "FBX take is resampled to 30 fps over the same duration; event time_s holds",
+  "events": [
+   {
+    "frame": 0.0,
+    "time_s": 0.0,
+    "cycle": 0.0,
+    "id": 0,
+    "name": "AE_MUZZLEFLASH",
+    "options": "357 1"
+   },
+   {
+    "frame": 0.0,
+    "time_s": 0.0,
+    "cycle": 0.0,
+    "id": 0,
+    "name": "AE_CLIENT_EFFECT_ATTACH",
+    "options": "EjectBrass_57 2 110"
+   },
+   {
+    "frame": 9.0,
+    "time_s": 0.3,
+    "cycle": 0.4091,
+    "id": 5021,
+    "name": "",
+    "options": "5"
+   }
+  ]
+ },
+ {
+  "take": "fire2",
+  "source_sequence": "fire2",
+  "fps": 30.0,
+  "frame_count": 23,
+  "duration_s": 0.7333,
+  "fbx_time_note": "FBX take is resampled to 30 fps over the same duration; event time_s holds",
+  "events": [
+   {
+    "frame": 0.0,
+    "time_s": 0.0,
+    "cycle": 0.0,
+    "id": 0,
+    "name": "AE_MUZZLEFLASH",
+    "options": "357 1"
+   },
+   {
+    "frame": 0.0,
+    "time_s": 0.0,
+    "cycle": 0.0,
+    "id": 0,
+    "name": "AE_CLIENT_EFFECT_ATTACH",
+    "options": "EjectBrass_57 2 110"
+   },
+   {
+    "frame": 9.0,
+    "time_s": 0.3,
+    "cycle": 0.4091,
+    "id": 5021,
+    "name": "",
+    "options": "5"
+   }
+  ]
+ },
+ {
+  "take": "fire3",
+  "source_sequence": "fire3",
+  "fps": 30.0,
+  "frame_count": 23,
+  "duration_s": 0.7333,
+  "fbx_time_note": "FBX take is resampled to 30 fps over the same duration; event time_s holds",
+  "events": [
+   {
+    "frame": 0.0,
+    "time_s": 0.0,
+    "cycle": 0.0,
+    "id": 0,
+    "name": "AE_MUZZLEFLASH",
+    "options": "357 1"
+   },
+   {
+    "frame": 0.0,
+    "time_s": 0.0,
+    "cycle": 0.0,
+    "id": 0,
+    "name": "AE_CLIENT_EFFECT_ATTACH",
+    "options": "EjectBrass_57 2 110"
+   },
+   {
+    "frame": 9.0,
+    "time_s": 0.3,
+    "cycle": 0.4091,
+    "id": 5021,
+    "name": "",
+    "options": "5"
+   }
+  ]
+ },
+ {
+  "take": "fire4",
+  "source_sequence": "fire4",
+  "fps": 30.0,
+  "frame_count": 23,
+  "duration_s": 0.7333,
+  "fbx_time_note": "FBX take is resampled to 30 fps over the same duration; event time_s holds",
+  "events": [
+   {
+    "frame": 0.0,
+    "time_s": 0.0,
+    "cycle": 0.0,
+    "id": 0,
+    "name": "AE_MUZZLEFLASH",
+    "options": "357 1"
+   },
+   {
+    "frame": 0.0,
+    "time_s": 0.0,
+    "cycle": 0.0,
+    "id": 0,
+    "name": "AE_CLIENT_EFFECT_ATTACH",
+    "options": "EjectBrass_57 2 110"
+   },
+   {
+    "frame": 9.0,
+    "time_s": 0.3,
+    "cycle": 0.4091,
+    "id": 5021,
+    "name": "",
+    "options": "5"
+   }
+  ]
+ },
+ {
+  "take": "draw",
+  "source_sequence": "ak47_draw",
+  "fps": 30.0,
+  "frame_count": 31,
+  "duration_s": 1.0,
+  "fbx_time_note": "FBX take is resampled to 30 fps over the same duration; event time_s holds",
+  "events": [
+   {
+    "frame": 0.0,
+    "time_s": 0.0,
+    "cycle": 0.0,
+    "id": 5004,
+    "name": "",
+    "options": "Weapon_AK47.Draw"
+   },
+   {
+    "frame": 11.0,
+    "time_s": 0.3667,
+    "cycle": 0.3667,
+    "id": 5004,
+    "name": "",
+    "options": "Weapon_AK47.BoltPull"
+   }
+  ],
+  "done": {
+   "frame": 26,
+   "time_s": 0.8667,
+   "from": "first frame after which every hand and finger bone stays within 0.4 in (1 cm) of the idle grip, measured in the gun frame (grip_settle.py)"
+  }
+ },
+ {
+  "take": "reload",
+  "source_sequence": "ak47_reload",
+  "fps": 30.0,
+  "frame_count": 74,
+  "duration_s": 2.4333,
+  "fbx_time_note": "FBX take is resampled to 30 fps over the same duration; event time_s holds",
+  "events": [
+   {
+    "frame": 9.0,
+    "time_s": 0.3,
+    "cycle": 0.1233,
+    "id": 5004,
+    "name": "",
+    "options": "Weapon_AK47.Clipout"
+   },
+   {
+    "frame": 30.0,
+    "time_s": 1.0,
+    "cycle": 0.411,
+    "id": 5004,
+    "name": "",
+    "options": "Weapon_AK47.Clipin"
+   },
+   {
+    "frame": 35.0,
+    "time_s": 1.1667,
+    "cycle": 0.4795,
+    "id": 0,
+    "name": "AE_WPN_COMPLETE_RELOAD",
+    "options": ""
+   },
+   {
+    "frame": 50.0,
+    "time_s": 1.6667,
+    "cycle": 0.6849,
+    "id": 5004,
+    "name": "",
+    "options": "Weapon_AK47.BoltPull"
+   }
+  ],
+  "done": {
+   "frame": 35.0,
+   "time_s": 1.1667,
+   "from": "event AE_WPN_COMPLETE_RELOAD"
+  }
+ }
+]

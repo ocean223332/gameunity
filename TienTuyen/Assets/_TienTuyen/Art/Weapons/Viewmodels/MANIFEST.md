@@ -1,0 +1,1 @@
+- sleeve_olive.png, sleeve_olive_normal.png (OpenGL normal): plain olive sleeve for the first-person arms (the bare_arm_133 material of v_ak47, v_mp5sd and v_xm1014, remapped to ViewmodelSleeveOlive.mat). Procedural, made by clip-source; no third-party content. Source: output/clip-source/gb-hl2dm-csgo-weapons/MANIFEST.md.

@@ -5,9 +5,12 @@ using UnityEngine.Rendering;
 namespace TienTuyen.Presentation
 {
     /// <summary>
-    /// Rigid-piece animation for the deliberately unskinned low-poly catalog.
-    /// Feet are driven by travelled distance, not a clock; two-bone limbs meet
-    /// planted boots and actual gun sockets. This never moves the gameplay actor.
+    /// Character presentation for a gameplay actor; never moves the actor itself.
+    /// <see cref="InitializeSkinned"/> drives a skinned Humanoid from clips
+    /// (<see cref="SkinnedCharacterAnimator"/>); <see cref="Initialize"/> is the procedural
+    /// fallback for the unskinned low-poly catalog, whose feet are driven by travelled
+    /// distance and whose two-bone limbs meet planted boots and actual gun sockets.
+    /// Weapons, recoil, muzzle flash, brass and the faction flag are shared by both.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class CombatCharacterRig : MonoBehaviour
@@ -21,6 +24,11 @@ namespace TienTuyen.Presentation
         private sealed class HeldWeapon
         {
             public Transform root, grip, support, muzzle;
+            public WeaponHold hold;
+            public float holdScale = 1f;
+            /// <summary>Resources/Models name of an imported firearm, and its clip set on a skinned profile (-1: none).</summary>
+            public string model;
+            public int carry = -1;
             public GameObject flash;
             public Vector3[] boundsCorners;
         }
@@ -36,8 +44,12 @@ namespace TienTuyen.Presentation
         private Limb leftLeg, rightLeg, leftArm, rightArm;
         private HeldWeapon[] weapons = Array.Empty<HeldWeapon>();
         private int selectedWeapon;
-        private float gaitPhase, movementBlend, clock, recoil, flashTime;
+        private float gaitPhase, movementBlend, clock, recoil, flashTime, aim, shotHold;
+        // A shot shoulders the weapon; it stays up this long after the last one, then returns to the low-ready.
+        private const float ShotHoldSeconds = 2f;
         private float stanceFraction = .6f;
+        private float lastReload = -1f;
+        private bool weaponsHidden;
         private Vector3 smoothedVelocity;
         private bool freshPose = true;
         private float scale = 1f;
@@ -45,6 +57,15 @@ namespace TienTuyen.Presentation
         private int shotSequence;
         private readonly Shell[] shells = new Shell[3];
         private CombatBanner banner;
+        private SkinnedCharacterAnimator skinned;
+        private Transform bannerMount;
+        private float bannerHidden;
+        private Vector3 bannerAnchor, bannerForward;
+        private const float ShoulderBladeOffset = .07f;
+        // Screen size grows as 1/distance: inside these camera distances (the bodies between the
+        // over-the-shoulder camera and the hero, and the hero's own flag while aiming) a full flag
+        // would cover the crosshair, so it lowers into the back and is gone at the near one.
+        private const float BannerHiddenDistance = 2f, BannerFullDistance = 4f;
         private static Mesh limbMesh;
         private static Material flashMaterial;
         private static Material brassMaterial;
@@ -52,21 +73,40 @@ namespace TienTuyen.Presentation
         private bool ownsResources;
 
         public bool IsInitialized { get; private set; }
-        public float GaitPhase => gaitPhase;
+        public bool IsSkinned => skinned != null;
+        /// <summary>Hold the weapon in the low-ready whatever the aim request (the menu pose); a shot still shoulders it.</summary>
+        public bool Relaxed { get; set; }
+        /// <summary>0..1 request to shoulder the weapon (aiming down the sights); shots raise it on their own.</summary>
+        public float AimWeight { get; set; }
+        /// <summary>0..1 progress of drawing the weapon in hand (the game's switch timing); negative when not drawing.</summary>
+        public float DrawProgress { get; set; } = -1f;
+        /// <summary>Seconds the game's current reload lasts; times a weapon's shell-by-shell reload clips.</summary>
+        public float ReloadSeconds { get; set; }
+        /// <summary>A reload by the round: its start and end phases in seconds; zero for a whole reload.</summary>
+        public Vector2 ReloadPhases { get; set; }
+        /// <summary>World point the shouldered bore meets (the crosshair); null keeps the bore level.</summary>
+        public Vector3? AimPoint { get; set; }
+        public SkinnedCharacterProfile Profile { get; private set; }
+        /// <summary>The death clip has reached its last frame and is holding it.</summary>
+        public bool DeathFinished => skinned != null && skinned.DeathFinished;
+        public float GaitPhase => skinned != null ? skinned.GaitPhase : gaitPhase;
         public float MovementBlend => movementBlend;
+        /// <summary>0..1 influence of an enemy action clip (melee or charge); 0 without one.</summary>
+        public float ActionWeight => skinned != null ? skinned.ActionWeight : 0f;
         public float RecoilAmount => recoil;
-        public Transform LeftFoot => leftLeg?.end;
-        public Transform RightFoot => rightLeg?.end;
-        public Transform GripHand => rightArm?.end;
-        public Transform SupportHand => leftArm?.end;
+        public Transform LeftFoot => skinned != null ? skinned.LeftFoot : leftLeg?.end;
+        public Transform RightFoot => skinned != null ? skinned.RightFoot : rightLeg?.end;
+        public Transform GripHand => skinned != null ? skinned.GripSocket : rightArm?.end;
+        public Transform SupportHand => skinned != null ? skinned.SupportSocket : leftArm?.end;
         public Transform WeaponGrip => CurrentWeapon?.grip;
         public Transform WeaponSupport => CurrentWeapon?.support;
         public Transform MuzzleTransform => CurrentWeapon?.muzzle;
         public Transform PoseRoot => pose;
-        public Transform ChestPivot => torso;
+        public Transform ChestPivot => skinned != null ? skinned.Chest : torso;
         public Transform CurrentWeaponRoot => CurrentWeapon?.root;
         public CombatBanner Banner => banner;
         private HeldWeapon CurrentWeapon => weapons.Length > 0 ? weapons[selectedWeapon] : null;
+        private bool Carried => skinned != null && CurrentWeapon != null && CurrentWeapon.carry >= 0;
 
         public void Initialize(Transform importedModel, Transform[] weaponTransforms)
         {
@@ -148,20 +188,124 @@ namespace TienTuyen.Presentation
             for (int i = 0; i < count; i++)
             {
                 if (weaponTransforms[i] == null) continue;
-                weapons[i] = ConfigureWeapon(weaponTransforms[i], i);
+                weapons[i] = ConfigureWeapon(weaponTransforms[i], i, torso);
             }
-            if (count > 0)
-                for (int i = 0; i < shells.Length; i++)
-                {
-                    var casing = AddShape("EjectedCasing_" + i, pose, Vector3.zero, new Vector3(.025f, .07f, .025f), brassMaterial);
-                    casing.GetComponent<MeshRenderer>().shadowCastingMode = ShadowCastingMode.Off;
-                    casing.gameObject.SetActive(false);
-                    shells[i] = new Shell { transform = casing, age = 1f };
-                }
+            if (count > 0) CreateShells();
             IsInitialized = true;
             SelectWeapon(0);
             ResetMotion();
             ApplyPose(Vector3.zero, -1, 0, 0);
+        }
+
+        /// <summary>
+        /// Animates <paramref name="profile"/>'s model from its clips. Returns false, changing
+        /// nothing, when the profile cannot drive a Humanoid; the caller may then fall back to
+        /// <see cref="Initialize"/>. <paramref name="feetOffset"/> is the rig-local sole position
+        /// (gameplay actors stand at y=.8, so (0,-.8,0)). Weapons may be empty (unarmed, corpse).
+        /// </summary>
+        public bool InitializeSkinned(SkinnedCharacterProfile profile, Transform[] weaponTransforms, Vector3 feetOffset)
+        {
+            if (IsInitialized || profile == null || !profile.IsValid) return false;
+            EnsureResources();
+            ownsResources = true;
+            resourceUsers++;
+            Profile = profile;
+            scale = Mathf.Max(.01f, profile.modelScale);
+            pose = Node("CharacterPose", transform, feetOffset);
+            pose.localScale = Vector3.one * scale;
+            var model = Instantiate(profile.model, pose, false).transform;
+            model.name = profile.model.name;
+            model.localPosition = Vector3.zero;
+            model.localRotation = Quaternion.identity;
+            foreach (var renderer in model.GetComponentsInChildren<Renderer>(true))
+            {
+                renderer.shadowCastingMode = ShadowCastingMode.On;
+                renderer.receiveShadows = true;
+            }
+            skinned = new SkinnedCharacterAnimator(profile, pose, model);
+            AttachBanner(profile, skinned.Chest);
+
+            int count = weaponTransforms == null ? 0 : weaponTransforms.Length;
+            weapons = new HeldWeapon[count];
+            for (int i = 0; i < count; i++)
+                if (weaponTransforms[i] != null)
+                {
+                    weapons[i] = ConfigureWeapon(weaponTransforms[i], i, pose);
+                    weapons[i].carry = skinned.FindWeaponSet(weapons[i].model);
+                    var worldModel = skinned.WeaponModel(weapons[i].carry);
+                    if (worldModel != null) WearModel(weapons[i], worldModel);
+                }
+            if (count > 0) CreateShells();
+            IsInitialized = true;
+            SelectWeapon(0);
+            ResetMotion();
+            ApplySkinned(0f, Vector3.zero, -1f, 0f, 0f);
+            return true;
+        }
+
+        /// <summary>Pool reuse / respawn: restart locomotion and clear death, hit, reload and recoil.</summary>
+        public void ResetPose()
+        {
+            if (!IsInitialized) return;
+            ResetMotion();
+            if (skinned != null) ApplySkinned(0f, Vector3.zero, -1f, 0f, 0f);
+            else ApplyPose(Vector3.zero, -1, 0, 0);
+        }
+
+        private void AttachBanner(SkinnedCharacterProfile profile, Transform chest)
+        {
+            if (profile.bannerSource == null || chest == null) return;
+            // Fitted on the bind pose (nothing is animated yet), so the fit never depends on the
+            // playing clip or on whether the character is active. The mount then rides the back
+            // point every frame and turns with the chest while the pole stays upright.
+            bannerAnchor = profile.chestBack;
+            bannerForward = Quaternion.Inverse(chest.rotation) * pose.forward;
+            bannerMount = Node("BannerMount", pose, Vector3.zero);
+            bannerMount.SetPositionAndRotation(chest.TransformPoint(bannerAnchor), pose.rotation);
+            // The catalog figure carries the faction flag at its authored height.
+            var source = Instantiate(profile.bannerSource, pose, false).transform;
+            source.localPosition = Vector3.zero;
+            source.localRotation = Quaternion.Euler(0, 180, 0) * Quaternion.Euler(-90, 0, 0);
+            source.localScale = Vector3.one;
+            var renderers = source.GetComponentsInChildren<MeshRenderer>(true);
+            banner = CombatBanner.Create(bannerMount, renderers, (GetInstanceID() & 1023) * .37f);
+            if (banner != null)
+            {
+                MeshRenderer pole = null;
+                foreach (var part in renderers)
+                    if (part.name == "banner pole") { pole = part; part.transform.SetParent(banner.Pivot, true); break; }
+                Vector3 shift = profile.bannerOffset;
+                if (pole != null && bannerAnchor != Vector3.zero)
+                {
+                    // The catalog figure is bulkier than this body: stand the pole against the
+                    // measured back, over the shoulder blade on the catalog's side.
+                    var bounds = pole.bounds;
+                    Vector3 axis = bannerMount.InverseTransformPoint(bounds.center);
+                    float radius = Mathf.Min(bounds.extents.x, bounds.extents.z);
+                    shift.x += Mathf.Sign(axis.x) * ShoulderBladeOffset - axis.x;
+                    shift.z += -(radius + .02f) - axis.z;
+                }
+                banner.Pivot.localPosition += shift;
+            }
+            source.gameObject.SetActive(false);
+            Destroy(source.gameObject);
+        }
+
+        private void FollowBanner()
+        {
+            if (bannerMount == null) return;
+            Transform chest = skinned.Chest;
+            Vector3 up = pose.up;
+            Vector3 forward = Vector3.ProjectOnPlane(chest.rotation * bannerForward, up);
+            bannerMount.position = chest.TransformPoint(bannerAnchor);
+            if (forward.sqrMagnitude > 1e-4f) bannerMount.rotation = Quaternion.LookRotation(forward, up);
+            var view = Camera.main;
+            float shown = view == null ? 1f : Mathf.SmoothStep(0f, 1f,
+                Mathf.InverseLerp(BannerHiddenDistance, BannerFullDistance, Vector3.Distance(view.transform.position, bannerMount.position)));
+            // The relaxed menu pose folds the banner away, and unfolds it as the camera swings round.
+            bannerHidden = Mathf.MoveTowards(bannerHidden, Relaxed ? 1f : 0f, Time.unscaledDeltaTime * 3f);
+            shown *= 1f - Mathf.SmoothStep(0f, 1f, bannerHidden);
+            bannerMount.localScale = new Vector3(shown, shown, shown);
         }
 
         public void SelectWeapon(int index)
@@ -171,7 +315,7 @@ namespace TienTuyen.Presentation
             for (int i = 0; i < weapons.Length; i++)
             {
                 if (weapons[i] == null) continue;
-                weapons[i].root.gameObject.SetActive(i == selectedWeapon);
+                weapons[i].root.gameObject.SetActive(i == selectedWeapon && !weaponsHidden);
                 if (i != selectedWeapon) weapons[i].flash.SetActive(false);
             }
         }
@@ -182,6 +326,14 @@ namespace TienTuyen.Presentation
             SelectWeapon(weaponIndex);
             recoil = 1f;
             flashTime = .055f;
+            shotHold = ShotHoldSeconds;
+            if (Carried) skinned.Fired();
+            else if (aim < 1f)
+            {
+                // The shot leaves along the bore: shoulder the weapon now, not over the next ticks.
+                aim = 1f;
+                if (skinned != null) { skinned.RaiseAim(); ApplySkinnedHold(lastReload); }
+            }
             if (CurrentWeapon != null)
             {
                 CurrentWeapon.flash.SetActive(true);
@@ -199,9 +351,17 @@ namespace TienTuyen.Presentation
             if (worldDirection.sqrMagnitude < .0001f) return;
             pose.localRotation = Quaternion.Inverse(transform.rotation) * Quaternion.LookRotation(worldDirection.normalized, Vector3.up);
             freshPose = false;
+            // Re-seat weapon and hands on the new facing without advancing any clip.
+            if (skinned != null)
+            {
+                ApplySkinnedHold(lastReload);
+                FollowBanner();
+            }
         }
 
-        public void Tick(float dt, Vector3 worldVelocity, Vector3 worldAim, float reloadProgress = -1f, float hit = 0f, float death = 0f)
+        /// <param name="action">Enemy action clip and time derived from gameplay this tick; skinned rigs only.</param>
+        public void Tick(float dt, Vector3 worldVelocity, Vector3 worldAim, float reloadProgress = -1f, float hit = 0f, float death = 0f,
+            CharacterAction action = default)
         {
             if (!IsInitialized || dt <= 0f || !gameObject.activeInHierarchy) return;
             dt = Mathf.Min(dt, .1f);
@@ -227,11 +387,44 @@ namespace TienTuyen.Presentation
             freshPose = false;
             recoil = Mathf.Max(0, recoil - dt * 8.5f);
             flashTime = Mathf.Max(0, flashTime - dt);
+            shotHold = Mathf.Max(0, shotHold - dt);
+            // A carried weapon is always shouldered: a shot does not bring it to the sights.
+            float aimTarget = Mathf.Max(Relaxed ? 0f : Mathf.Clamp01(AimWeight), shotHold > 0f && !Carried ? 1f : 0f);
+            aim = Mathf.MoveTowards(aim, aimTarget, dt / (aimTarget > aim ? .15f : .35f));
             if (CurrentWeapon != null) CurrentWeapon.flash.SetActive(flashTime > 0 && death <= 0f);
             Vector3 localVelocity = pose.InverseTransformDirection(smoothedVelocity);
-            ApplyPose(localVelocity, reloadProgress, Mathf.Clamp01(hit), Mathf.Clamp01(death));
+            if (skinned != null) ApplySkinned(dt, localVelocity, reloadProgress, Mathf.Clamp01(hit), Mathf.Clamp01(death), action);
+            else ApplyPose(localVelocity, reloadProgress, Mathf.Clamp01(hit), Mathf.Clamp01(death));
             banner?.Tick(dt, localVelocity);
             UpdateShells(dt);
+        }
+
+        private void ApplySkinned(float dt, Vector3 localVelocity, float reload, float hit, float death, CharacterAction action = default)
+        {
+            var weapon = CurrentWeapon;
+            lastReload = reload;
+            localVelocity.y = 0;
+            skinned.Carry(weapon != null ? weapon.carry : -1);
+            skinned.Draw(DrawProgress);
+            skinned.ReloadLength(ReloadSeconds, ReloadPhases);
+            skinned.Advance(dt, localVelocity, movementBlend, reload, hit, death, weapon != null, aim, action);
+            // A falling body drops its weapon and flag from view (a rigid pole would spear the
+            // floor in a backward fall); respawn/reset shows them again.
+            if (skinned.Dying != weaponsHidden)
+            {
+                weaponsHidden = skinned.Dying;
+                SelectWeapon(selectedWeapon);
+                if (bannerMount != null) bannerMount.gameObject.SetActive(!weaponsHidden);
+            }
+            ApplySkinnedHold(reload);
+            if (!weaponsHidden) FollowBanner();
+        }
+
+        private void ApplySkinnedHold(float reload)
+        {
+            var weapon = CurrentWeapon;
+            skinned.Apply(weapon?.root, weapon?.grip, weapon?.support, weapon?.muzzle, weapon?.hold, weapon != null ? weapon.holdScale : 1f,
+                recoil, reload, Relaxed && shotHold <= 0f ? null : AimPoint, weapon != null);
         }
 
         private void ApplyPose(Vector3 localVelocity, float reload, float hit, float death)
@@ -335,9 +528,9 @@ namespace TienTuyen.Presentation
             return root + axis * along + projectedPole.normalized * bend;
         }
 
-        private HeldWeapon ConfigureWeapon(Transform root, int index)
+        private HeldWeapon ConfigureWeapon(Transform root, int index, Transform parent)
         {
-            root.SetParent(torso, false);
+            root.SetParent(parent, false);
             root.localPosition = new Vector3(.04f, .35f, .55f);
             root.localRotation = Quaternion.Euler(0, -90, 0);
             root.localScale = Vector3.one * .90f;
@@ -349,6 +542,23 @@ namespace TienTuyen.Presentation
             float furthest = float.NegativeInfinity;
             Bounds gunBounds = new Bounds();
             bool hasBounds = false;
+            // A bladed tool (E-tool) is held round its handle: no drop of the support hand under a rifle fore-end.
+            bool bladed = Array.Exists(renderers, r => r.name.ToLowerInvariant().Contains("blade"));
+            // Firearms imported from Resources/Models have a fitted hold and its grip sockets.
+            if (!bladed)
+                foreach (Transform child in root)
+                {
+                    string model = child.name.StartsWith("Rifle", StringComparison.Ordinal) ? "rifle" :
+                        child.name.StartsWith("Smg", StringComparison.Ordinal) ? "smg" :
+                        child.name.StartsWith("Shotgun", StringComparison.Ordinal) ? "shotgun" :
+                        child.name.EndsWith("WeaponBlenderModel", StringComparison.Ordinal) ? "m16" : null;
+                    if (model == null) continue;
+                    result.model = model;
+                    result.hold = WeaponHold.Find(model);
+                    if (result.hold == null) continue;
+                    result.holdScale = child.localScale.x;
+                    break;
+                }
             foreach (var renderer in renderers)
             {
                 if (!renderer.enabled || !ActiveBelow(renderer.transform, root)) continue;
@@ -363,8 +573,13 @@ namespace TienTuyen.Presentation
                 else gunBounds.Encapsulate(partBounds);
                 if (part == "grip") grip = center;
                 if (part.Contains("handguard") || part.Contains("heat shield") || part.Contains("wide pump"))
-                    support = center - Vector3.right * (partBounds.extents.x * .60f) - Vector3.up * .025f;
+                    support = center - Vector3.right * (partBounds.extents.x * .60f) - (bladed ? Vector3.zero : Vector3.up * .025f);
                 if (part.Contains("muzzle") && center.x > furthest) { muzzle = center + Vector3.right * .028f; furthest = center.x; }
+            }
+            if (result.hold != null)
+            {
+                grip = WeaponHold.ToRoot(result.hold.grip) * result.holdScale;
+                support = WeaponHold.ToRoot(result.hold.support) * result.holdScale;
             }
             result.grip = Node("WeaponGrip_" + index, root, grip);
             result.boundsCorners = BoundsCorners(hasBounds ? gunBounds : new Bounds(Vector3.zero, new Vector3(.7f, .2f, .1f)));
@@ -379,6 +594,54 @@ namespace TienTuyen.Presentation
             result.flash = flashRoot.gameObject;
             result.flash.SetActive(false);
             return result;
+        }
+
+        /// <summary>
+        /// A clip set's world model replaces the weapon's own: it sits in the root's frame (the Weapon bone's) at the
+        /// character's metres, and the muzzle moves to the model's Muzzle node with the bore along the model's +Z.
+        /// </summary>
+        private void WearModel(HeldWeapon weapon, GameObject model)
+        {
+            Transform root = weapon.root;
+            foreach (Transform child in root)
+                if (child != weapon.grip && child != weapon.support && child != weapon.muzzle) child.gameObject.SetActive(false);
+            var worn = Instantiate(model, root, false).transform;
+            worn.name = model.name;
+            worn.localPosition = Vector3.zero;
+            worn.localRotation = Quaternion.identity;
+            worn.localScale = Vector3.one * (pose.lossyScale.x / root.lossyScale.x);
+            // The magazine comes off for the reload (SkinnedCharacterAnimator moves it by the grip data's track).
+            var grip = skinned.GripData(weapon.carry);
+            if (grip != null && grip.HasMagazine) MagazineSplit.Apply(worn, grip.magazineBox);
+            Bounds bounds = new Bounds();
+            bool any = false;
+            foreach (var renderer in worn.GetComponentsInChildren<MeshRenderer>(true))
+            {
+                renderer.shadowCastingMode = ShadowCastingMode.On;
+                var filter = renderer.GetComponent<MeshFilter>();
+                if (filter == null || filter.sharedMesh == null) continue;
+                foreach (var corner in BoundsCorners(filter.sharedMesh.bounds))
+                {
+                    Vector3 point = root.InverseTransformPoint(renderer.transform.TransformPoint(corner));
+                    if (!any) { bounds = new Bounds(point, Vector3.zero); any = true; }
+                    else bounds.Encapsulate(point);
+                }
+            }
+            if (any) weapon.boundsCorners = BoundsCorners(bounds);
+            Transform muzzle = worn.Find("Muzzle");
+            if (muzzle != null) weapon.muzzle.localPosition = root.InverseTransformPoint(muzzle.position);
+            weapon.muzzle.localRotation = Quaternion.identity;
+        }
+
+        private void CreateShells()
+        {
+            for (int i = 0; i < shells.Length; i++)
+            {
+                var casing = AddShape("EjectedCasing_" + i, pose, Vector3.zero, new Vector3(.025f, .07f, .025f), brassMaterial);
+                casing.GetComponent<MeshRenderer>().shadowCastingMode = ShadowCastingMode.Off;
+                casing.gameObject.SetActive(false);
+                shells[i] = new Shell { transform = casing, age = 1f };
+            }
         }
 
         private Limb MakeLimb(string name, float side, Material material)
@@ -444,11 +707,13 @@ namespace TienTuyen.Presentation
         }
 
         private void OnEnable() { ResetMotion(); }
+        private void OnDisable() { skinned?.ReleaseGraph(); }
         private void ResetMotion()
         {
-            movementBlend = 0; gaitPhase = 0; recoil = 0; flashTime = 0; clock = 0;
-            stanceFraction = .6f;
+            movementBlend = 0; gaitPhase = 0; recoil = 0; flashTime = 0; clock = 0; aim = 0; shotHold = 0;
+            stanceFraction = .6f; lastReload = -1f;
             smoothedVelocity = Vector3.zero; freshPose = true;
+            skinned?.Reset();
             foreach (var weapon in weapons) if (weapon != null && weapon.flash != null) weapon.flash.SetActive(false);
             foreach (var shell in shells)
                 if (shell != null) { shell.age = 1f; shell.transform.gameObject.SetActive(false); }
@@ -486,6 +751,8 @@ namespace TienTuyen.Presentation
         {
             banner?.Dispose();
             banner = null;
+            skinned?.Dispose();
+            skinned = null;
             if (!ownsResources) return;
             if (--resourceUsers > 0) return;
             if (limbMesh != null) Destroy(limbMesh);
@@ -540,6 +807,21 @@ namespace TienTuyen.Presentation
                 if (brassMaterial.HasProperty("_Metallic")) brassMaterial.SetFloat("_Metallic", .6f);
                 if (brassMaterial.HasProperty("_Smoothness")) brassMaterial.SetFloat("_Smoothness", .45f);
             }
+        }
+    }
+
+    public enum CharacterActionKind { None, Melee, ChargeTelegraph, ChargeDash, ChargeRecovery }
+
+    /// <summary>An enemy action clip and the seconds into it to show this tick.</summary>
+    public struct CharacterAction
+    {
+        public CharacterActionKind kind;
+        public float time;
+
+        public CharacterAction(CharacterActionKind kind, float time)
+        {
+            this.kind = kind;
+            this.time = time;
         }
     }
 }

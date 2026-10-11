@@ -8,7 +8,7 @@ namespace TienTuyen.Presentation.Interface
     /// <summary>
     /// In-combat HUD laid out in the screen corners so the centre stays clear for
     /// the shoulder camera: supplies/level (top-left), wave clock (top-centre),
-    /// health (bottom-left), weapon and magazine (bottom-right), control hints.
+    /// health (bottom-left), weapon and magazine (bottom-right).
     /// The radar, crosshair and world-space read-outs live in <see cref="CombatHudOverlay"/>.
     /// </summary>
     public sealed class HudView : UiScreen
@@ -39,7 +39,7 @@ namespace TienTuyen.Presentation.Interface
         private readonly Chip[] chips = new Chip[SecondarySlots];
         private sealed class Chip { public CanvasGroup group; public Image icon; public TMP_Text number, ammo; }
 
-        private CanvasGroup controls, banner;
+        private CanvasGroup banner;
         private TMP_Text bannerTitle, bannerCaption;
         private float bannerAge = 99f;
         private int bannerWave = -1;
@@ -63,7 +63,6 @@ namespace TienTuyen.Presentation.Interface
             BuildHealth();
             BuildWeapon();
             BuildSecondarySlots();
-            BuildControls();
             BuildBanner();
             game.PlayerDamaged += OnPlayerDamaged;
         }
@@ -180,15 +179,6 @@ namespace TienTuyen.Presentation.Interface
             }
         }
 
-        private void BuildControls()
-        {
-            var row = UiKit.HintRow("Controls", Root, 12f, "W+A+S+D", "Di chuyển", "CHUỘT", "Xoay / ngắm", "CHUỘT TRÁI", "Bắn",
-                "CHUỘT PHẢI", "Ngắm kỹ", "R", "Nạp đạn", "ESC", "Tạm dừng");
-            // Above the corner blocks so it never overlaps the health bar or the magazine.
-            UiKit.Place(row, UiKit.BottomCenter, UiKit.BottomCenter, new Vector2(0, 140), new Vector2(700, 22));
-            controls = row.gameObject.AddComponent<CanvasGroup>();
-        }
-
         private void BuildBanner()
         {
             var block = UiKit.Node("WaveBanner", Root, UiKit.TopCenter, new Vector2(.5f, 1), new Vector2(0, -150), new Vector2(600, 120));
@@ -228,7 +218,6 @@ namespace TienTuyen.Presentation.Interface
             RefreshWeapon(deltaTime);
             RefreshSecondarySlots();
             RefreshBanner(deltaTime);
-            controls.alpha = game.State == CombatState.Playing ? Mathf.Clamp01((22f - game.RunElapsed) / 2f) * .9f : 0f;
         }
 
         private void RefreshResources(float deltaTime)
@@ -299,8 +288,8 @@ namespace TienTuyen.Presentation.Interface
 
         private void RefreshWeapon(float deltaTime)
         {
-            if (game.WeaponCount == 0) return;
-            var weapon = game.WeaponAt(0);
+            var weapon = game.ActiveWeapon;
+            if (weapon == null) return;
             if (weapon.Id != lastWeaponId)
             {
                 lastWeaponId = weapon.Id;
@@ -351,10 +340,13 @@ namespace TienTuyen.Presentation.Interface
 
         private void RefreshSecondarySlots()
         {
+            // The chips list every slot but the one in hand, labelled with the key that draws it.
+            int active = game.ActiveWeaponSlot;
             for (int i = 0; i < chips.Length; i++)
             {
-                int slot = i + 1;
+                int slot = i < active ? i : i + 1;
                 var chip = chips[i];
+                chip.number.text = (slot + 1).ToString();
                 bool owned = slot < game.WeaponCount;
                 chip.group.alpha = owned ? 1f : .3f;
                 chip.icon.enabled = owned;

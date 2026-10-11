@@ -78,7 +78,9 @@ namespace TienTuyen.Presentation
             return canvasObject.GetComponent<RectTransform>();
         }
 
-        private void Update()
+        // CombatGame advances simulation in Update. Refresh after all Update methods so
+        // the HUD observes the completed reload state on the same rendered frame.
+        private void LateUpdate()
         {
             if (game == null || hud == null) return;
             HandleShortcuts();

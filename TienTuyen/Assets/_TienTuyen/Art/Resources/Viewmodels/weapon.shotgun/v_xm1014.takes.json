@@ -1,0 +1,137 @@
+[
+ {
+  "take": "idle",
+  "source_sequence": "idle",
+  "fps": 30.0,
+  "frame_count": 2,
+  "duration_s": 0.0333,
+  "fbx_time_note": "FBX take is resampled to 30 fps over the same duration; event time_s holds",
+  "events": "none"
+ },
+ {
+  "take": "fire1",
+  "source_sequence": "fire01",
+  "fps": 30.0,
+  "frame_count": 27,
+  "duration_s": 0.8667,
+  "fbx_time_note": "FBX take is resampled to 30 fps over the same duration; event time_s holds",
+  "events": [
+   {
+    "frame": 0.0,
+    "time_s": 0.0,
+    "cycle": 0.0,
+    "id": 0,
+    "name": "AE_MUZZLEFLASH",
+    "options": "357 1"
+   },
+   {
+    "frame": 0.0,
+    "time_s": 0.0,
+    "cycle": 0.0,
+    "id": 0,
+    "name": "AE_CLIENT_EFFECT_ATTACH",
+    "options": "EjectBrass_12gauge 2 95"
+   }
+  ]
+ },
+ {
+  "take": "fire2",
+  "source_sequence": "altfire",
+  "fps": 30.0,
+  "frame_count": 27,
+  "duration_s": 0.8667,
+  "fbx_time_note": "FBX take is resampled to 30 fps over the same duration; event time_s holds",
+  "events": [
+   {
+    "frame": 0.0,
+    "time_s": 0.0,
+    "cycle": 0.0,
+    "id": 0,
+    "name": "AE_MUZZLEFLASH",
+    "options": "357 1"
+   },
+   {
+    "frame": 0.0,
+    "time_s": 0.0,
+    "cycle": 0.0,
+    "id": 0,
+    "name": "AE_CLIENT_EFFECT_ATTACH",
+    "options": "EjectBrass_12gauge 2 90"
+   }
+  ]
+ },
+ {
+  "take": "insert",
+  "source_sequence": "insert",
+  "fps": 40.0,
+  "frame_count": 18,
+  "duration_s": 0.425,
+  "fbx_time_note": "FBX take is resampled to 30 fps over the same duration; event time_s holds",
+  "events": [
+   {
+    "frame": 7.0,
+    "time_s": 0.175,
+    "cycle": 0.4118,
+    "id": 5004,
+    "name": "",
+    "options": "Weapon_XM1014.InsertShell"
+   }
+  ],
+  "done": {
+   "frame": 7.0,
+   "time_s": 0.175,
+   "from": "event Weapon_XM1014.InsertShell"
+  }
+ },
+ {
+  "take": "after_reload",
+  "source_sequence": "after_reload",
+  "fps": 30.0,
+  "frame_count": 15,
+  "duration_s": 0.4667,
+  "fbx_time_note": "FBX take is resampled to 30 fps over the same duration; event time_s holds",
+  "events": "none",
+  "done": {
+   "frame": 14,
+   "time_s": 0.4667,
+   "from": "last frame"
+  }
+ },
+ {
+  "take": "start_reload",
+  "source_sequence": "start_reload",
+  "fps": 30.0,
+  "frame_count": 19,
+  "duration_s": 0.6,
+  "fbx_time_note": "FBX take is resampled to 30 fps over the same duration; event time_s holds",
+  "events": "none",
+  "done": {
+   "frame": 18,
+   "time_s": 0.6,
+   "from": "last frame"
+  }
+ },
+ {
+  "take": "draw",
+  "source_sequence": "draw",
+  "fps": 16.799999237060547,
+  "frame_count": 20,
+  "duration_s": 1.131,
+  "fbx_time_note": "FBX take is resampled to 30 fps over the same duration; event time_s holds",
+  "events": [
+   {
+    "frame": 0.0,
+    "time_s": 0.0,
+    "cycle": 0.0,
+    "id": 5004,
+    "name": "",
+    "options": "Weapon_XM1014.Draw"
+   }
+  ],
+  "done": {
+   "frame": 13,
+   "time_s": 0.7738,
+   "from": "first frame after which every hand and finger bone stays within 0.4 in (1 cm) of the idle grip, measured in the gun frame (grip_settle.py)"
+  }
+ }
+]

@@ -8,11 +8,11 @@ namespace TienTuyen.Presentation
 {
     /// <summary>
     /// Third-person combat read-outs drawn on the HUD canvas: crosshair, hit
-    /// markers, floating damage, enemy health bars, damage direction and radar.
+    /// markers, enemy health bars, damage direction and radar.
     /// </summary>
     public sealed class CombatHudOverlay : MonoBehaviour
     {
-        private const int DamageLabels = 24, RadarDots = 40;
+        private const int RadarDots = 40;
         private const float RadarRange = 22f, RadarRadius = 62f;
         private static readonly Color Paper = new Color(.93f, .91f, .83f), Danger = new Color(.95f, .32f, .22f), Gold = new Color(.91f, .74f, .38f);
 
@@ -25,13 +25,10 @@ namespace TienTuyen.Presentation
         private float hitTime, bloom, vignettePulse;
         private bool hitKill;
         private CombatThirdPersonCamera view;
+        private CombatFirstPersonView sights;
         private Transform player, supply;
         private readonly List<Transform> enemies = new List<Transform>();
         private readonly List<Transform> pickups = new List<Transform>();
-
-        private sealed class Floating { public TMP_Text label; public Vector3 world; public float age = 99f; public float drift; }
-        private readonly Floating[] floating = new Floating[DamageLabels];
-        private int nextFloating;
 
         private sealed class Bar { public RectTransform root; public Image fill; public float shown; }
         private readonly Dictionary<Transform, Bar> bars = new Dictionary<Transform, Bar>();
@@ -40,7 +37,6 @@ namespace TienTuyen.Presentation
         private readonly Arrow[] arrows = new Arrow[4];
         private int nextArrow;
         private readonly Image[] radarImages = new Image[RadarDots];
-        private readonly System.Random random = new System.Random(77);
 
         public void Initialize(CombatGame combat, RectTransform hud, TMP_FontAsset font)
         {
@@ -71,19 +67,6 @@ namespace TienTuyen.Presentation
                 fill.fillMethod = Image.FillMethod.Horizontal;
                 back.gameObject.SetActive(false);
                 this.bars.Add(enemy, new Bar { root = back.rectTransform, fill = fill });
-            }
-
-            var numbers = Rect("DamageNumbers", root, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
-            for (int i = 0; i < floating.Length; i++)
-            {
-                var label = Graphic<TextMeshProUGUI>("Damage", numbers, new Vector2(.5f, .5f), new Vector2(.5f, .5f), new Vector2(-60, -20), new Vector2(60, 20));
-                label.font = font;
-                label.fontSize = 22;
-                label.alignment = TextAlignmentOptions.Center;
-                label.outlineWidth = .22f;
-                label.outlineColor = new Color32(20, 16, 12, 255);
-                label.gameObject.SetActive(false);
-                floating[i] = new Floating { label = label };
             }
 
             for (int i = 0; i < arrows.Length; i++)
@@ -177,15 +160,6 @@ namespace TienTuyen.Presentation
             hitTime = killed ? .28f : .14f;
             hitKill = killed;
             if (bars.TryGetValue(actor, out var bar)) bar.shown = 3f;
-            var entry = floating[nextFloating];
-            nextFloating = (nextFloating + 1) % floating.Length;
-            entry.age = 0;
-            entry.world = actor.position + Vector3.up * (1.05f + (float)random.NextDouble() * .25f);
-            entry.drift = ((float)random.NextDouble() - .5f) * 30f;
-            entry.label.text = critical ? Mathf.RoundToInt(damage) + "!" : Mathf.RoundToInt(damage).ToString();
-            entry.label.color = critical ? Gold : killed ? new Color(1f, .6f, .45f) : Paper;
-            entry.label.fontSize = critical ? 28 : 20;
-            entry.label.gameObject.SetActive(true);
         }
 
         private void OnPlayerDamaged(Vector3 source, float damage)
@@ -205,6 +179,7 @@ namespace TienTuyen.Presentation
         {
             if (game == null) return;
             if (view == null && Camera.main != null) view = Camera.main.GetComponent<CombatThirdPersonCamera>();
+            if (sights == null && view != null) sights = view.GetComponent<CombatFirstPersonView>();
             bool playing = game.State == CombatState.Playing;
             crosshair.gameObject.SetActive(playing && game.ManualAim);
             // Pause freezes every read-out exactly where it was.
@@ -213,7 +188,6 @@ namespace TienTuyen.Presentation
             float dt = Time.unscaledDeltaTime;
             radar.gameObject.SetActive(combat);
             UpdateCrosshair(dt);
-            UpdateFloating(dt, combat);
             UpdateBars(dt, combat);
             UpdateArrows(dt, combat);
             UpdateRadar();
@@ -228,8 +202,11 @@ namespace TienTuyen.Presentation
             bloom = Mathf.Max(0, bloom - dt * 40f);
             float aim = view != null ? view.AimBlend : 0f;
             float gap = Mathf.Lerp(9f, 5f, aim) + bloom;
-            bool onTarget = game.AimOnTarget || (view != null && view.AimingAtEnemy);
+            bool onTarget = game.AimOnTarget;
             Color color = onTarget ? Danger : Paper;
+            // On first-person iron sights the sights are the crosshair: it fades out as they come up (0 in third
+            // person, so the shoulder view keeps it); the hit marker and ammo stay.
+            if (sights != null) color.a *= 1f - sights.SightsWeight;
             Vector2[] directions = { Vector2.up, Vector2.down, Vector2.left, Vector2.right };
             for (int i = 0; i < 4; i++)
             {
@@ -247,29 +224,6 @@ namespace TienTuyen.Presentation
             float reload = game.ReloadRemaining;
             ammo.text = reload > 0 ? "NẠP " + reload.ToString("0.0") : game.Ammo + " / " + game.MagazineSize;
             ammo.color = reload > 0 || game.Ammo <= Mathf.Max(1, game.MagazineSize / 4) ? Gold : new Color(Paper.r, Paper.g, Paper.b, .85f);
-        }
-
-        private void UpdateFloating(float dt, bool combat)
-        {
-            var camera = Camera.main;
-            foreach (var entry in floating)
-            {
-                if (entry.age > .9f || !combat || camera == null)
-                {
-                    if (entry.label.gameObject.activeSelf && (entry.age > .9f || !combat)) entry.label.gameObject.SetActive(false);
-                    continue;
-                }
-                entry.age += dt;
-                Vector3 world = entry.world + Vector3.up * (entry.age * 1.1f);
-                if (!Project(camera, world, out Vector2 local)) { entry.label.gameObject.SetActive(false); continue; }
-                entry.label.gameObject.SetActive(true);
-                entry.label.rectTransform.anchoredPosition = local + new Vector2(entry.drift * entry.age, 0);
-                float pop = entry.age < .08f ? 1.35f - entry.age * 4f : 1f;
-                entry.label.rectTransform.localScale = Vector3.one * pop;
-                var c = entry.label.color;
-                c.a = Mathf.Clamp01(1.4f - entry.age * 1.6f);
-                entry.label.color = c;
-            }
         }
 
         private void UpdateBars(float dt, bool combat)

@@ -1,10 +1,12 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
 using TienTuyen.Presentation;
 using UnityEngine;
+using UnityEngine.Playables;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 using Object = UnityEngine.Object;
@@ -84,6 +86,41 @@ namespace TienTuyen.Combat.Tests
         }
 
         [Test]
+        public void SkinnedStrafeReversalKeepsAnklesContinuous()
+        {
+            var actor = CreateTarget();
+            actor.GetComponent<Renderer>().sharedMaterial = game.ShooterMaterial;
+            Invoke(art, "UpdateEnemies");
+            var shooter = actor.GetComponentInChildren<CombatCharacterRig>();
+            Assert.That(shooter.IsSkinned, Is.True);
+            var failures = new List<string>();
+            foreach (var rig in new[] { hero, shooter })
+            {
+                float speed = rig == hero ? 4.75f : 2.05f;
+                foreach (float direction in new[] { 1f, -1f })
+                {
+                    rig.ResetPose();
+                    Vector3 previousLeft = Vector3.zero, previousRight = Vector3.zero;
+                    float maximum = 0f;
+                    for (int frame = 0; frame < 120; frame++)
+                    {
+                        rig.Tick(1f / 60f, Vector3.right * (speed * direction * (frame < 60 ? 1f : -1f)), Vector3.forward);
+                        Vector3 left = rig.PoseRoot.InverseTransformPoint(rig.LeftFoot.position);
+                        Vector3 right = rig.PoseRoot.InverseTransformPoint(rig.RightFoot.position);
+                        if (frame >= 60)
+                            maximum = Mathf.Max(maximum, Vector3.Distance(left, previousLeft), Vector3.Distance(right, previousRight));
+                        previousLeft = left;
+                        previousRight = right;
+                    }
+                    string sample = rig.Profile.name + (direction > 0f ? " right_to_left" : " left_to_right") + ": " + maximum.ToString("F6") + " m/frame";
+                    TestContext.WriteLine(sample);
+                    if (maximum >= .15f) failures.Add(sample);
+                }
+            }
+            Assert.That(failures, Is.Empty, "Reversing must stay below 0.15 m/frame at 60 Hz, above the shipping clips' normal ankle travel: " + string.Join("; ", failures));
+        }
+
+        [Test]
         public void HeldWeaponAimsAtRealTargetsAndBothHandsFollowTheirGrips()
         {
             var target = CreateTarget();
@@ -99,6 +136,177 @@ namespace TienTuyen.Combat.Tests
                 Assert.That(hero.MuzzleTransform, Is.Not.Null);
                 Assert.That(Vector3.Dot(hero.MuzzleTransform.forward.normalized, direction), Is.GreaterThan(.97f));
                 AssertHandsAttached(hero);
+            }
+        }
+
+        // The right cheek in the hero's bind pose (body mesh space, metres).
+        private static readonly Vector3 CheekBind = new Vector3(.035f, -.088f, 1.49f);
+        private const float ProbeRadius = .01f;
+
+        [Test]
+        public void ShoulderedFaceStaysOnTheStockAcrossTheAimPitchRange()
+        {
+            var animator = hero.GetComponentInChildren<Animator>();
+            var shoulder = animator.GetBoneTransform(HumanBodyBones.RightUpperArm);
+            var head = animator.GetBoneTransform(HumanBodyBones.Head);
+            SkinnedMeshRenderer skin = null;
+            foreach (var s in hero.GetComponentsInChildren<SkinnedMeshRenderer>())
+                if (skin == null || s.sharedMesh.vertexCount > skin.sharedMesh.vertexCount) skin = s;
+            Vector3 cheek = skin.sharedMesh.bindposes[Array.IndexOf(skin.bones, head)].MultiplyPoint(CheekBind);
+            var baked = new Mesh();
+            List<int> face = null;
+            var drifts = new List<string>();
+            // Level, then the clamps of the shouldered pitch (+10 up, -15 down).
+            foreach (float pitch in new[] { 0f, 10f, -15f })
+            {
+                hero.ResetPose();
+                hero.Relaxed = false;
+                hero.SelectWeapon(0);
+                hero.AimWeight = 1f;
+                for (int frame = 0; frame < 60; frame++)
+                {
+                    var pose = hero.PoseRoot;
+                    hero.AimPoint = shoulder.position + Quaternion.AngleAxis(-pitch, pose.right) * pose.forward * 20f;
+                    hero.Tick(1f / 60f, Vector3.zero, pose.forward);
+                }
+                skin.BakeMesh(baked, false);
+                var posed = baked.vertices;
+                if (face == null)
+                {
+                    // The face over the comb: skin within 5 cm of the cheek (renderer-local, the body's metres).
+                    face = new List<int>();
+                    Vector3 centre = skin.transform.InverseTransformPoint(head.TransformPoint(cheek));
+                    for (int i = 0; i < posed.Length; i++)
+                        if ((posed[i] - centre).sqrMagnitude < .05f * .05f) face.Add(i);
+                }
+                // The gap: the face's nearest distance to the weapon, from a probe sphere's overlap (negative inside it).
+                var root = hero.CurrentWeaponRoot;
+                var colliders = new List<MeshCollider>();
+                foreach (var part in root.GetComponentsInChildren<MeshFilter>())
+                    colliders.Add(part.gameObject.AddComponent<MeshCollider>());
+                float scale = skin.transform.lossyScale.y, gap = float.MaxValue;
+                var probe = new GameObject("Face probe").AddComponent<SphereCollider>();
+                probe.radius = ProbeRadius * scale;
+                Physics.SyncTransforms();
+                foreach (int i in face)
+                {
+                    Vector3 p = skin.transform.TransformPoint(posed[i]);
+                    foreach (var collider in colliders)
+                        if (Physics.ComputePenetration(probe, p, Quaternion.identity, collider, collider.transform.position, collider.transform.rotation, out _, out float depth))
+                            gap = Mathf.Min(gap, ProbeRadius - depth / scale);
+                }
+                Object.DestroyImmediate(probe.gameObject);
+                foreach (var collider in colliders) Object.DestroyImmediate(collider);
+                TestContext.WriteLine("pitch " + pitch + ": cheek " + (gap * 1000f).ToString("F1") + " mm over the comb");
+                if (gap < -.003f || gap > .005f) drifts.Add(pitch + " deg: " + (gap * 1000f).ToString("F1") + " mm");
+            }
+            hero.AimPoint = null;
+            Object.Destroy(baked);
+            Assert.That(drifts, Is.Empty, "The bore follows the whole aim pitch, so the face must follow it too and stay on the comb " +
+                "(at most 3 mm into it or 5 mm off it): " + string.Join("; ", drifts));
+        }
+
+        [Test]
+        public void EveryWeaponKeepsBothHandsOnItsGripsWithAnatomicalWrists()
+        {
+            var actor = CreateTarget();
+            actor.GetComponent<Renderer>().sharedMaterial = game.ShooterMaterial;
+            Invoke(art, "UpdateEnemies");
+            var shooter = actor.GetComponentInChildren<CombatCharacterRig>();
+            Assert.That(shooter.IsSkinned, Is.True);
+            var failures = new List<string>();
+            foreach (var (rig, weapon) in new[] { (hero, 0), (hero, 1), (hero, 2), (shooter, 0) })
+            {
+                rig.ResetPose();
+                rig.SelectWeapon(weapon);
+                var right = new Wrist(rig, false);
+                var left = new Wrist(rig, true);
+                for (int frame = 0; frame < 260; frame++)
+                {
+                    // Idle, run, strafe both ways, run back with a hit, shots, then a full reload.
+                    var velocity = frame < 40 ? Vector3.zero : frame < 80 ? Vector3.forward * 4f : frame < 110 ? Vector3.right * 3f :
+                        frame < 140 ? Vector3.left * 3f : frame < 170 ? Vector3.back * 2f : Vector3.zero;
+                    float hit = frame >= 150 && frame < 155 ? 1f : 0f;
+                    float reload = frame >= 200 ? (frame - 200) / 59f : -1f;
+                    if (frame == 175 || frame == 185) rig.Fire(weapon);
+                    rig.Tick(1f / 60f, velocity, Vector3.forward, reload, hit);
+                    string state = rig.Profile.name + " weapon " + weapon + " frame " + frame + ": ";
+                    var set = CarriedSet(rig);
+                    HandGaps(rig, out float grip, out float support);
+                    if (grip > .02f) failures.Add(state + "grip hand off its grip");
+                    right.Check(state, 30f, failures);
+                    // Mid-reload a fitted hold's support hand leaves the fore-end for the magazine; a carried weapon's
+                    // support target follows the reload clip's hand there.
+                    if (set == null && reload >= .04f && reload <= .96f) continue;
+                    if (support > .02f)
+                        failures.Add(state + "support hand off the fore-end " + (support * 1000f).ToString("F0") + " mm");
+                    left.Check(state, 60f, failures);
+                }
+            }
+            Assert.That(failures, Is.Empty, "Hands must stay on their grips with wrists inside the approved range " +
+                "(bend off the forearm <= 50 deg, twist <= 30 grip / 60 support): " +
+                string.Join("; ", failures.GetRange(0, Mathf.Min(12, failures.Count))) + (failures.Count > 12 ? " ... " + failures.Count : ""));
+        }
+
+        private static Transform Bone(CombatCharacterRig rig, HumanBodyBones bone) => rig.GetComponentInChildren<Animator>().GetBoneTransform(bone);
+
+        /// <summary>The profile's clip set of the rig's current weapon when the right hand carries it, else null.</summary>
+        private static WeaponClipSet CarriedSet(CombatCharacterRig rig)
+        {
+            var held = typeof(CombatCharacterRig).GetField("weapons", PrivateInstance).GetValue(rig) as Array;
+            var entry = held.GetValue((int)typeof(CombatCharacterRig).GetField("selectedWeapon", PrivateInstance).GetValue(rig));
+            int carry = (int)entry.GetType().GetField("carry").GetValue(entry);
+            return carry >= 0 ? rig.Profile.weaponSets[carry] : null;
+        }
+
+        /// <summary>
+        /// How far each hand is off the weapon. A fitted hold: palm sockets to the weapon's grip nodes. A carried weapon:
+        /// the wrists to their targets on it (the grip nodes then hold the wrist targets).
+        /// </summary>
+        private static void HandGaps(CombatCharacterRig rig, out float grip, out float support)
+        {
+            bool carried = rig.Profile != null && CarriedSet(rig) != null;
+            grip = Vector3.Distance(carried ? Bone(rig, HumanBodyBones.RightHand).position : rig.GripHand.position, rig.WeaponGrip.position);
+            support = Vector3.Distance(carried ? Bone(rig, HumanBodyBones.LeftHand).position : rig.SupportHand.position, rig.WeaponSupport.position);
+        }
+
+        /// <summary>Hand rotation relative to the forearm, measured from the model's bind pose.</summary>
+        private sealed class Wrist
+        {
+            private readonly Transform lower, hand;
+            private readonly Quaternion bind;
+            private readonly Vector3 axis;
+
+            public Wrist(CombatCharacterRig rig, bool left)
+            {
+                var animator = rig.GetComponentInChildren<Animator>();
+                lower = animator.GetBoneTransform(left ? HumanBodyBones.LeftLowerArm : HumanBodyBones.RightLowerArm);
+                hand = animator.GetBoneTransform(left ? HumanBodyBones.LeftHand : HumanBodyBones.RightHand);
+                Transform bindLower = Find(rig.Profile.model.transform, lower.name), bindHand = Find(rig.Profile.model.transform, hand.name);
+                bind = Quaternion.Inverse(bindLower.rotation) * bindHand.rotation;
+                axis = (Quaternion.Inverse(bindLower.rotation) * (bindHand.position - bindLower.position)).normalized;
+            }
+
+            public void Check(string state, float maxTwist, List<string> failures)
+            {
+                Quaternion d = Quaternion.Inverse(lower.rotation) * hand.rotation * Quaternion.Inverse(bind);
+                if (d.w < 0f) d = new Quaternion(-d.x, -d.y, -d.z, -d.w);
+                float twist = 2f * Mathf.Atan2(Vector3.Dot(new Vector3(d.x, d.y, d.z), axis), d.w) * Mathf.Rad2Deg;
+                (d * Quaternion.Inverse(Quaternion.AngleAxis(twist, axis))).ToAngleAxis(out float bend, out _);
+                if (bend > 180f) bend = 360f - bend;
+                if (bend > 50f || Mathf.Abs(twist) > maxTwist + 2f)
+                    failures.Add(state + hand.name + " bend " + bend.ToString("F0") + " twist " + twist.ToString("F0"));
+            }
+
+            private static Transform Find(Transform root, string name)
+            {
+                if (root.name == name) return root;
+                foreach (Transform child in root)
+                {
+                    var found = Find(child, name);
+                    if (found != null) return found;
+                }
+                return null;
             }
         }
 
@@ -143,6 +351,27 @@ namespace TienTuyen.Combat.Tests
                 float expectedSecond = UnityEngine.Random.value;
                 UnityEngine.Random.InitState(7319);
                 for (var shot = 0; shot < 12; shot++) hero.Fire(shot % 3);
+                var root = new GameObject("First-person RNG test");
+                var clips = new AnimationClip[3];
+                clips[0] = new AnimationClip { name = "idle" };
+                clips[1] = new AnimationClip { name = "fire1" };
+                clips[2] = new AnimationClip { name = "fire2" };
+                var takesType = typeof(CombatFirstPersonView).GetNestedType("Takes", BindingFlags.NonPublic);
+                object takes = null;
+                try
+                {
+                    var load = takesType.GetMethod("Load", BindingFlags.Static | BindingFlags.Public);
+                    takes = load.Invoke(null, new object[] { root.transform, clips, null });
+                    var firstPersonShot = takesType.GetMethod("Shot", BindingFlags.Instance | BindingFlags.Public);
+                    for (var shot = 0; shot < 12; shot++) firstPersonShot.Invoke(takes, null);
+                }
+                finally
+                {
+                    if (takes != null) takesType.GetMethod("Dispose", BindingFlags.Instance | BindingFlags.Public).Invoke(takes, null);
+                    Object.DestroyImmediate(root);
+                    foreach (var clip in clips) Object.DestroyImmediate(clip);
+                }
+                // This assertion failed before Takes used its private System.Random: first-person clip picks consumed UnityEngine.Random.
                 Assert.That(UnityEngine.Random.value, Is.EqualTo(expectedFirst));
                 Assert.That(UnityEngine.Random.value, Is.EqualTo(expectedSecond));
             }
@@ -198,9 +427,14 @@ namespace TienTuyen.Combat.Tests
             var telegraph = (Vector2)GetField(enemy, "aimDirection");
             Assert.That(telegraph.x, Is.EqualTo(expected.x).Within(.0001f));
             Assert.That(telegraph.y, Is.EqualTo(expected.z).Within(.0001f));
+            int loaded = (int)GetField(enemy, "ammo");
             Invoke(game, "UpdateEnemies", .81f);
             Assert.That(shots, Is.EqualTo(1));
             Assert.That(observedActor, Is.SameAs(actor));
+            // One aim is one 3-round burst, then nothing until the cooldown: exactly 3 shots and 3 rounds spent.
+            for (int i = 0; i < 6; i++) Invoke(game, "UpdateEnemies", .09f);
+            Assert.That(shots, Is.EqualTo(3));
+            Assert.That((int)GetField(enemy, "ammo"), Is.EqualTo(loaded - 3));
             Assert.That(Vector3.Dot(observed.normalized, expected), Is.GreaterThan(.999f));
             var bullets = (Array)GetField(game, "bullets");
             object activeBullet = null;
@@ -208,25 +442,63 @@ namespace TienTuyen.Combat.Tests
                 if ((bool)GetField(bullet, "active")) { activeBullet = bullet; break; }
             Assert.That(activeBullet, Is.Not.Null);
             var velocity = (Vector3)GetField(activeBullet, "velocity");
-            Assert.That(Vector3.Dot(velocity.normalized, expected), Is.GreaterThan(.999f));
+            // The projectile leaves within the Shooter's random planar spread (4 degrees) of the telegraphed aim.
+            Assert.That(Vector3.Angle(new Vector3(velocity.x, 0f, velocity.z), new Vector3(telegraph.x, 0f, telegraph.y)), Is.LessThanOrEqualTo(4.01f));
             Assert.That(Mathf.Abs(velocity.z), Is.GreaterThan(.1f));
         }
 
         [Test]
-        public void ReusingEnemyPoolResetsGaitWithoutAddingRigTransforms()
+        public void GunEnemiesHoldTheirGunWithTheGripDataWristsAndFingers()
         {
             var actor = CreateTarget();
+            Invoke(art, "UpdateEnemies");
+            var visual = ((System.Collections.IDictionary)GetField(art, "enemyVisuals"))[actor];
+            var failures = new List<string>();
+            foreach (var name in new[] { "shooter", "elite" })
+            {
+                ((GameObject)GetField(visual, name)).SetActive(true);
+                var rig = (CombatCharacterRig)GetField(visual, name + "Rig");
+                var data = Array.Find(rig.Profile.weaponSets, set => set.grip != null)?.grip;
+                Assert.That(data, Is.Not.Null, name + " carries no grip data");
+                for (int frame = 0; frame < 60; frame++) rig.Tick(1f / 60f, Vector3.zero, rig.transform.forward);
+                var bones = new Dictionary<string, Transform>();
+                foreach (var t in rig.GetComponentsInChildren<Transform>()) bones[t.name] = t;
+                var weapon = bones["ValveBiped.weapon_bone"];
+                var animator = rig.GetComponentInChildren<Animator>();
+                foreach (var (hand, grip) in new[] { (HumanBodyBones.RightHand, data.right), (HumanBodyBones.LeftHand, data.left) })
+                {
+                    float gap = Vector3.Distance(animator.GetBoneTransform(hand).position, weapon.position + weapon.rotation * (grip.position * weapon.lossyScale.x));
+                    if (gap > .003f) failures.Add(name + " " + hand + " " + (gap * 1000f).ToString("F1") + " mm off its grip");
+                }
+                // Humanoid playback does not keep the source fingers; the data's rotations must reach the bones.
+                foreach (var finger in data.rightFingers.Concat(data.leftFingers))
+                {
+                    float angle = Quaternion.Angle(bones[finger.bone].localRotation, finger.rotation);
+                    if (angle > 1f) failures.Add(name + " " + finger.bone + " " + angle.ToString("F0") + " deg off");
+                }
+            }
+            Assert.That(failures, Is.Empty, string.Join("; ", failures));
+        }
+
+        [UnityTest]
+        public IEnumerator ReusingEnemyPoolResetsGaitAndUnloadingReleasesEveryGraph()
+        {
+            var actor = CreateTarget();
+            // Exercise the new Humanoid shooter, not only the procedural fallback.
+            actor.GetComponent<Renderer>().sharedMaterial = game.ShooterMaterial;
             Invoke(art, "UpdateEnemies");
             var visual = actor.Find("EnemyVisual");
             var rigs = visual.GetComponentsInChildren<CombatCharacterRig>(true);
             Assert.That(rigs.Length, Is.EqualTo(4));
             int count = visual.GetComponentsInChildren<Transform>(true).Length;
+            var graphs = new List<PlayableGraph>();
             for (var reuse = 0; reuse < 20; reuse++)
             {
                 var activeRig = visual.GetComponentInChildren<CombatCharacterRig>();
                 Assert.That(activeRig, Is.Not.Null);
                 activeRig.Tick(.1f, Vector3.forward * 4f, Vector3.forward);
                 activeRig.Fire();
+                graphs.Add((PlayableGraph)GetField(GetField(activeRig, "skinned"), "graph"));
                 actor.gameObject.SetActive(false);
                 actor.gameObject.SetActive(true);
                 Assert.That(activeRig.MovementBlend, Is.EqualTo(0f));
@@ -234,24 +506,224 @@ namespace TienTuyen.Combat.Tests
                 Assert.That(visual.GetComponentsInChildren<Transform>(true).Length, Is.EqualTo(count));
                 Assert.That(visual.GetComponentsInChildren<CombatCharacterRig>(true).Length, Is.EqualTo(4));
             }
+
+            foreach (var rig in game.GetComponentsInChildren<CombatCharacterRig>(true))
+            {
+                var driver = GetField(rig, "skinned");
+                if (driver == null) continue;
+                var graph = (PlayableGraph)GetField(driver, "graph");
+                graphs.Add(graph);
+            }
+            Assert.That(graphs.Count, Is.GreaterThan(rigs.Length), "Include unused pooled enemies, not only the actor activated by this test.");
+            var scene = game.gameObject.scene;
+            SceneManager.SetActiveScene(SceneManager.CreateScene("Skinned graph unload test"));
+            yield return SceneManager.UnloadSceneAsync(scene);
+            yield return null;
+            int surviving = graphs.FindAll(graph => graph.IsValid()).Count;
+            TestContext.WriteLine($"Scene unload: {graphs.Count} graphs captured, {surviving} still valid.");
+            LogAssert.NoUnexpectedReceived();
+            Assert.That(surviving, Is.Zero, "Every graph must be destroyed, including rigs that were never active.");
+        }
+
+        [Test]
+        public void InfantryDaggerContactLandsOnEveryStrikeThenReturnsToLocomotion()
+        {
+            var actor = CreateTarget(); // wave 1 spawns infantry only
+            var enemy = ((Array)GetField(game, "enemies")).GetValue(0);
+            var player = (Transform)GetField(game, "player");
+            // Walks into reach with the attack ready: the first strike still waits out the windup.
+            actor.position = player.position + Vector3.right * 2f;
+            SetField(enemy, "attackTimer", 0f);
+            // Strikes absorbed by invulnerability must still swing.
+            SetField(game, "invulnerability", 999f);
+            int strikes = 0;
+            game.EnemyMeleeStruck += struck =>
+            {
+                if (struck != actor) return;
+                Vector3 separation = actor.position - player.position;
+                separation.y = 0;
+                Assert.That(separation.magnitude, Is.LessThanOrEqualTo(1.12f),
+                    "The dagger strike must land within melee contact range.");
+                strikes++;
+            };
+            Invoke(art, "UpdateEnemies");
+            var visual = ((System.Collections.IDictionary)GetField(art, "enemyVisuals"))[actor];
+            var rig = actor.GetComponentInChildren<CombatCharacterRig>();
+            Assert.That(rig.Profile.meleeAttack, Is.Not.Null);
+            float contact = rig.Profile.meleeContactTime;
+            int reached = -1;
+            for (int frame = 0; frame < 240; frame++)
+            {
+                int before = strikes;
+                game.StepSimulation(1f / 60f, Vector2.zero);
+                Invoke(art, "UpdateEnemies");
+                game.TryGetEnemyAction(actor, out var state);
+                if (reached < 0 && state.InMeleeReach) reached = frame;
+                if (strikes == 1 && before == 0)
+                    Assert.That((frame - reached + 1) / 60f, Is.GreaterThanOrEqualTo(contact - 1e-4f), "The first strike after entering reach waits out the windup");
+                float time = (float)GetField(visual, "meleeTime");
+                if (strikes > before) Assert.That(time, Is.EqualTo(contact).Within(1e-5f), "Contact pose on the damage tick, frame " + frame);
+                else if (!(bool)GetField(visual, "followThrough")) Assert.That(time, Is.LessThanOrEqualTo(contact), "The windup never passes contact without a strike, frame " + frame);
+                // The dagger hold survives guard, strike and a hit flinch.
+                if (frame == 100) SetField(visual, "hitRemaining", .18f);
+                AssertHandsAttached(rig);
+            }
+            Assert.That(strikes, Is.GreaterThanOrEqualTo(2));
+
+            // Pool reuse mid-swing keeps no stale action; out of reach the rig returns to locomotion.
+            actor.gameObject.SetActive(false);
+            Invoke(art, "UpdateEnemies");
+            actor.position = player.position + Vector3.right * 6f;
+            actor.gameObject.SetActive(true);
+            Invoke(art, "UpdateEnemies");
+            Assert.That((float)GetField(visual, "meleeTime"), Is.LessThan(0f));
+            Assert.That(rig.ActionWeight, Is.Zero);
+            strikes = 0;
+            SetField(enemy, "attackTimer", 0f);
+            actor.position = player.position + Vector3.right;
+            game.StepSimulation(1f / 60f, Vector2.zero);
+            Invoke(art, "UpdateEnemies");
+            Assert.That(strikes, Is.EqualTo(1));
+            Assert.That(rig.ActionWeight, Is.GreaterThan(0f));
+            actor.position = player.position + Vector3.right * 6f;
+            for (int call = 0; call < 5000 && rig.ActionWeight > 0f; call++) Invoke(art, "UpdateEnemies");
+            Assert.That(rig.ActionWeight, Is.Zero, "The one-shot ends and hands the body back to locomotion.");
+        }
+
+        [Test]
+        public void ChargerDashActionPlaysExactlyWhileThatActorDashes()
+        {
+            var actor = CreateTarget();
+            var enemy = ((Array)GetField(game, "enemies")).GetValue(0);
+            var player = (Transform)GetField(game, "player");
+            SetField(enemy, "definition", TienTuyen.Content.ContentCatalog.P2.GetEnemy(TienTuyen.Content.ContentIds.Charger));
+            SetField(enemy, "charger", true);
+            SetField(enemy, "attackTimer", 0f);
+            ((GameObject)GetField(enemy, "chargerMarker")).SetActive(true);
+            actor.localScale = new Vector3(.55f, .65f, .55f);
+            actor.position = player.position + Vector3.right * 4f;
+            SetField(game, "invulnerability", 0f);
+            int daggerHits = 0;
+            Vector3 dashStart = actor.position;
+            game.PlayerDamaged += (_, damage) =>
+            {
+                Vector3 step = actor.position - dashStart;
+                step.y = 0;
+                Vector3 toPlayer = player.position - dashStart;
+                toPlayer.y = 0;
+                float fraction = step.sqrMagnitude > 0f
+                    ? Mathf.Clamp01(Vector3.Dot(toPlayer, step) / step.sqrMagnitude) : 0f;
+                float contactGap = (toPlayer - step * fraction).magnitude;
+                Assert.That(contactGap, Is.LessThanOrEqualTo(1.1f),
+                    "A Charger dagger hit must cross the player's contact range.");
+                Assert.That((bool)GetField(enemy, "charging"), Is.True,
+                    "The telegraph and recovery cannot deal dagger damage.");
+                Assert.That(damage, Is.GreaterThan(0f));
+                daggerHits++;
+            };
+            Invoke(art, "UpdateEnemies");
+            var visual = ((System.Collections.IDictionary)GetField(art, "enemyVisuals"))[actor];
+            var rig = actor.GetComponentInChildren<CombatCharacterRig>();
+            Assert.That(rig.Profile.chargeDash, Is.Not.Null);
+            int telegraphFrames = 0, dashFrames = 0;
+            bool recovering = false, recovered = false;
+            for (int frame = 0; frame < 240; frame++)
+            {
+                dashStart = actor.position;
+                game.StepSimulation(1f / 60f, Vector2.zero);
+                Invoke(art, "UpdateEnemies");
+                Assert.That(game.TryGetEnemyAction(actor, out var state), Is.True);
+                bool dashing = state.Kind == EnemyActionKind.ChargeDash;
+                Assert.That((bool)GetField(visual, "dashing"), Is.EqualTo(dashing), "Dash clip follows gameplay, frame " + frame);
+                if (state.Kind == EnemyActionKind.ChargeTelegraph) telegraphFrames++;
+                if (dashing) dashFrames++;
+                recovering |= (float)GetField(visual, "recoveryTime") >= 0f;
+                recovered |= dashFrames > 0 && !dashing && state.Kind == EnemyActionKind.None && rig.ActionWeight == 0f;
+            }
+            Assert.That(telegraphFrames, Is.GreaterThan(0));
+            Assert.That(dashFrames, Is.GreaterThan(0));
+            Assert.That(daggerHits, Is.GreaterThan(0), "The dash must actually land a dagger hit.");
+            Assert.That(recovering, Is.True, "The recovery clip plays once the dash stops.");
+            Assert.That(recovered, Is.True, "After the dash the body returns to locomotion.");
+        }
+
+        [Test]
+        public void KilledShooterVisualOutlivesActorReuseWithoutChangingCombatState()
+        {
+            var actor = CreateTarget();
+            actor.GetComponent<Renderer>().sharedMaterial = game.ShooterMaterial;
+            Invoke(art, "UpdateEnemies");
+            var enemy = ((Array)GetField(game, "enemies")).GetValue(0);
+            int kills = game.Kills;
+            Invoke(game, "DamageEnemy", enemy, 100000f);
+            var pool = game.GetComponent<CombatCorpsePool>();
+            Assert.That(pool, Is.Not.Null);
+            Assert.That(pool.ActiveCount, Is.EqualTo(1));
+            Assert.That(actor.gameObject.activeSelf, Is.False);
+            Assert.That(game.Kills, Is.EqualTo(kills + 1));
+            CombatCharacterRig corpse = null;
+            // The pool component sits on CombatGame, so select only its detached body.
+            foreach (var candidate in pool.GetComponentsInChildren<CombatCharacterRig>())
+                if (candidate.name == "EnemyDeathVisual") { corpse = candidate; break; }
+            Assert.That(corpse, Is.Not.Null);
+            Assert.That(corpse.transform.IsChildOf(actor), Is.False);
+            Vector3 bodyPosition = corpse.transform.position;
+            actor.position += Vector3.right * 8f;
+            actor.gameObject.SetActive(true);
+            Invoke(art, "UpdateEnemies");
+            pool.Tick(.5f);
+            Assert.That(corpse.transform.position, Is.EqualTo(bodyPosition));
+            Assert.That(game.Kills, Is.EqualTo(kills + 1));
+            var activeRig = actor.GetComponentInChildren<CombatCharacterRig>();
+            Assert.That(activeRig.DeathFinished, Is.False);
+            Assert.That(activeRig.RecoilAmount, Is.Zero);
+            pool.Tick(20f);
+            Assert.That(pool.ActiveCount, Is.Zero, "Expired bodies must release bounded presentation slots.");
+        }
+
+        [UnityTest]
+        public IEnumerator ReloadKeepsLocomotionAndRestartClearsDeath()
+        {
+            // A presentation clip must neither stall movement nor own ammo timing.
+            ((int[])GetField(game, "weaponAmmo"))[0] = 0;
+            game.RequestReload();
+            float duration = game.ReloadDuration;
+            var start = game.transform.Find("Player").position;
+            var foot = hero.PoseRoot.InverseTransformPoint(hero.LeftFoot.position);
+            float motion = 0;
+            for (int frame = 0; frame < Mathf.CeilToInt(duration * 60f) + 2; frame++)
+            {
+                game.StepSimulation(1f / 60f, Vector2.up);
+                yield return null;
+                motion = Mathf.Max(motion, Vector3.Distance(foot, hero.PoseRoot.InverseTransformPoint(hero.LeftFoot.position)));
+            }
+            Assert.That(game.ReloadRemaining, Is.Zero);
+            Assert.That(game.Ammo, Is.EqualTo(game.MagazineSize));
+            Assert.That(Vector3.Distance(start, game.transform.Find("Player").position), Is.GreaterThan(1f));
+            Assert.That(motion, Is.GreaterThan(.04f));
+
+            SetField(game, "invulnerability", 0f);
+            game.ApplyPlayerDamage(100000f);
+            Assert.That(game.State, Is.EqualTo(CombatState.Defeat));
+            Vector3 actor = game.transform.Find("Player").position;
+            for (int frame = 0; frame < 300; frame++)
+                hero.Tick(1f / 60f, Vector3.zero, Vector3.forward, -1, 0, 1);
+            Assert.That(hero.DeathFinished, Is.True);
+            Assert.That(game.transform.Find("Player").position, Is.EqualTo(actor), "Death is visual motion, not actor root motion.");
+            game.Restart();
+            SetField(game, "spawnTimer", 999f);
+            yield return null;
+            Assert.That(hero.DeathFinished, Is.False);
+            Assert.That(hero.RecoilAmount, Is.Zero);
+            Assert.That(game.Health, Is.EqualTo(game.MaxHealth));
         }
 
         [TestCase(0)]
         [TestCase(1)]
         [TestCase(2)]
-        public void ActualWeaponMeshesPointForwardAndStayOutsideTorsoAcrossPoses(int weapon)
+        public void ActualWeaponMeshesAgreeWithShotDirectionAcrossPoses(int weapon)
         {
             hero.SelectWeapon(weapon);
-            var body = FindMeshPart(hero.GetComponentsInChildren<MeshRenderer>(true), "torso tunic", true);
-            Assert.That(body, Is.Not.Null, "Test requires the imported torso mesh, not an animation socket.");
-            var bodyParts = new List<MeshRenderer> { body };
-            foreach (var part in hero.GetComponentsInChildren<MeshRenderer>(true))
-            {
-                string name = part.name.ToLowerInvariant();
-                if (part.enabled && (name.Contains("webbing") || name.Contains("chest plate") || name.Contains("front strap") || name.Contains("chevron")))
-                    bodyParts.Add(part);
-            }
-            Assert.That(bodyParts.Count, Is.GreaterThan(1), "Include visible chest equipment as well as the tunic.");
             var weaponRoot = hero.WeaponGrip.parent;
             var parts = weaponRoot.GetComponentsInChildren<MeshRenderer>(false);
             var barrel = FindMeshPart(parts, "barrel");
@@ -272,24 +744,11 @@ namespace TienTuyen.Combat.Tests
                 hero.Tick(1f / 60f, velocity, aim, reload);
                 string context = "weapon=" + weapon + ", frame=" + frame + ", reload=" + reload;
 
-                // Imported meshes are non-readable; transformed mesh bounds
-                // preserve their actual nested rotations without reading vertices.
-                // Shrink only the torso by 1 cm to allow surface contact, never
-                // deep stock/receiver penetration. SAT avoids world-AABB false hits.
-                int checkedParts = 0;
-                foreach (var part in parts)
-                {
-                    if (!part.enabled || !part.gameObject.activeInHierarchy || part.name.StartsWith("Flash", StringComparison.Ordinal)) continue;
-                    var weaponBox = MeshBox.From(part);
-                    foreach (var bodyPart in bodyParts)
-                        Assert.That(MeshBox.Overlaps(MeshBox.From(bodyPart, .01f), weaponBox), Is.False,
-                            part.name + " intersects " + bodyPart.name + ": " + context);
-                    checkedParts++;
-                }
-                Assert.That(checkedParts, Is.GreaterThanOrEqualTo(5));
+                // Body/stock clearance is reviewed on the deformed skinned mesh in
+                // Play mode. Static bounds of old rigid tunic pieces cannot prove it.
                 Vector3 geometryDirection = (MeshCenter(muzzle) - MeshCenter(receiver)).normalized;
-                Assert.That(Vector3.Dot(geometryDirection, hero.PoseRoot.forward), Is.GreaterThan(.8f),
-                    "The physical muzzle must be ahead of the receiver: " + context);
+                Assert.That(Vector3.Dot(geometryDirection, hero.MuzzleTransform.forward), Is.GreaterThan(.8f),
+                    "The physical muzzle must be ahead of the receiver along the aim socket: " + context);
                 Assert.That(Mathf.Abs(Vector3.Dot(LongestMeshAxis(barrel), hero.MuzzleTransform.forward)), Is.GreaterThan(.97f),
                     "The real barrel axis must agree with the aim socket: " + context);
                 Assert.That(Vector3.Distance(MeshCenter(muzzle), hero.MuzzleTransform.position), Is.LessThan(.12f),
@@ -354,48 +813,6 @@ namespace TienTuyen.Combat.Tests
             return (x.sqrMagnitude > y.sqrMagnitude ? x.sqrMagnitude > z.sqrMagnitude ? x : z : y.sqrMagnitude > z.sqrMagnitude ? y : z).normalized;
         }
 
-        // Bounds represented by a center and three transformed half-edges. This
-        // remains valid under nested nonuniform scale/shear, unlike world AABBs.
-        private sealed class MeshBox
-        {
-            private Vector3 center;
-            private readonly Vector3[] edges = new Vector3[3];
-
-            public static MeshBox From(MeshRenderer renderer, float inset = 0f)
-            {
-                var bounds = renderer.GetComponent<MeshFilter>().sharedMesh.bounds;
-                var result = new MeshBox { center = renderer.transform.TransformPoint(bounds.center) };
-                result.edges[0] = renderer.transform.TransformVector(Vector3.right * bounds.extents.x);
-                result.edges[1] = renderer.transform.TransformVector(Vector3.up * bounds.extents.y);
-                result.edges[2] = renderer.transform.TransformVector(Vector3.forward * bounds.extents.z);
-                for (var i = 0; i < 3; i++)
-                    result.edges[i] *= Mathf.Max(0f, 1f - inset / Mathf.Max(.00001f, result.edges[i].magnitude));
-                return result;
-            }
-
-            public static bool Overlaps(MeshBox a, MeshBox b)
-            {
-                for (var i = 0; i < 3; i++)
-                {
-                    if (Separated(a, b, Vector3.Cross(a.edges[(i + 1) % 3], a.edges[(i + 2) % 3]))) return false;
-                    if (Separated(a, b, Vector3.Cross(b.edges[(i + 1) % 3], b.edges[(i + 2) % 3]))) return false;
-                    for (var j = 0; j < 3; j++)
-                        if (Separated(a, b, Vector3.Cross(a.edges[i], b.edges[j]))) return false;
-                }
-                return true;
-            }
-
-            private static bool Separated(MeshBox a, MeshBox b, Vector3 axis)
-            {
-                if (axis.sqrMagnitude < 1e-14f) return false;
-                axis.Normalize();
-                float radius = 0;
-                for (var i = 0; i < 3; i++)
-                    radius += Mathf.Abs(Vector3.Dot(axis, a.edges[i])) + Mathf.Abs(Vector3.Dot(axis, b.edges[i]));
-                return Mathf.Abs(Vector3.Dot(axis, b.center - a.center)) >= radius - .000001f;
-            }
-        }
-
         private Transform CreateTarget()
         {
             SetField(game, "spawnTimer", 0f);
@@ -426,8 +843,10 @@ namespace TienTuyen.Combat.Tests
             Assert.That(rig.SupportHand, Is.Not.Null);
             Assert.That(rig.WeaponGrip, Is.Not.Null);
             Assert.That(rig.WeaponSupport, Is.Not.Null);
-            Assert.That(Vector3.Distance(rig.GripHand.position, rig.WeaponGrip.position), Is.LessThan(.02f));
-            Assert.That(Vector3.Distance(rig.SupportHand.position, rig.WeaponSupport.position), Is.LessThan(.02f));
+            HandGaps(rig, out float grip, out float support);
+            Assert.That(grip, Is.LessThan(.02f));
+            // A guard-holding body carries a one-handed blade; its support hand is free.
+            if (!rig.Profile.guardHold) Assert.That(support, Is.LessThan(.02f));
         }
 
         private static FieldInfo Field(object target, string name)

@@ -1,0 +1,25 @@
+{
+ "frame": "Local space of the FBX empty \"Viewmodel\", gun in the idle take frame 0, metres. Axes are the empty's Blender local axes: +X view forward, +Y left, +Z up. Unity may flip one horizontal axis and scale on import: map these with the Muzzle row, which is the Muzzle empty in the same frame (compare with anchor.InverseTransformPoint(muzzle.position)).",
+ "rear_sight": [
+  0.39481,
+  -0.17496,
+  -0.11479
+ ],
+ "front_sight": [
+  0.95838,
+  -0.17388,
+  -0.12028
+ ],
+ "muzzle": [
+  0.99247,
+  -0.17519,
+  -0.14762
+ ],
+ "gun_up": [
+  0.0097,
+  0.0072,
+  0.9999
+ ],
+ "eye_behind_rear_m": 0.12,
+ "ads": "move the Viewmodel root rigidly so rear->front lies on the camera forward axis, the camera eye_behind_rear_m behind rear_sight, gun_up kept as camera up. Checked at viewmodel vertical FOV 73.7 deg, near plane 0.01 m (ads/xm1014_t*.png)."
+}

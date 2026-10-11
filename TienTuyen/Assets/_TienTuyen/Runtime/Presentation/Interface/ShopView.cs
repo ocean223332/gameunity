@@ -53,7 +53,7 @@ namespace TienTuyen.Presentation.Interface
                 int slot = i;
                 float x = Margin + i * (Column + Gap);
                 var holder = UiKit.Node("Offer" + i, Panel, UiKit.TopLeft, UiKit.TopLeft, new Vector2(x, -112), new Vector2(Column, 196));
-                offers[i] = BuildOffer(holder, () => { selected = slot; sound("UI_Click"); }, i);
+                offers[i] = BuildOffer(holder, () => { selected = slot; message.text = ""; sound("UI_Click"); }, i);
                 var lockHolder = UiKit.Node("Lock" + i, Panel, UiKit.TopLeft, UiKit.TopLeft, new Vector2(x, -314), new Vector2(Column, 30));
                 locks[i] = UiButton.Create("Button", lockHolder, UiButton.Style.Secondary, "KHÓA Ô",
                     () => { game.SetOfferLocked(slot, !game.Shop.IsLocked(slot)); sound("UI_Click"); }, 5f);
@@ -161,8 +161,9 @@ namespace TienTuyen.Presentation.Interface
 
         protected override void OnShow()
         {
+            // Slot 0 opens selected with its details shown, so there is no choice left to prompt for.
             selected = 0;
-            message.text = "Chọn một ô hàng để xem chỉ số và giá.";
+            message.text = "";
         }
 
         public void Refresh()
