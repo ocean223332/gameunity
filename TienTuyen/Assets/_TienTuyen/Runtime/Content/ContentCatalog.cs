@@ -16,6 +16,26 @@ namespace TienTuyen.Content
 
     public enum EnemyRole { Infantry, Shooter, Elite, Charger }
 
+    /// <summary>
+    /// A reload that loads one round at a time: a start, a time per missing round, an end. The time is
+    /// fixed when the reload starts, from the rounds missing then; the magazine fills when it ends.
+    /// </summary>
+    public readonly struct RoundReload
+    {
+        public float StartSeconds { get; }
+        public float PerRoundSeconds { get; }
+        public float EndSeconds { get; }
+
+        public RoundReload(float startSeconds, float perRoundSeconds, float endSeconds)
+        {
+            StartSeconds = startSeconds;
+            PerRoundSeconds = perRoundSeconds;
+            EndSeconds = endSeconds;
+        }
+
+        public float Seconds(int missingRounds) => StartSeconds + PerRoundSeconds * Math.Max(1, missingRounds) + EndSeconds;
+    }
+
     // Data only: a run owns its own ammo, cooldown, health, and target state.
     public sealed class WeaponDefinition
     {
@@ -25,7 +45,10 @@ namespace TienTuyen.Content
         public int PelletsPerShot { get; }
         public float ShotCooldownSeconds { get; }
         public int MagazineSize { get; }
+        /// <summary>Reload time for an empty magazine.</summary>
         public float ReloadSeconds { get; }
+        /// <summary>Set for weapons that load round by round; null for a whole-magazine reload.</summary>
+        public RoundReload? RoundReload { get; }
         public float Range { get; }
         public int BasePrice { get; }
 
@@ -42,6 +65,18 @@ namespace TienTuyen.Content
             Range = range;
             BasePrice = basePrice;
         }
+
+        public WeaponDefinition(string id, string displayName, float damagePerHit, int pelletsPerShot,
+            float shotCooldownSeconds, int magazineSize, RoundReload reload, float range, int basePrice)
+            : this(id, displayName, damagePerHit, pelletsPerShot, shotCooldownSeconds, magazineSize,
+                reload.Seconds(magazineSize), range, basePrice)
+        {
+            RoundReload = reload;
+        }
+
+        /// <summary>Reload time with this many rounds missing.</summary>
+        public float ReloadSecondsFor(int missingRounds) =>
+            RoundReload?.Seconds(missingRounds) ?? ReloadSeconds;
     }
 
     public sealed class EnemyDefinition
@@ -92,9 +127,10 @@ namespace TienTuyen.Content
         public static ContentCatalog P2 { get; } = new ContentCatalog(
             new[]
             {
-                new WeaponDefinition(ContentIds.Rifle, "Súng trường", 12f, 1, 0.35f, 12, 1.5f, 10f, 20),
-                new WeaponDefinition(ContentIds.Smg, "Tiểu liên", 5f, 1, 0.12f, 24, 1.4f, 6.5f, 18),
-                new WeaponDefinition(ContentIds.Shotgun, "Súng tản đạn", 4f, 6, 0.85f, 5, 2f, 4.5f, 22)
+                new WeaponDefinition(ContentIds.Rifle, "Súng trường", 24f, 1, 0.35f, 12, 2.4333f, 10f, 20),
+                new WeaponDefinition(ContentIds.Smg, "Tiểu liên", 10f, 1, 0.12f, 24, 2.9333f, 6.5f, 18),
+                new WeaponDefinition(ContentIds.Shotgun, "Súng tản đạn", 8f, 6, 0.85f, 5,
+                    new RoundReload(0.6f, 0.175f, 0.4667f), 4.5f, 22)
             },
             new[]
             {
@@ -103,9 +139,11 @@ namespace TienTuyen.Content
                 new EnemyDefinition(ContentIds.Charger, "Lính xung kích", EnemyRole.Charger,
                     20f, 3.7f, 11f, 2.6f, 4.5f, 0.7f, 3, 1, 2),
                 new EnemyDefinition(ContentIds.Shooter, "Xạ thủ", EnemyRole.Shooter,
-                    24f, 2.1f, 8f, 2.4f, 7f, 0.8f, 3, 1, 2),
+                    // Damage per round of a 3-round burst; aim .8 + burst .16 + cooldown 2.64 = 3.6 s a burst, 2.5 DPS.
+                    24f, 2.1f, 3f, 2.64f, 7f, 0.8f, 3, 1, 2),
                 new EnemyDefinition(ContentIds.Elite, "Lính nặng tinh nhuệ", EnemyRole.Elite,
-                    250f, 1.7f, 18f, 2.8f, 2.4f, 0.9f, 1, 10, 20)
+                    // Damage per round of a 3-round burst; aim .8 + burst .2 + cooldown 2.6 = 3.6 s a burst, 5 DPS.
+                    250f, 3.0f, 6f, 2.6f, 2.4f, 0.9f, 1, 10, 20)
             });
 
         public ContentCatalog(IEnumerable<WeaponDefinition> weapons, IEnumerable<EnemyDefinition> enemies)
@@ -159,6 +197,9 @@ namespace TienTuyen.Content
             Positive(weapon.DamagePerHit, "damage", weapon.Id, 1000);
             Positive(weapon.ShotCooldownSeconds, "cooldown", weapon.Id, 60);
             Positive(weapon.ReloadSeconds, "reload", weapon.Id, 60);
+            if (weapon.RoundReload is RoundReload rounds && (rounds.StartSeconds < 0 || rounds.EndSeconds < 0 ||
+                !(rounds.PerRoundSeconds > 0) || rounds.StartSeconds + rounds.EndSeconds > 60))
+                throw Invalid(weapon.Id, "round reload needs a positive time per round and non-negative start and end");
             Positive(weapon.Range, "range", weapon.Id, 100);
             if (weapon.PelletsPerShot < 1 || weapon.PelletsPerShot > 32)
                 throw Invalid(weapon.Id, "pellet count must be 1..32");

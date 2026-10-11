@@ -42,13 +42,15 @@ namespace TienTuyen.Combat.Tests
             var shotgun = catalog.GetWeapon(ContentIds.Shotgun);
             Assert.That((rifle.DamagePerHit, rifle.ShotCooldownSeconds, rifle.MagazineSize,
                 rifle.ReloadSeconds, rifle.Range, rifle.BasePrice),
-                Is.EqualTo((12f, 0.35f, 12, 1.5f, 10f, 20)));
+                Is.EqualTo((24f, 0.35f, 12, 2.4333f, 10f, 20)));
             Assert.That((smg.DamagePerHit, smg.ShotCooldownSeconds, smg.MagazineSize,
                 smg.ReloadSeconds, smg.Range, smg.BasePrice),
-                Is.EqualTo((5f, 0.12f, 24, 1.4f, 6.5f, 18)));
+                Is.EqualTo((10f, 0.12f, 24, 2.9333f, 6.5f, 18)));
             Assert.That((shotgun.DamagePerHit, shotgun.PelletsPerShot, shotgun.ShotCooldownSeconds,
-                shotgun.MagazineSize, shotgun.ReloadSeconds, shotgun.Range, shotgun.BasePrice),
-                Is.EqualTo((4f, 6, 0.85f, 5, 2f, 4.5f, 22)));
+                shotgun.MagazineSize, shotgun.Range, shotgun.BasePrice),
+                Is.EqualTo((8f, 6, 0.85f, 5, 4.5f, 22)));
+            var reload = shotgun.RoundReload.Value;
+            Assert.That((reload.StartSeconds, reload.PerRoundSeconds, reload.EndSeconds), Is.EqualTo((0.6f, 0.175f, 0.4667f)));
             Assert.That(catalog.Weapons.All(w => w.DamagePerHit > 0 && w.DamagePerHit <= 36 &&
                 w.ShotCooldownSeconds >= 0.1f && w.ShotCooldownSeconds <= 1.6f &&
                 w.Range >= 4.5f && w.Range <= 13f && w.BasePrice >= 18 && w.BasePrice <= 30), Is.True);
@@ -84,13 +86,15 @@ namespace TienTuyen.Combat.Tests
         }
 
         [Test]
-        public void ChargerEligibilityStartsAtWaveTwoWhileEliteIsNotRegular()
+        public void ChargerFromWaveTwoAndEliteFromWaveThreeOutsideTheRegularPool()
         {
             Assert.That(CombatGame.IsEnemyRoleEligibleForWave(EnemyRole.Charger, 1), Is.False);
             Assert.That(CombatGame.IsEnemyRoleEligibleForWave(EnemyRole.Charger, 2), Is.True);
             Assert.That(CombatGame.IsEnemyRoleEligibleForWave(EnemyRole.Shooter, 2), Is.False);
             Assert.That(CombatGame.IsEnemyRoleEligibleForWave(EnemyRole.Shooter, 3), Is.True);
             Assert.That(CombatGame.IsEnemyRoleEligibleForWave(EnemyRole.Elite, 6), Is.False);
+            Assert.That(CombatGame.IsEliteEligibleForWave(2), Is.False);
+            Assert.That(CombatGame.IsEliteEligibleForWave(3), Is.True);
         }
 
         [Test]

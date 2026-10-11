@@ -2,6 +2,7 @@ using System.Collections;
 using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
+using TienTuyen.Content;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
@@ -56,8 +57,23 @@ namespace TienTuyen.Combat.Tests
             Assert.That(game.SelectedWeapon, Is.EqualTo(WeaponKind.Shotgun));
             Assert.That(game.MagazineSize, Is.EqualTo(5));
             Assert.That(game.Ammo, Is.EqualTo(5));
-            Assert.That(game.ReloadDuration, Is.EqualTo(2f).Within(0.001f));
             Assert.That(game.MaxWave, Is.EqualTo(6));
+
+            // The shotgun loads shell by shell: its reload is a start, a time per missing shell and an end.
+            var rounds = ContentCatalog.P2.GetWeapon(ContentIds.Shotgun).RoundReload.Value;
+            float Expected(int missing) => (rounds.StartSeconds + rounds.PerRoundSeconds * missing + rounds.EndSeconds) * game.Stats.ReloadFactor;
+            var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            var ammo = (int[])typeof(CombatGame).GetField("weaponAmmo", flags).GetValue(game);
+            var reload = (float[])typeof(CombatGame).GetField("weaponReload", flags).GetValue(game);
+            ammo[0] = 4;
+            game.RequestReload();
+            Assert.That(game.ReloadDuration, Is.EqualTo(Expected(1)).Within(0.001f));
+            Assert.That(game.ReloadRemaining, Is.EqualTo(Expected(1)).Within(0.001f));
+            reload[0] = 0;
+            ammo[0] = 0;
+            game.RequestReload();
+            Assert.That(game.ReloadDuration, Is.EqualTo(Expected(5)).Within(0.001f));
+            Assert.That(Expected(5), Is.GreaterThan(Expected(1) + 0.5f));
         }
 
         [UnityTest]
@@ -97,20 +113,74 @@ namespace TienTuyen.Combat.Tests
         }
 
         [Test]
+        public void WavesThreeAndFourFieldTheirEliteQuotaSpreadOutUnderTheCap()
+        {
+            // Waves 3-4 field exactly their quota (3, 6) whatever the run seed: the first not before 8 s,
+            // never more in play than the wave allows. Every enemy falls 6 s after landing (the player's part).
+            var flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+            var entries = (System.Array)typeof(CombatGame).GetField("enemies", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(game);
+            var damage = typeof(CombatGame).GetMethod("DamageEnemy", BindingFlags.Instance | BindingFlags.NonPublic);
+            for (var wave = 3; wave <= 4; wave++)
+            {
+                SetAutoPropertyBackingField("<Wave>k__BackingField", wave);
+                InvokePrivate("ResetWave");
+                var fireTimers = new float[TienTuyen.Progression.ProgressionRun.MaxWeaponSlots];
+                for (var i = 0; i < fireTimers.Length; i++) fireTimers[i] = 999f;
+                SetPrivateField("weaponFireTimer", fireTimers);
+                SetPrivateField("invulnerability", 999f);
+                var landed = new float[entries.Length];
+                var announced = new bool[entries.Length];
+                int fielded = 0, peak = 0;
+                float first = -1f, elapsed = 0f;
+                while (elapsed < game.WaveLength - .1f && game.State == CombatState.Playing)
+                {
+                    game.StepSimulation(1f / 60f, Vector2.zero);
+                    elapsed += 1f / 60f;
+                    var inPlay = 0;
+                    for (var i = 0; i < entries.Length; i++)
+                    {
+                        var entry = entries.GetValue(i);
+                        var type = entry.GetType();
+                        bool active = (bool)type.GetField("active", flags).GetValue(entry), pending = (bool)type.GetField("pending", flags).GetValue(entry);
+                        bool elite = (active || pending) && (bool)type.GetField("elite", flags).GetValue(entry);
+                        if (elite && !announced[i]) { fielded++; if (first < 0f) first = elapsed; }
+                        announced[i] = elite;
+                        if (elite) inPlay++;
+                        if (!active) { landed[i] = -1f; continue; }
+                        if (landed[i] < 0f) landed[i] = elapsed;
+                        if (elapsed - landed[i] >= 6f) damage.Invoke(game, new object[] { entry, 1e6f });
+                    }
+                    peak = Mathf.Max(peak, inPlay);
+                }
+                Assert.That(fielded, Is.EqualTo(CombatGame.EliteQuota(wave)), "Elites fielded in wave " + wave);
+                Assert.That(first, Is.GreaterThanOrEqualTo(8f), "First Elite of wave " + wave);
+                Assert.That(peak, Is.LessThanOrEqualTo(CombatGame.MaxElitesInPlay(wave)), "Elites in play at once in wave " + wave);
+            }
+        }
+
+        [Test]
         public void DefeatedChargerPaysExperienceAndPickupRewardOnlyOnce()
         {
             SetAutoPropertyBackingField("<Wave>k__BackingField", 2);
             InvokePrivate("ResetWave");
-            var fireTimers = new float[TienTuyen.Progression.ProgressionRun.MaxWeaponSlots];
-            for (var i = 0; i < fireTimers.Length; i++) fireTimers[i] = 999f;
-            SetPrivateField("weaponFireTimer", fireTimers);
-            object charger = null;
-            for (var frame = 0; frame < 60 * 12 && charger == null; frame++)
-            {
-                game.StepSimulation(1f / 60f, Vector2.zero);
-                charger = FindActiveCharger();
-            }
-            Assert.That(charger, Is.Not.Null, "Wave 2 must provide an active charger for reward testing.");
+            SetPrivateField("spawnTimer", 0f);
+            InvokePrivate("UpdateSpawn", 0f);
+            var entries = (System.Array)typeof(CombatGame)
+                .GetField("enemies", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(game);
+            var flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+            var pendingEntries = entries.Cast<object>()
+                .Where(entry => (bool)entry.GetType().GetField("pending", flags).GetValue(entry)).ToArray();
+            Assert.That(pendingEntries, Has.Length.EqualTo(1), "Reward setup must announce exactly one enemy.");
+            var pendingCharger = pendingEntries[0];
+            var enemyType = pendingCharger.GetType();
+            var definition = ContentCatalog.P2.GetEnemy(ContentIds.Charger);
+            enemyType.GetField("definition", flags).SetValue(pendingCharger, definition);
+            enemyType.GetField("elite", flags).SetValue(pendingCharger, definition.Role == EnemyRole.Elite);
+            enemyType.GetField("shooter", flags).SetValue(pendingCharger, definition.Role == EnemyRole.Shooter);
+            enemyType.GetField("charger", flags).SetValue(pendingCharger, definition.Role == EnemyRole.Charger);
+            InvokePrivate("UpdateEnemies", (float)enemyType.GetField("warningTimer", flags).GetValue(pendingCharger));
+            var charger = FindActiveCharger();
+            Assert.That(charger, Is.Not.Null, "The explicitly spawned charger must be active for reward testing.");
             var killsBefore = game.Kills;
             var experienceBefore = game.Experience;
             var pickupsBefore = CountActivePickups();
@@ -293,6 +363,7 @@ namespace TienTuyen.Combat.Tests
                 game.Shop.OfferAt(i).Kind == TienTuyen.Progression.OfferKind.Weapon);
             Assert.That(game.PurchaseOffer(weaponSlot), Is.EqualTo(TienTuyen.Progression.PurchaseResult.Bought));
             Assert.That(game.WeaponCount, Is.EqualTo(2));
+            Assert.That(game.AmmoAt(1), Is.EqualTo(game.WeaponAt(1).MagazineSize), "A bought weapon arrives loaded.");
             Assert.That(game.SellWeapon(1, out int refund), Is.True);
             Assert.That(refund, Is.GreaterThanOrEqualTo(0));
             Assert.That(game.WeaponCount, Is.EqualTo(1));
@@ -320,11 +391,11 @@ namespace TienTuyen.Combat.Tests
 
         private void SetAutoPropertyBackingField(string name, object value) => SetPrivateField(name, value);
 
-        private void InvokePrivate(string name)
+        private void InvokePrivate(string name, params object[] arguments)
         {
             var method = typeof(CombatGame).GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.That(method, Is.Not.Null, "Test seam changed: missing private method " + name);
-            method.Invoke(game, null);
+            method.Invoke(game, arguments);
         }
 
         private object FindActiveCharger()

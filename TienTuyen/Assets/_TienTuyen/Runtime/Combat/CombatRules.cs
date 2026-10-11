@@ -9,11 +9,13 @@ namespace TienTuyen.Combat
     public static class CombatRules
     {
         public const int EnemyCap = 25;
-        public const float PlayerMaxHealth = 115f;
+        public const float PlayerMaxHealth = 200f;
         public const float PlayerSpeed = 4.75f;
         public const int MaxWaves = 6;
         public const int SupplyWave = 3;
         public const float WaveSeconds = 40f;
+        /// <summary>Seconds to draw the weapon switched to; it cannot fire or reload meanwhile.</summary>
+        public const float WeaponDrawSeconds = 0.5f;
         public static int Settlement(int remainingMinorUnits) => Mathf.Max(0, remainingMinorUnits / 200) * 100;
         public static int ExperienceThreshold(int level) => 8 + 4 * (Mathf.Max(1, level) - 1);
         public static bool IsSpawnSafe(Vector3 spawn, Vector3 player)

@@ -1,6 +1,6 @@
 {
   "name": "TienTuyen.Combat.Play.Tests",
-  "references": ["TienTuyen.Combat", "TienTuyen.Progression", "TienTuyen.Presentation", "Unity.TextMeshPro"],
+  "references": ["TienTuyen.Combat", "TienTuyen.Progression", "TienTuyen.Content", "TienTuyen.Presentation", "Unity.TextMeshPro"],
   "optionalUnityReferences": ["TestAssemblies"],
   "autoReferenced": false
 }
