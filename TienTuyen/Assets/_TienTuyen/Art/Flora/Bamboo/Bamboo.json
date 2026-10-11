@@ -1,0 +1,49 @@
+{
+ "name": "Bamboo",
+ "materials": [
+  {
+   "name": "Bamboo_M0",
+   "leaf": false,
+   "cutout": false,
+   "normal": true
+  },
+  {
+   "name": "Bamboo_M1",
+   "leaf": false,
+   "cutout": false,
+   "normal": true
+  },
+  {
+   "name": "Bamboo_M2",
+   "leaf": true,
+   "cutout": true,
+   "normal": true
+  },
+  {
+   "name": "Bamboo_M3",
+   "leaf": false,
+   "cutout": false,
+   "normal": true
+  },
+  {
+   "name": "Bamboo_M4",
+   "leaf": false,
+   "cutout": false,
+   "normal": true
+  },
+  {
+   "name": "Bamboo_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "height": 13.363,
+ "radius": 4.231,
+ "tris": [
+  5496,
+  2198,
+  4
+ ]
+}

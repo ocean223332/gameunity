@@ -4,15 +4,44 @@ Generated in Blender 5.2 from `build_stylized_catalog.py`. All geometry and matt
 materials in this catalog are original procedural placeholders for Tiền Tuyến.
 There are no external textures, downloads, or licensed third-party meshes.
 
-The 16 assets are `hero`, `rifle`, `smg`, `shotgun`, `enemy_infantry`,
-`enemy_shooter`, `enemy_charger`, `enemy_elite`, `supply_crate`, `crate`,
-`sandbag`, `tarp`, `tree`, `rock`, `bush`, and `grass`. Each has an editable
+The 9 assets are `hero`, `enemy_infantry`, `enemy_shooter`, `enemy_charger`,
+`enemy_elite`, `tarp`, `tree`, `bush`, and `grass`. Each has an editable
 `Blend/<name>.blend` source and equivalent `FBX/<name>.fbx` and `GLB/<name>.glb`
 exports. Run the script again with Blender's background Python command to
 regenerate all files, or pass asset names after `--` to rebuild only those
 (`blender --background --python build_stylized_catalog.py -- hero enemy_elite`).
 `verify_catalog.py` reimports every FBX and checks its
-pivot, rotation, scale, character height, and weapon length.
+pivot, rotation, scale and character height, and the realistic catalog below.
+
+## Realistic weapons and props
+
+`rifle`, `smg`, `shotgun`, `m16` (enemy rifle), `etool`, `supply_crate`, `crate`,
+`sandbag`, `drum`, `rock`, `shed`, `watchtower`, `cookfire`, `bunker`, `truck`,
+`truck_zil`, `aa_gun` and `bicycle` are textured models built outside the Unity
+project by the scripts in `output/props-r/scripts` (sources and licences in
+`docs/CREDITS.md`). Their FBX files go straight into `Art/Resources/Models`; the
+editor installer no longer copies these names. Conventions are the catalog's:
+`TT_<name>_PIVOT` root, Z-up, metres, grip or footprint origin, muzzles along
+Blender +Y. Each mesh part `<part>` may have a `<part>_LOD1` at most 40% of its
+triangles; a model stays under 15k triangles.
+
+- Weapons keep the part names `CombatCharacterRig` reads: `grip`, `handguard`
+  (`pump handguard`), `muzzle`, and on the hero guns `barrel` and `receiver`;
+  the E-tool's blade part contains "blade". Hero guns are authored for the
+  x0.72 hero attach scale, `m16` and `etool` for the enemies' x0.58 x0.9.
+- Station props are merged per cluster at runtime by `PropBatch`
+  (`EnvironmentStation`), so `CombatModelImportPostprocessor` imports them as
+  readable. Sandbag parts are `bag_a`..`bag_d`; `bag_*_ground` are the muddy
+  bottom-course variants. Bags are 0.62 x 0.37 x 0.20 m and scaled per cell.
+- Materials: **Tien Tuyen > Props > Install Prop Materials** (`PropArtInstaller`)
+  builds URP Lit materials in `Art/Props/Materials` from
+  `Art/Props/Textures/<material>_BaseColor`, `_Normal` and
+  `_MetallicSmoothness` (R metallic, G occlusion, A smoothness) and remaps each
+  model's FBX materials to them. Run it after replacing a model or texture.
+- The trellis, hammock and camouflage net are built at runtime (`StationMeshes`)
+  on copies of the flora's leaf, bamboo and log materials. The hammock nylon and
+  garnished net textures in `Art/Resources/Props` come from
+  `gen_station_textures.py` (`python gen_station_textures.py <that folder>`).
 
 ## Import into Unity
 
@@ -22,8 +51,7 @@ pivot, rotation, scale, character height, and weapon length.
 - Models use metres. The runtime importer applies scale factor **1** with file
   scale disabled; `CombatModelImportPostprocessor` owns those settings for the
   copies under `Art/Resources/Models`. FBX round-trip bounds are hero **1.975 m**
-  high; rifle **1.116 m**, SMG **0.824 m**, shotgun **1.184 m** long; crate
-  **0.855 m** wide; tree **3.21 m** high. Do not add a scale of 100.
+  high; tree **3.21 m** high. Do not add a scale of 100.
 - Every FBX has a `TT_<name>_PIVOT` root at the footprint or grip origin, with
   zero translation/rotation and unit scale after a Blender FBX round trip.
   Children are separate named mesh parts. Character feet are at local Z=0 in
@@ -59,3 +87,14 @@ the Blender pivot is at the feet. It converts the source Z-up axis to Unity's
 Y-up axis at this boundary, rotates weapons into the gameplay hand axis and
 uses the imported mesh when available. The authored low-poly fallback remains
 visible when a model resource fails validation.
+
+## Environment sources
+
+- `build_mountains.py` bakes the far backdrop `Art/Resources/Environment/Mountains.bytes` from AWS terrain
+  tiles (usage in its header). The mountain look itself is shader-side (`EnvMountains.shader`).
+- `pack_textures.py` packs the Poly Haven ground, bark and rock sets into `Art/Resources/Environment`.
+- `Flora/` builds the `Art/Flora` species in background Blender: `flora_build.py` makes one species
+  (LOD0/LOD1 meshes, cross-card LOD2, textures, json) from the stage-1 source scene
+  `output/environment-review/stage1/blender/env_stage1_sources.blend`, the Poly Haven downloads and the twig
+  atlas that `twig_atlas.py` renders from ambientCG leaf sets; `grass_atlas.py` cuts the grass blade atlas and
+  `match_card.py` matches a thin plant's card colour to its blades. Sources and licences are in `docs/CREDITS.md`.

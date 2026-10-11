@@ -1,0 +1,31 @@
+{
+ "name": "Palm_A",
+ "materials": [
+  {
+   "name": "Palm_A_M0",
+   "leaf": true,
+   "cutout": true,
+   "normal": false
+  },
+  {
+   "name": "Palm_A_M1",
+   "leaf": false,
+   "cutout": false,
+   "normal": true
+  },
+  {
+   "name": "Palm_A_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "height": 9.0,
+ "radius": 3.807,
+ "tris": [
+  4080,
+  1632,
+  4
+ ]
+}

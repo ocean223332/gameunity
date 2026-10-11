@@ -21,9 +21,20 @@ namespace TienTuyen.Editor
             "Universal Render Pipeline/Complex Lit",
             "Shader Graphs/Lit",
             "Shader Graphs/Unlit",
-            // Runtime-created presentation materials: sky and pooled combat particles.
+            "Shader Graphs/Decal",
+            "TienTuyen/Blood/BloodSurface",
+            // Runtime-created presentation materials: environment, sky fallback and particles.
+            "TienTuyen/Environment/Ground",
+            "TienTuyen/Environment/Surface",
+            "TienTuyen/Environment/Leaf",
+            "TienTuyen/Environment/Sky",
+            "TienTuyen/Environment/Mountains",
+            "TienTuyen/Environment/MountainCloud",
+            "TienTuyen/Environment/Water",
+            "TienTuyen/Environment/LightShaft",
             "Skybox/Procedural",
-            "Universal Render Pipeline/Particles/Unlit"
+            "Universal Render Pipeline/Particles/Unlit",
+            "Universal Render Pipeline/Particles/Simple Lit"
         };
 
         public int callbackOrder => 0;

@@ -6,8 +6,8 @@ using UnityEngine.Rendering;
 namespace TienTuyen.Presentation
 {
     /// <summary>
-    /// Runtime-generated low-poly art: faceted flora meshes, tileable ground
-    /// textures and particle materials. Everything is deterministic and uses its
+    /// Runtime-generated low-poly art: faceted flora, rock and structure meshes,
+    /// tileable ground textures and particle materials. Everything is deterministic and uses its
     /// own System.Random so cosmetic generation never touches UnityEngine.Random.
     /// </summary>
     internal static class ProceduralArt
@@ -48,6 +48,55 @@ namespace TienTuyen.Presentation
             material.EnableKeyword("_EMISSION");
             material.SetColor("_EmissionColor", color * intensity);
             material.globalIlluminationFlags = MaterialGlobalIlluminationFlags.None;
+            return material;
+        }
+
+        /// <summary>
+        /// Material on one of the environment shaders, or null when that shader is
+        /// unavailable so callers can fall back to URP Lit.
+        /// </summary>
+        public static Material Environment(string shaderName, string name)
+        {
+            var shader = Shader.Find("TienTuyen/Environment/" + shaderName);
+            if (shader == null || !shader.isSupported) return null;
+            return new Material(shader) { name = name, enableInstancing = true };
+        }
+
+        /// <summary>Boulder rock: grey scanned stone, moss on the faces that look up, laterite dust at the foot.</summary>
+        public static Material Rock(string name)
+        {
+            var material = Surface(name, "Rock", 1.6f);
+            if (material == null) return Lit(name, Hex("#77736A"), .06f);
+            material.SetColor("_BaseColor", Hex("#A8A49A"));
+            material.SetFloat("_Saturation", .35f);
+            material.SetFloat("_Moss", 1f);
+            material.SetVector("_DustBand", new Vector4(.36f, .46f, .45f, 0f));
+            return material;
+        }
+
+        /// <summary>Burnt bark of the dead trees: charcoal and ash, pale wood where the trunk broke off.</summary>
+        public static Material CharredBark(string name)
+        {
+            var material = Surface(name, "Bark", 1.3f);
+            if (material == null) return Lit(name, Hex("#3A3632"), .1f);
+            material.SetFloat("_Burn", 1f);
+            // A lone snag in open ground: no forest-floor darkening towards its foot.
+            material.SetFloat("_Occlusion", 0f);
+            material.SetVector("_DustBand", new Vector4(0f, .06f, .4f, 0f));
+            return material;
+        }
+
+        /// <summary>
+        /// EnvSurface material on a scanned set in Resources/Environment/Surface, projected along the world axes
+        /// (the batched flora meshes have no UVs), or null when the shader is unavailable.
+        /// </summary>
+        private static Material Surface(string name, string set, float tiling)
+        {
+            var material = Environment("Surface", name);
+            if (material == null) return null;
+            foreach (var map in new[] { "Albedo", "Normal", "Mask" })
+                material.SetTexture("_" + map + "Map", Resources.Load<Texture2D>("Environment/Surface/" + set + "_" + map));
+            material.SetFloat("_Tiling", tiling);
             return material;
         }
 
@@ -94,46 +143,43 @@ namespace TienTuyen.Presentation
             return softDot;
         }
 
+        /// <summary>
+        /// Runs <paramref name="row"/> for 0..count-1 on dedicated worker threads and
+        /// waits. The thread pool ramps up too slowly for a one-off startup bake.
+        /// <paramref name="row"/> must be thread-safe (no Unity object API).
+        /// </summary>
+        public static void ParallelRows(int count, Action<int> row)
+        {
+            int workers = Mathf.Clamp(SystemInfo.processorCount - 1, 1, 16);
+#if UNITY_WEBGL && !UNITY_EDITOR
+            workers = 1;
+#endif
+            if (workers == 1 || count < 32)
+            {
+                for (int i = 0; i < count; i++) row(i);
+                return;
+            }
+            int next = -1;
+            Exception failure = null;
+            var threads = new System.Threading.Thread[workers];
+            for (int w = 0; w < workers; w++)
+            {
+                threads[w] = new System.Threading.Thread(() =>
+                {
+                    try
+                    {
+                        int i;
+                        while ((i = System.Threading.Interlocked.Increment(ref next)) < count) row(i);
+                    }
+                    catch (Exception e) { failure = e; }
+                }) { IsBackground = true, Name = "ProceduralArtBake" };
+                threads[w].Start();
+            }
+            foreach (var thread in threads) thread.Join();
+            if (failure != null) throw failure;
+        }
+
         // ---------- Noise ----------
-
-        private static float Hash(int x, int y, int seed)
-        {
-            unchecked
-            {
-                uint h = (uint)(x * 374761393 + y * 668265263 + seed * 1442695041);
-                h = (h ^ (h >> 13)) * 1274126177u;
-                h ^= h >> 16;
-                return (h & 0xFFFFFF) / 16777215f;
-            }
-        }
-
-        /// <summary>Value noise that tiles every <paramref name="period"/> lattice cells.</summary>
-        private static float PeriodicNoise(float x, float y, int period, int seed)
-        {
-            int xi = Mathf.FloorToInt(x), yi = Mathf.FloorToInt(y);
-            float fx = x - xi, fy = y - yi;
-            fx = fx * fx * (3 - 2 * fx);
-            fy = fy * fy * (3 - 2 * fy);
-            int x0 = Mod(xi, period), x1 = Mod(xi + 1, period), y0 = Mod(yi, period), y1 = Mod(yi + 1, period);
-            float a = Hash(x0, y0, seed), b = Hash(x1, y0, seed), c = Hash(x0, y1, seed), d = Hash(x1, y1, seed);
-            return Mathf.Lerp(Mathf.Lerp(a, b, fx), Mathf.Lerp(c, d, fx), fy);
-        }
-
-        private static int Mod(int value, int period) { int m = value % period; return m < 0 ? m + period : m; }
-
-        private static float TileFbm(float u, float v, int basePeriod, int octaves, int seed)
-        {
-            float sum = 0, amplitude = .5f, total = 0;
-            int period = basePeriod;
-            for (int o = 0; o < octaves; o++)
-            {
-                sum += PeriodicNoise(u * period, v * period, period, seed + o * 31) * amplitude;
-                total += amplitude;
-                amplitude *= .5f;
-                period *= 2;
-            }
-            return sum / total;
-        }
 
         public static float Fbm(float x, float z, int octaves = 4)
         {
@@ -148,302 +194,78 @@ namespace TienTuyen.Presentation
             return sum / total;
         }
 
-        // ---------- Ground textures ----------
-
-        public static void Laterite(int size, out Texture2D albedo, out Texture2D normal)
-        {
-            var height = new float[size * size];
-            var colors = new Color32[size * size];
-            Color deep = Hex("#673825"), warm = Hex("#8E5638"), dust = Hex("#A27658"), pebble = Hex("#A88A6E"), dark = Hex("#4E2C1C");
-            for (int y = 0; y < size; y++)
-            for (int x = 0; x < size; x++)
-            {
-                float u = (float)x / size, v = (float)y / size;
-                float broad = TileFbm(u, v, 3, 5, 11);
-                float fine = TileFbm(u, v, 24, 3, 23);
-                float cells = PeriodicNoise(u * 48, v * 48, 48, 41);
-                float streak = Mathf.Abs(TileFbm(u, v, 6, 3, 57) - .5f);
-                Color c = Color.Lerp(deep, warm, Mathf.SmoothStep(.25f, .75f, broad));
-                c = Color.Lerp(c, dust, Mathf.Clamp01((fine - .55f) * 2.2f) * .35f);
-                float h = broad * .5f + fine * .3f;
-                if (cells > .86f)
-                {
-                    float t = Mathf.InverseLerp(.86f, .97f, cells);
-                    c = Color.Lerp(c, pebble, t * .45f);
-                    h += t * .4f;
-                }
-                if (streak < .018f)
-                {
-                    c = Color.Lerp(c, dark, (1 - streak / .018f) * .4f);
-                    h -= .25f * (1 - streak / .018f);
-                }
-                height[y * size + x] = h;
-                colors[y * size + x] = c;
-            }
-            albedo = Finish("Laterite", size, colors);
-            normal = NormalFromHeight("LateriteNormal", size, height, 3.2f);
-        }
-
-        public static void JungleFloor(int size, out Texture2D albedo, out Texture2D normal)
-        {
-            var height = new float[size * size];
-            var colors = new Color32[size * size];
-            Color moss = Hex("#40592F"), olive = Hex("#62733A"), litter = Hex("#735A38"), dry = Hex("#8E7C4A"), soil = Hex("#4E3C28");
-            for (int y = 0; y < size; y++)
-            for (int x = 0; x < size; x++)
-            {
-                float u = (float)x / size, v = (float)y / size;
-                float broad = TileFbm(u, v, 4, 4, 101);
-                float patch = TileFbm(u, v, 8, 3, 131);
-                float leaf = PeriodicNoise(u * 96, v * 96, 96, 151);
-                float leaf2 = PeriodicNoise(u * 64 + 7, v * 64, 64, 173);
-                Color c = Color.Lerp(moss, olive, Mathf.SmoothStep(.3f, .7f, broad));
-                c = Color.Lerp(c, litter, Mathf.SmoothStep(.55f, .8f, patch) * .8f);
-                c = Color.Lerp(c, soil, Mathf.SmoothStep(.62f, .32f, broad) * .35f);
-                float h = broad * .4f + patch * .2f;
-                if (leaf > .74f) { c = Color.Lerp(c, dry, .5f); h += .25f; }
-                else if (leaf2 > .78f) { c = Color.Lerp(c, olive * 1.2f, .45f); h += .2f; }
-                height[y * size + x] = h;
-                colors[y * size + x] = c;
-            }
-            albedo = Finish("JungleFloor", size, colors);
-            normal = NormalFromHeight("JungleFloorNormal", size, height, 2.4f);
-        }
-
-        private static Texture2D Finish(string name, int size, Color32[] colors)
-        {
-            var texture = new Texture2D(size, size, TextureFormat.RGBA32, true) { name = name, wrapMode = TextureWrapMode.Repeat, anisoLevel = 8, filterMode = FilterMode.Trilinear };
-            texture.SetPixels32(colors);
-            texture.Apply(true, true);
-            return texture;
-        }
-
-        private static Texture2D NormalFromHeight(string name, int size, float[] height, float strength)
-        {
-            var colors = new Color32[size * size];
-            for (int y = 0; y < size; y++)
-            for (int x = 0; x < size; x++)
-            {
-                float left = height[y * size + Mod(x - 1, size)], right = height[y * size + Mod(x + 1, size)];
-                float down = height[Mod(y - 1, size) * size + x], up = height[Mod(y + 1, size) * size + x];
-                var n = new Vector3((left - right) * strength, (down - up) * strength, 1f).normalized;
-                // URP unpacks DXT5nm-style AG on desktop: X lives in alpha, Y in green, R must be 1.
-                colors[y * size + x] = new Color32(255, (byte)((n.y * .5f + .5f) * 255), 0, (byte)((n.x * .5f + .5f) * 255));
-            }
-            var texture = new Texture2D(size, size, TextureFormat.RGBA32, true, true) { name = name, wrapMode = TextureWrapMode.Repeat, anisoLevel = 8, filterMode = FilterMode.Trilinear };
-            texture.SetPixels32(colors);
-            texture.Apply(true, true);
-            return texture;
-        }
-
         public static Color Hex(string value) { ColorUtility.TryParseHtmlString(value, out var c); return c; }
 
         // ---------- Flora ----------
 
-        /// <summary>Material slots shared by every flora template.</summary>
-        public enum Slot { Bark, PalmBark, LeafDark, LeafMid, LeafLight, Bamboo, Rock, Moss, GrassA, GrassB, Banana, Stem, DeadLeaf, Count }
-
-        public static void PalmInto(FlatMeshBuilder b, System.Random random, Vector3 origin)
+        /// <summary>Material slots of the procedural flora: EnvironmentFlora's boulders and dead trees.</summary>
+        public enum Slot
         {
-            float height = Range(random, 6.2f, 10.5f), lean = Range(random, .6f, 2.4f);
-            float leanAngle = Range(random, 0, Mathf.PI * 2);
-            var leanDirection = new Vector3(Mathf.Cos(leanAngle), 0, Mathf.Sin(leanAngle));
-            const int segments = 10;
+            Rock, Charred, Count
+        }
+
+        /// <summary>A shattered, charred trunk with a few bare limbs: the bombed slope.</summary>
+        public static void DeadTreeInto(FlatMeshBuilder b, System.Random random, Vector3 origin, float height)
+        {
+            b.Begin(origin.y, height, .08f, (float)random.NextDouble());
+            var lean = new Vector3(Range(random, -1f, 1f), 0, Range(random, -1f, 1f)) * height * .08f;
+            const int segments = 6;
             var spine = new Vector3[segments + 1];
             for (int i = 0; i <= segments; i++)
             {
                 float t = (float)i / segments;
-                spine[i] = origin + leanDirection * (lean * t * t) + Vector3.up * (height * t);
+                spine[i] = origin + lean * t + Vector3.up * height * t + new Vector3(Range(random, -.08f, .08f), 0, Range(random, -.08f, .08f)) * height * t;
             }
-            Tube(b, (int)Slot.PalmBark, spine, t => Mathf.Lerp(.25f, .14f, t) * (1f + (Mathf.Repeat(t * segments, 1f) > .8f ? .12f : 0f)), 7);
-            Vector3 crown = spine[segments];
-            int fronds = random.Next(9, 13);
-            for (int f = 0; f < fronds; f++)
+            float girth = Mathf.Clamp(height * .045f, .18f, .5f);
+            var rim = Tube(b, (int)Slot.Charred, spine, t => Mathf.Lerp(girth, girth * .5f, t), 6, true);
+            // Splintered top: the broken face and its shards are above the bark's exposed-wood height (EnvSurface).
+            Vector3 top = spine[segments], face = top + Vector3.up * girth * .15f;
+            for (int i = 0; i < rim.Length; i++)
             {
-                float azimuth = f * Mathf.PI * 2 / fronds + Range(random, -.2f, .2f);
-                bool dead = f % 5 == 4 && random.NextDouble() < .6;
-                Frond(b, random, crown, azimuth, dead ? Range(random, -40f, -20f) : Range(random, 18f, 48f),
-                    Range(random, 2.6f, 3.8f), dead ? (int)Slot.DeadLeaf : (f % 2 == 0 ? (int)Slot.LeafMid : (int)Slot.LeafDark), .85f);
+                Vector3 p = rim[i], q = rim[(i + 1) % rim.Length];
+                if (Vector3.Cross(q - p, face - p).y < 0) (p, q) = (q, p);
+                b.Triangle((int)Slot.Charred, p, q, face, false);
             }
-            // A few coconuts under the crown.
-            for (int i = 0; i < 3; i++)
-            {
-                float a = i * 2.1f + Range(random, 0, 1);
-                Blob(b, random, (int)Slot.Stem, crown + new Vector3(Mathf.Cos(a) * .25f, -.3f, Mathf.Sin(a) * .25f), new Vector3(.17f, .19f, .17f), 0f);
-            }
-        }
-
-        public static void FernInto(FlatMeshBuilder b, System.Random random, Vector3 origin, float scale)
-        {
-            int fronds = random.Next(7, 11);
-            for (int f = 0; f < fronds; f++)
-            {
-                float azimuth = f * Mathf.PI * 2 / fronds + Range(random, -.3f, .3f);
-                Frond(b, random, origin + Vector3.up * .05f, azimuth, Range(random, 30f, 60f), Range(random, .8f, 1.4f) * scale,
-                    random.NextDouble() < .5 ? (int)Slot.LeafLight : (int)Slot.LeafMid, .55f);
-            }
-        }
-
-        /// <summary>A drooping rib with paired leaflets, shared by palms and ferns.</summary>
-        private static void Frond(FlatMeshBuilder b, System.Random random, Vector3 root, float azimuth, float elevationDegrees,
-            float length, int slot, float leafletScale)
-        {
-            const int steps = 11;
-            var direction = new Vector3(Mathf.Cos(azimuth), 0, Mathf.Sin(azimuth));
-            var side = new Vector3(-direction.z, 0, direction.x);
-            float elevation = elevationDegrees * Mathf.Deg2Rad, droop = Range(random, .9f, 1.4f);
-            var rib = new Vector3[steps + 1];
-            for (int i = 0; i <= steps; i++)
-            {
-                float u = (float)i / steps;
-                rib[i] = root + direction * (length * u * Mathf.Cos(elevation)) +
-                         Vector3.up * (length * (u * Mathf.Sin(elevation) - droop * .55f * u * u));
-            }
-            for (int i = 1; i < steps; i++)
-            {
-                float u = (float)i / steps;
-                float leaflet = (Mathf.Sin(u * Mathf.PI) * .72f + .12f) * length * .32f * leafletScale;
-                Vector3 along = rib[i + 1] - rib[i];
-                for (int s = -1; s <= 1; s += 2)
-                {
-                    Vector3 tip = rib[i] + side * (s * leaflet) + along * .9f + Vector3.down * (leaflet * .55f);
-                    b.Triangle(slot, rib[i], rib[i] + along * .55f, tip, true);
-                }
-            }
-            for (int i = 0; i < steps; i++)
-                b.Triangle(slot, rib[i], rib[i + 1], rib[i] + side * .03f, true);
-        }
-
-        public static void BananaInto(FlatMeshBuilder b, System.Random random, Vector3 origin, float scale)
-        {
-            float stem = Range(random, .7f, 1.3f) * scale;
-            Tube(b, (int)Slot.Stem, new[] { origin, origin + Vector3.up * stem }, t => Mathf.Lerp(.12f, .08f, t) * scale, 6);
-            int leaves = random.Next(5, 8);
-            Vector3 top = origin + Vector3.up * stem;
-            for (int l = 0; l < leaves; l++)
-            {
-                float azimuth = l * Mathf.PI * 2 / leaves + Range(random, -.35f, .35f);
-                var direction = new Vector3(Mathf.Cos(azimuth), 0, Mathf.Sin(azimuth));
-                var side = new Vector3(-direction.z, 0, direction.x);
-                float length = Range(random, 1.5f, 2.3f) * scale, width = Range(random, .32f, .46f) * scale;
-                float elevation = Range(random, 45f, 72f) * Mathf.Deg2Rad, droop = Range(random, .9f, 1.3f);
-                const int steps = 8;
-                Vector3 previousRib = top, previousLeft = top, previousRight = top;
-                int slot = l % 3 == 0 ? (int)Slot.LeafLight : (int)Slot.Banana;
-                for (int i = 1; i <= steps; i++)
-                {
-                    float u = (float)i / steps;
-                    Vector3 rib = top + direction * (length * u * Mathf.Cos(elevation) * .9f) +
-                                  Vector3.up * (length * (u * Mathf.Sin(elevation) - droop * .7f * u * u));
-                    float w = width * Mathf.Pow(Mathf.Sin(Mathf.Min(1f, u * 1.12f) * Mathf.PI), .6f);
-                    Vector3 fold = Vector3.down * (w * .28f);
-                    Vector3 left = rib + side * w + fold, right = rib - side * w + fold;
-                    b.Quad(slot, previousRib, rib, left, previousLeft, true);
-                    b.Quad(slot, previousRight, right, rib, previousRib, true);
-                    previousRib = rib; previousLeft = left; previousRight = right;
-                }
-            }
-        }
-
-        public static void BambooInto(FlatMeshBuilder b, System.Random random, Vector3 origin, float scale)
-        {
-            int culms = random.Next(6, 12);
-            for (int c = 0; c < culms; c++)
-            {
-                float a = Range(random, 0, Mathf.PI * 2), r = Range(random, 0, .65f) * scale;
-                Vector3 root = origin + new Vector3(Mathf.Cos(a) * r, 0, Mathf.Sin(a) * r);
-                float height = Range(random, 5f, 8.5f) * scale, lean = Range(random, .05f, .28f);
-                var outward = new Vector3(Mathf.Cos(a), 0, Mathf.Sin(a));
-                int nodes = Mathf.Max(6, Mathf.RoundToInt(height / .55f));
-                var spine = new Vector3[nodes + 1];
-                for (int i = 0; i <= nodes; i++)
-                {
-                    float t = (float)i / nodes;
-                    spine[i] = root + outward * (height * lean * t * t) + Vector3.up * (height * t);
-                }
-                float radius = Range(random, .045f, .075f) * scale;
-                Tube(b, (int)Slot.Bamboo, spine, t => radius * (Mathf.Repeat(t * nodes, 1f) < .08f ? 1.25f : 1f), 5);
-                for (int i = nodes / 2; i < nodes; i += 2)
-                {
-                    Vector3 node = spine[i];
-                    for (int k = 0; k < 5; k++)
-                    {
-                        float la = Range(random, 0, Mathf.PI * 2);
-                        var dir = new Vector3(Mathf.Cos(la), Range(random, -.5f, .1f), Mathf.Sin(la)).normalized;
-                        var perp = Vector3.Cross(dir, Vector3.up).normalized;
-                        float length = Range(random, .3f, .5f) * scale;
-                        b.Triangle(k % 2 == 0 ? (int)Slot.LeafLight : (int)Slot.LeafMid, node, node + dir * length * .45f + perp * .06f, node + dir * length, true);
-                    }
-                }
-            }
-        }
-
-        public static void CanopyTreeInto(FlatMeshBuilder b, System.Random random, Vector3 origin, float scale)
-        {
-            float height = Range(random, 4f, 7f) * scale;
-            var lean = new Vector3(Range(random, -.5f, .5f), 0, Range(random, -.5f, .5f)) * scale;
-            Vector3 top = origin + Vector3.up * height + lean;
-            Tube(b, (int)Slot.Bark, new[] { origin, origin + Vector3.up * height * .5f + lean * .3f, top },
-                t => Mathf.Lerp(.42f, .2f, t) * scale, 7);
-            // Buttress fins at the base.
             for (int i = 0; i < 4; i++)
             {
-                float a = i * Mathf.PI * .5f + Range(random, -.3f, .3f);
-                var d = new Vector3(Mathf.Cos(a), 0, Mathf.Sin(a));
-                b.Triangle((int)Slot.Bark, origin + d * .9f * scale, origin + Vector3.up * 1.3f * scale + d * .2f * scale, origin - d * .05f, true);
+                float a = i * 1.57f + Range(random, -.4f, .4f);
+                var d = new Vector3(Mathf.Cos(a), 0, Mathf.Sin(a)) * girth * .5f;
+                Vector3 p = top + d, q = top + d * .2f + Vector3.up * Range(random, .4f, 1.2f), r = top - new Vector3(-d.z, 0, d.x);
+                b.Triangle((int)Slot.Charred, p, q, r, false);
+                b.Triangle((int)Slot.Charred, p, r, q, false);
             }
-            int blobs = random.Next(3, 6);
-            for (int i = 0; i < blobs; i++)
+            int limbs = random.Next(1, 4);
+            for (int i = 0; i < limbs; i++)
             {
-                float a = Range(random, 0, Mathf.PI * 2), r = Range(random, .4f, 1.6f) * scale;
-                Vector3 center = top + new Vector3(Mathf.Cos(a) * r, Range(random, -.5f, 1.2f) * scale, Mathf.Sin(a) * r);
-                float size = Range(random, 1.5f, 2.5f) * scale;
-                int slot = i == 0 ? (int)Slot.LeafDark : random.NextDouble() < .5 ? (int)Slot.LeafMid : (int)Slot.LeafDark;
-                Blob(b, random, slot, center, new Vector3(size, size * .62f, size), .22f);
-                Tube(b, (int)Slot.Bark, new[] { top - Vector3.up * .6f * scale, center - Vector3.up * size * .3f }, t => .1f * scale, 5);
+                int at = random.Next(segments / 2, segments);
+                float a = Range(random, 0, Mathf.PI * 2);
+                var dir = new Vector3(Mathf.Cos(a), Range(random, .3f, 1f), Mathf.Sin(a)).normalized;
+                Vector3 start = spine[at], end = start + dir * height * Range(random, .15f, .3f);
+                Tube(b, (int)Slot.Charred, new[] { start, (start + end) * .5f + Vector3.up * .2f, end }, t => Mathf.Lerp(girth * .35f, girth * .08f, t), 5, true);
             }
         }
 
         public static void BoulderInto(FlatMeshBuilder b, System.Random random, Vector3 origin, Vector3 size)
         {
+            b.Begin(origin.y - size.y * .5f, size.y * 1.4f, 0f, (float)random.NextDouble());
             var mesh = Icosphere();
             var offset = new Vector3(Range(random, 0, 50), Range(random, 0, 50), Range(random, 0, 50));
-            for (int i = 0; i < mesh.Length; i += 3)
+            var corners = new Vector3[mesh.Length];
+            var faces = new Vector3[mesh.Length / 3];
+            var rounded = new Dictionary<Vector3, Vector3>();
+            for (int i = 0; i < mesh.Length; i++)
+                corners[i] = origin + Vector3.Scale(Displace(mesh[i], offset, .28f), size);
+            for (int f = 0; f < faces.Length; f++)
             {
-                Vector3 a = Displace(mesh[i], offset, .28f), c = Displace(mesh[i + 1], offset, .28f), d = Displace(mesh[i + 2], offset, .28f);
-                a = origin + Vector3.Scale(a, size); c = origin + Vector3.Scale(c, size); d = origin + Vector3.Scale(d, size);
-                Vector3 normal = Vector3.Cross(c - a, d - a).normalized;
-                b.Triangle(normal.y > .62f ? (int)Slot.Moss : (int)Slot.Rock, a, c, d, false);
+                Vector3 a = corners[f * 3], c = corners[f * 3 + 1], d = corners[f * 3 + 2];
+                faces[f] = Vector3.Cross(c - a, d - a).normalized;
+                for (int k = 0; k < 3; k++)
+                    rounded[corners[f * 3 + k]] = (rounded.TryGetValue(corners[f * 3 + k], out var sum) ? sum : Vector3.zero) + faces[f];
             }
-        }
-
-        public static void GrassTuftInto(FlatMeshBuilder b, System.Random random, Vector3 origin, float scale)
-        {
-            int blades = random.Next(5, 10);
-            int slot = random.NextDouble() < .5 ? (int)Slot.GrassA : (int)Slot.GrassB;
-            for (int i = 0; i < blades; i++)
-            {
-                float a = Range(random, 0, Mathf.PI * 2), r = Range(random, 0, .14f) * scale;
-                Vector3 root = origin + new Vector3(Mathf.Cos(a) * r, 0, Mathf.Sin(a) * r);
-                var outward = new Vector3(Mathf.Cos(a), 0, Mathf.Sin(a));
-                var side = new Vector3(-outward.z, 0, outward.x) * (.035f * scale);
-                float height = Range(random, .22f, .6f) * scale;
-                Vector3 middle = root + Vector3.up * height * .55f + outward * height * .12f;
-                Vector3 tip = root + Vector3.up * height + outward * height * Range(random, .2f, .5f);
-                b.Quad(slot, root - side, root + side, middle + side * .6f, middle - side * .6f, true, Vector3.up);
-                b.Triangle(slot, middle - side * .6f, middle + side * .6f, tip, true, Vector3.up);
-            }
-        }
-
-        /// <summary>A faceted, noise-displaced blob such as a canopy clump or a coconut.</summary>
-        private static void Blob(FlatMeshBuilder b, System.Random random, int slot, Vector3 center, Vector3 size, float roughness)
-        {
-            var mesh = Icosphere();
-            var offset = new Vector3(Range(random, 0, 50), Range(random, 0, 50), Range(random, 0, 50));
-            for (int i = 0; i < mesh.Length; i += 3)
-                b.Triangle(slot, center + Vector3.Scale(Displace(mesh[i], offset, roughness), size * .5f),
-                    center + Vector3.Scale(Displace(mesh[i + 1], offset, roughness), size * .5f),
-                    center + Vector3.Scale(Displace(mesh[i + 2], offset, roughness), size * .5f), false);
+            // Chipped rather than polished: each corner normal leans 60% of the way from its facet to the rounded stone.
+            Vector3 Corner(int f, int k) => Vector3.Lerp(faces[f], rounded[corners[f * 3 + k]].normalized, .6f).normalized;
+            for (int f = 0; f < faces.Length; f++)
+                b.Triangle((int)Slot.Rock, corners[f * 3], corners[f * 3 + 1], corners[f * 3 + 2], Corner(f, 0), Corner(f, 1), Corner(f, 2));
         }
 
         private static Vector3 Displace(Vector3 point, Vector3 offset, float amount)
@@ -481,10 +303,13 @@ namespace TienTuyen.Presentation
             return icosphere;
         }
 
-        /// <summary>Faceted tube along a spine with a radius profile over t in [0, 1].</summary>
-        public static void Tube(FlatMeshBuilder b, int slot, Vector3[] spine, Func<float, float> radius, int sides)
+        /// <summary>
+        /// Faceted tube along a spine with a radius profile over t in [0, 1]; returns its last ring. A smooth tube
+        /// shades round over the same faceted shape (vertex normals point out from the spine).
+        /// </summary>
+        public static Vector3[] Tube(FlatMeshBuilder b, int slot, Vector3[] spine, Func<float, float> radius, int sides, bool smooth = false)
         {
-            Vector3[] previous = null;
+            Vector3[] previous = null, previousOut = null;
             for (int i = 0; i < spine.Length; i++)
             {
                 float t = spine.Length == 1 ? 0 : (float)i / (spine.Length - 1);
@@ -494,20 +319,30 @@ namespace TienTuyen.Presentation
                 if (Mathf.Abs(forward.y) > .95f) right = Vector3.Cross(Vector3.forward, forward).normalized;
                 Vector3 up = Vector3.Cross(right, forward);
                 var ring = new Vector3[sides];
+                var outward = new Vector3[sides];
                 float r = radius(t);
                 for (int s = 0; s < sides; s++)
                 {
                     float a = s * Mathf.PI * 2 / sides;
-                    ring[s] = spine[i] + (right * Mathf.Cos(a) + up * Mathf.Sin(a)) * r;
+                    outward[s] = right * Mathf.Cos(a) + up * Mathf.Sin(a);
+                    ring[s] = spine[i] + outward[s] * r;
                 }
                 if (previous != null)
                     for (int s = 0; s < sides; s++)
                     {
                         int n = (s + 1) % sides;
-                        b.Quad(slot, previous[s], ring[s], ring[n], previous[n], false);
+                        if (!smooth)
+                        {
+                            b.Quad(slot, previous[s], ring[s], ring[n], previous[n], false);
+                            continue;
+                        }
+                        b.Triangle(slot, previous[s], ring[s], ring[n], previousOut[s], outward[s], outward[n]);
+                        b.Triangle(slot, previous[s], ring[n], previous[n], previousOut[s], outward[n], previousOut[n]);
                     }
                 previous = ring;
+                previousOut = outward;
             }
+            return previous;
         }
 
         public static float Range(System.Random random, float min, float max) => min + (float)random.NextDouble() * (max - min);
@@ -516,15 +351,28 @@ namespace TienTuyen.Presentation
     /// <summary>
     /// Accumulates flat-shaded triangles per material slot. Also used as a
     /// static batcher: whole instances are appended in world space so a jungle
-    /// of hundreds of plants renders as a handful of meshes.
+    /// of hundreds of plants renders as a handful of meshes. Each vertex carries
+    /// colour for the environment shaders: R wind weight, G per-instance tint,
+    /// B height above the instance base (occlusion), A translucency.
     /// </summary>
     internal sealed class FlatMeshBuilder
     {
         private readonly List<Vector3> vertices = new List<Vector3>();
         private readonly List<Vector3> normals = new List<Vector3>();
+        private readonly List<Color32> colors = new List<Color32>();
         private readonly List<List<int>> slots = new List<List<int>>();
+        private float baseY, height = 1f, flex, tint;
 
         public int VertexCount => vertices.Count;
+
+        /// <summary>Starts a new instance: wind and occlusion are measured from its base over its height.</summary>
+        public void Begin(float instanceBaseY, float instanceHeight, float windFlex, float instanceTint)
+        {
+            baseY = instanceBaseY;
+            height = Mathf.Max(.05f, instanceHeight);
+            flex = windFlex;
+            tint = instanceTint;
+        }
 
         public void Triangle(int slot, Vector3 a, Vector3 b, Vector3 c, bool foliage, Vector3? forcedNormal = null)
         {
@@ -535,10 +383,25 @@ namespace TienTuyen.Presentation
                 if (normal.y < 0) normal = -normal;
                 normal = (normal * .45f + Vector3.up * .55f).normalized;
             }
+            Add(slot, a, b, c, normal, normal, normal, foliage ? (byte)255 : (byte)0);
+        }
+
+        /// <summary>A solid triangle with its own normal at each corner, for surfaces that shade smooth.</summary>
+        public void Triangle(int slot, Vector3 a, Vector3 b, Vector3 c, Vector3 normalA, Vector3 normalB, Vector3 normalC) =>
+            Add(slot, a, b, c, normalA, normalB, normalC, 0);
+
+        private void Add(int slot, Vector3 a, Vector3 b, Vector3 c, Vector3 normalA, Vector3 normalB, Vector3 normalC, byte alpha)
+        {
             var list = Slot(slot);
-            list.Add(vertices.Count); vertices.Add(a); normals.Add(normal);
-            list.Add(vertices.Count); vertices.Add(b); normals.Add(normal);
-            list.Add(vertices.Count); vertices.Add(c); normals.Add(normal);
+            list.Add(vertices.Count); vertices.Add(a); normals.Add(normalA); colors.Add(Paint(a, alpha));
+            list.Add(vertices.Count); vertices.Add(b); normals.Add(normalB); colors.Add(Paint(b, alpha));
+            list.Add(vertices.Count); vertices.Add(c); normals.Add(normalC); colors.Add(Paint(c, alpha));
+        }
+
+        private Color32 Paint(Vector3 p, byte alpha)
+        {
+            float h = Mathf.Clamp01((p.y - baseY) / height);
+            return new Color32((byte)(Mathf.Clamp01(h * h * flex) * 255f), (byte)(tint * 255f), (byte)(h * 255f), alpha);
         }
 
         public void Quad(int slot, Vector3 a, Vector3 b, Vector3 c, Vector3 d, bool foliage, Vector3? forcedNormal = null)
@@ -563,21 +426,26 @@ namespace TienTuyen.Presentation
                 // Faceted triangles never share vertices, so each slot is a straight copy.
                 var v = new Vector3[indices.Count];
                 var n = new Vector3[indices.Count];
-                var uv = new Vector2[indices.Count];
+                var col = new Color32[indices.Count];
                 var tris = new int[indices.Count];
                 for (int i = 0; i < indices.Count; i++)
                 {
                     int source = indices[i];
                     v[i] = vertices[source];
                     n[i] = normals[source];
-                    uv[i] = new Vector2(v[i].x, v[i].z) * .25f;
+                    col[i] = colors[source];
                     tris[i] = i;
                 }
                 var mesh = new Mesh { name = name + "_" + slot, indexFormat = IndexFormat.UInt32 };
                 mesh.SetVertices(v);
                 mesh.SetNormals(n);
-                mesh.SetUVs(0, uv);
+                mesh.SetColors(col);
                 mesh.SetTriangles(tris, 0, true);
+                // Wind sway moves leaves outside their rest bounds.
+                var bounds = mesh.bounds;
+                bounds.Expand(1f);
+                mesh.bounds = bounds;
+                mesh.UploadMeshData(true);
                 var go = new GameObject(name + "_" + (ProceduralArt.Slot)slot, typeof(MeshFilter), typeof(MeshRenderer));
                 go.layer = layer;
                 go.transform.SetParent(parent, false);
@@ -588,17 +456,6 @@ namespace TienTuyen.Presentation
                 renderer.shadowCastingMode = castShadows ? ShadowCastingMode.On : ShadowCastingMode.Off;
                 renderer.receiveShadows = true;
             }
-        }
-
-        public Mesh ToMesh(string name)
-        {
-            var mesh = new Mesh { name = name, indexFormat = IndexFormat.UInt32 };
-            mesh.SetVertices(vertices);
-            mesh.SetNormals(normals);
-            mesh.subMeshCount = slots.Count;
-            for (int i = 0; i < slots.Count; i++) mesh.SetTriangles(slots[i], i, false);
-            mesh.RecalculateBounds();
-            return mesh;
         }
     }
 }

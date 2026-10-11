@@ -1,0 +1,25 @@
+{
+ "name": "Log",
+ "materials": [
+  {
+   "name": "Log_M0",
+   "leaf": false,
+   "cutout": false,
+   "normal": true
+  },
+  {
+   "name": "Log_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "height": 0.365,
+ "radius": 1.906,
+ "tris": [
+  2036,
+  610,
+  4
+ ]
+}

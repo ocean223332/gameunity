@@ -3,7 +3,17 @@ guid: bb7c7bc75d86a1e44a97808add3f4fa5
 ModelImporter:
   serializedVersion: 24300
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: sandbag
+    second: {fileID: 2100000, guid: 3c1a7ee48485e074fbc2520a33ed5332, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: sandbag_ground
+    second: {fileID: 2100000, guid: 61e7d02c46a2bd84abfb1b1c45c991c1, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0
@@ -31,7 +41,7 @@ ModelImporter:
     extraExposedTransformPaths: []
     extraUserProperties: []
     clipAnimations: []
-    isReadable: 0
+    isReadable: 1
   meshes:
     lODScreenPercentages: []
     globalScale: 1

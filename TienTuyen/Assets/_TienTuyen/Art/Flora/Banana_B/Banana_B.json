@@ -1,0 +1,31 @@
+{
+ "name": "Banana_B",
+ "materials": [
+  {
+   "name": "Banana_B_M0",
+   "leaf": true,
+   "cutout": true,
+   "normal": false
+  },
+  {
+   "name": "Banana_B_M1",
+   "leaf": false,
+   "cutout": false,
+   "normal": true
+  },
+  {
+   "name": "Banana_B_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "height": 4.2,
+ "radius": 2.398,
+ "tris": [
+  1144,
+  457,
+  4
+ ]
+}

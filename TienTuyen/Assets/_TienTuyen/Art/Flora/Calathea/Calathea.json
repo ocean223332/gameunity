@@ -1,0 +1,25 @@
+{
+ "name": "Calathea",
+ "materials": [
+  {
+   "name": "Calathea_M0",
+   "leaf": true,
+   "cutout": false,
+   "normal": true
+  },
+  {
+   "name": "Calathea_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "height": 0.8,
+ "radius": 0.727,
+ "tris": [
+  1441,
+  630,
+  4
+ ]
+}

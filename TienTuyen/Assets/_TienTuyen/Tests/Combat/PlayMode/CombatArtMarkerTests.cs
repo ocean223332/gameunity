@@ -40,6 +40,56 @@ namespace TienTuyen.Combat.Tests
         }
 
         [Test]
+        public void GroundIsFlatWhereverSoldiersCanWalk()
+        {
+            for (float x = -CombatEnvironment.ArenaHalfX; x <= CombatEnvironment.ArenaHalfX; x += .25f)
+            for (float z = -CombatEnvironment.ArenaHalfZ; z <= CombatEnvironment.ArenaHalfZ; z += .25f)
+                Assert.That(CombatEnvironment.GroundHeight(x, z), Is.EqualTo(0f), "Ground at " + x + ", " + z);
+        }
+
+        [UnityTest]
+        public IEnumerator FloraNeverBlocksAndTallPlantsStayOutsideTheCoverBand()
+        {
+            FloraScatter flora = null;
+            for (var frame = 0; frame < 30 && flora == null; frame++, flora = Object.FindFirstObjectByType<FloraScatter>())
+                yield return null;
+            Assert.That(flora, Is.Not.Null);
+            Assert.That(flora.Instances.Count, Is.GreaterThan(0));
+            // Shots, line of sight and the camera's sphere cast must never hit a plant.
+            Assert.That(flora.GetComponentsInChildren<Collider>(true), Is.Empty);
+            foreach (var plant in flora.Instances)
+                if (flora.HeightOf(plant) > FloraBiome.TallHeight)
+                    Assert.That(CombatEnvironment.OutsideDistance(plant.Position.x, plant.Position.z), Is.GreaterThanOrEqualTo(5.5f),
+                        flora.Biome.Plants[plant.Species].Name + " at " + plant.Position);
+        }
+
+        [UnityTest]
+        public IEnumerator SandbagsFillEachCoverBoxExactly()
+        {
+            Transform station = null;
+            for (var frame = 0; frame < 30 && station == null; frame++, station = game.transform.Find("Environment/Station"))
+                yield return null;
+            Assert.That(station, Is.Not.Null);
+            var bags = new System.Collections.Generic.List<Bounds>();
+            foreach (Transform cluster in station)
+                if (cluster.name == "Cover") bags.Add(cluster.Find("Cover_LOD0").GetComponent<Renderer>().bounds);
+            var covers = game.GetComponentsInChildren<BoxCollider>(true);
+            int count = 0;
+            foreach (var cover in covers)
+            {
+                if (cover.name != "Cover") continue;
+                count++;
+                Assert.That(cover.GetComponent<Renderer>().enabled, Is.False, "Bags replace the cover box at " + cover.bounds.center);
+                // What you see is what stops bullets: the bags' outer faces sit on the collider's faces.
+                Bounds box = cover.bounds;
+                Assert.That(bags.Exists(b => Vector3.Distance(b.min, box.min) < .06f && Vector3.Distance(b.max, box.max) < .06f),
+                    "No sandbag emplacement matches the cover box " + box);
+            }
+            Assert.That(count, Is.GreaterThan(0));
+            Assert.That(bags.Count, Is.EqualTo(count));
+        }
+
+        [Test]
         public void HeroUpdatePulsesFootprintWithoutGrowingMarkerHeight()
         {
             var actor = game.transform.Find("Player");

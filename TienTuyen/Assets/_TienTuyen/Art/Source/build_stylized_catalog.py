@@ -317,74 +317,6 @@ def person(role):
         us_flag("flag patch", .195, -1, 1.34, .15, .285, stripe_count=7, star_rows=None)
 
 
-def gun(kind):
-    # Grip center is the object origin; muzzle points along +Y. Build at a
-    # readable modeling scale, then reduce to a plausible handheld length.
-    if kind == "rifle":
-        box("receiver", (0, .13, .09), (.18, .43, .18), "metal", .014)
-        box("long vented handguard", (0, .46, .08), (.20, .35, .14), "wood", .012)
-        segment("barrel", (0, .53, .10), (0, .98, .10), .042, "metal", 8)
-        box("butt stock", (0, -.31, .04), (.24, .42, .15), "wood", .025)
-        box("stock neck", (0, -.105, .06), (.13, .18, .12), "wood_light", .01)
-        magazine = box("swept magazine", (0, .20, -.12), (.12, .17, .30), "metal_light", .008)
-        magazine.rotation_euler.x = -.28
-        box("grip", (0, -.06, -.115), (.10, .11, .23), "wood", .01)
-        box("top rear sight", (0, .03, .21), (.12, .06, .07), "metal_light", .004)
-        box("front sight", (0, .89, .19), (.06, .045, .14), "metal")
-        box("muzzle brake", (0, .99, .10), (.13, .08, .11), "metal_light", .007)
-    elif kind == "smg":
-        box("compact receiver", (0, .10, .08), (.23, .43, .20), "metal", .018)
-        box("short heat shield", (0, .37, .10), (.20, .21, .16), "metal_light", .012)
-        segment("short barrel", (0, .38, .09), (0, .67, .09), .048, "metal", 8)
-        box("folded side stock", (-.13, -.24, .12), (.045, .40, .055), "metal_light")
-        box("wire stock end", (-.13, -.43, .01), (.055, .05, .24), "metal_light")
-        box("vertical magazine", (0, .15, -.18), (.125, .13, .38), "metal_light", .006)
-        box("grip", (0, -.10, -.12), (.11, .12, .26), "wood", .01)
-        box("raised top sight", (0, .15, .23), (.09, .11, .065), "sand", .005)
-        box("short muzzle", (0, .65, .09), (.15, .08, .12), "metal", .008)
-    else:
-        box("shotgun receiver", (0, .06, .08), (.20, .37, .19), "metal", .012)
-        box("wide pump", (0, .43, .05), (.27, .33, .15), "wood", .019)
-        segment("heavy barrel", (0, .31, .14), (0, .99, .14), .055, "metal", 10)
-        segment("underslung tube", (0, .31, .025), (0, .84, .025), .043, "metal_light", 8)
-        box("broad butt stock", (0, -.36, .035), (.25, .54, .17), "wood", .025)
-        box("grip", (0, -.09, -.11), (.11, .13, .24), "wood", .01)
-        for y in (.17, .29, .41):
-            box("shell band", (.13, y, .14), (.045, .045, .11), "supply_dark", .004)
-        box("muzzle ring", (0, .98, .14), (.16, .07, .14), "metal_light", .006)
-    for obj in bpy.context.scene.objects:
-        if obj.type == "MESH":
-            obj.location *= .72
-            obj.scale *= .72
-
-
-def crate(supply=False):
-    base = "supply" if supply else "wood"
-    slat = "supply_dark" if supply else "wood_light"
-    box("crate body", (0, 0, .36), (.78, .66, .72), base, .025)
-    for z in (.10, .61):
-        for y in (-.345, .345):
-            box("horizontal side slat", (0, y, z), (.82, .045, .09), slat, .006)
-        for x in (-.405, .405):
-            box("horizontal end slat", (x, 0, z), (.045, .70, .09), slat, .006)
-    for x in (-.33, .33):
-        box("lid slat", (x, 0, .75), (.1, .72, .055), slat, .006)
-    if supply:
-        box("front supply panel", (0, .37, .38), (.37, .023, .34), "supply_dark")
-        box("front supply vertical mark", (0, .387, .38), (.065, .015, .27), "supply")
-        box("front supply horizontal mark", (0, .387, .38), (.25, .015, .065), "supply")
-
-
-def sandbag():
-    for row in range(3):
-        count = 3 if row != 1 else 2
-        for i in range(count):
-            x = (i - (count - 1) / 2) * (.54 if row != 1 else .67)
-            y = -.13 if row == 1 else 0
-            box("stacked sandbag", (x, y, .115 + row * .20), (.59, .43, .20),
-                "sand_light" if (i + row) % 3 == 0 else "sand", .08)
-
-
 def tarp():
     # Two roof slopes form a separate opaque mesh, suitable for roof fading in Unity.
     for x in (-1.05, 1.05):
@@ -413,11 +345,6 @@ def tree():
         ico("separate olive canopy", (x, y, z), (sx, sy, sz), mat, 1)
 
 
-def rock():
-    ico("faceted rock", (0, 0, .40), (.78, .57, .49), "rock", 1)
-    ico("rock light facet", (-.30, .10, .59), (.37, .34, .23), "rock_light", 1)
-
-
 def bush():
     for x, y, z, scale, mat in [
         (-.33, 0, .32, (.44, .39, .36), "leaf_dark"),
@@ -437,19 +364,12 @@ def grass():
 
 ASSETS = {
     "hero": lambda: person("hero"),
-    "rifle": lambda: gun("rifle"),
-    "smg": lambda: gun("smg"),
-    "shotgun": lambda: gun("shotgun"),
     "enemy_infantry": lambda: person("infantry"),
     "enemy_shooter": lambda: person("shooter"),
     "enemy_charger": lambda: person("charger"),
     "enemy_elite": lambda: person("elite"),
-    "supply_crate": lambda: crate(True),
-    "crate": lambda: crate(False),
-    "sandbag": sandbag,
     "tarp": tarp,
     "tree": tree,
-    "rock": rock,
     "bush": bush,
     "grass": grass,
 }

@@ -1,0 +1,25 @@
+{
+ "name": "GrassClump",
+ "materials": [
+  {
+   "name": "GrassClump_Blades",
+   "leaf": true,
+   "cutout": true,
+   "normal": true
+  },
+  {
+   "name": "GrassClump_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "height": 0.591,
+ "radius": 0.4,
+ "tris": [
+  240,
+  80,
+  4
+ ]
+}
