@@ -44,3 +44,14 @@ Desktop.ini
 # Local verification artifacts and generated promotional video output.
 /TestResults/
 /video_output/
+
+# Local staging, editor recovery, screenshots and supervisor notes.
+/output/
+/TienTuyen/Assets/_Recovery/
+/TienTuyen/Assets/_Recovery.meta
+/TienTuyen/Assets/Screenshots/
+/TienTuyen/Assets/Screenshots.meta
+/docs/SUPERVISOR_HANDOFF.md
+
+# Shell compilation outputs belong outside the repository.
+/TienTuyen*.dll
