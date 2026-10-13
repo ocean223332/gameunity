@@ -996,10 +996,10 @@ MonoBehaviour:
     grip: {fileID: 11400000, guid: 42a93b13c0616014aab0cc676bd88877, type: 2}
   - weapon: smg
     model: {fileID: 919132149155446097, guid: 90f258aa0187fb34e901f9598cd61001, type: 3}
-    hold: {fileID: 7400000, guid: 471ffd4287d217d44b92253615e615b1, type: 2}
-    aim: {fileID: 7400000, guid: db2d55db0571036428eebbb7c8e320ac, type: 2}
-    run: {fileID: 7400000, guid: a13be6082131b07449e76651074b3d31, type: 2}
-    fire: {fileID: 7400000, guid: 8317f45af86900f42a084a0cea59084b, type: 2}
+    hold: {fileID: 7400000, guid: bf3df2ca0fa3d9d4ea0262f119f8a9f7, type: 2}
+    aim: {fileID: 7400000, guid: 1bb40eedc15abd943808fd8a5dec3d4d, type: 2}
+    run: {fileID: 7400000, guid: ea08865fc2c0f704a9cff951841a4607, type: 2}
+    fire: {fileID: 7400000, guid: 95b27c0577c114d4abe253a23efaf5c2, type: 2}
     reload: {fileID: 7400000, guid: 5f2f44794def8f941944e54694b681b4, type: 2}
     reloadStart: {fileID: 0}
     reloadInsert: {fileID: 0}
@@ -1007,10 +1007,10 @@ MonoBehaviour:
     grip: {fileID: 11400000, guid: 5d64806fdc9bcdd4d8610f37a1402271, type: 2}
   - weapon: shotgun
     model: {fileID: 919132149155446097, guid: 294c4f2eaeda2394683fc5a106f54a64, type: 3}
-    hold: {fileID: 7400000, guid: 471ffd4287d217d44b92253615e615b1, type: 2}
-    aim: {fileID: 7400000, guid: db2d55db0571036428eebbb7c8e320ac, type: 2}
-    run: {fileID: 7400000, guid: a13be6082131b07449e76651074b3d31, type: 2}
-    fire: {fileID: 7400000, guid: 8317f45af86900f42a084a0cea59084b, type: 2}
+    hold: {fileID: 7400000, guid: 6a7bb81afe16ca949a831dc0e7d61c88, type: 2}
+    aim: {fileID: 7400000, guid: 68d31978a393c474b9d5aefc9a5ebabf, type: 2}
+    run: {fileID: 7400000, guid: 6acaab9015b72124684b49a941d204bd, type: 2}
+    fire: {fileID: 7400000, guid: cb363ec46ec436943ac2013c230a6a81, type: 2}
     reload: {fileID: 7400000, guid: cd25582af2c3ff44cbe080cc48840f19, type: 2}
     reloadStart: {fileID: 7400000, guid: e150d7e939944e347a0b905b682bef11, type: 2}
     reloadInsert: {fileID: 7400000, guid: bd2c1cb6eed927d4abeb84f00e0a3d50, type: 2}

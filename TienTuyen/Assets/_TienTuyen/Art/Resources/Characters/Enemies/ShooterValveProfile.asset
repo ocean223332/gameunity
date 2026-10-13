@@ -993,10 +993,10 @@ MonoBehaviour:
   weaponSets:
   - weapon: smg
     model: {fileID: 919132149155446097, guid: 90f258aa0187fb34e901f9598cd61001, type: 3}
-    hold: {fileID: 7400000, guid: 7fb752e5f818cc54ea78186a39d84c09, type: 2}
-    aim: {fileID: 7400000, guid: 36e16f23960d5384b8ccb1622f07452c, type: 2}
-    run: {fileID: 7400000, guid: 855c1ea1a521e6c4b9200e6af5e2bbb8, type: 2}
-    fire: {fileID: 7400000, guid: d546b4826d76ae0459dfcad5ff85d0c0, type: 2}
+    hold: {fileID: 7400000, guid: d779d9d9ea6eda8458617805288593cd, type: 2}
+    aim: {fileID: 7400000, guid: 72ea3d7d86c83e74fbb855d6020e7ed5, type: 2}
+    run: {fileID: 7400000, guid: db22ff1a5b3b2dd49afca48e3ad309de, type: 2}
+    fire: {fileID: 7400000, guid: fe1e2e5ae9862ff4f93b1ab3939a0d64, type: 2}
     reload: {fileID: 7400000, guid: 18e1b38761869244ab97dc068db393a7, type: 2}
     reloadStart: {fileID: 0}
     reloadInsert: {fileID: 0}

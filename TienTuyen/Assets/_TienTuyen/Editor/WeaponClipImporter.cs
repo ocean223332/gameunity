@@ -27,8 +27,9 @@ namespace TienTuyen.Editor
         private const string GunDir = "Assets/_TienTuyen/Art/Weapons/World";
         private const string TakesPath = AnimationDir + "/xdr_ak.fbx";
         private const string RestPath = AnimationDir + "/xdr_ak@TPose.fbx";
-        // Further takes on the same skeleton, optional: the per-weapon reloads.
-        private const string ReloadsPath = AnimationDir + "/xdr_ak@Reloads.fbx";
+        // The MP5-SD's and XM1014's own takes on the same skeleton (each gun's stance, run, fire and reloads).
+        private const string Mp5Path = AnimationDir + "/xdr_ak@MP5.fbx";
+        private const string XmPath = AnimationDir + "/xdr_ak@XM.fbx";
         // The knife takes (output/clip-source/_scripts/xdr_knife.py), played as they are by the bodies on the xdR bind.
         private const string KnifePath = AnimationDir + "/xdr_ak@Knife.fbx";
         // The knife takes play whole on the ValveBiped bodies, which face a quarter turn right of the takes' original
@@ -44,19 +45,20 @@ namespace TienTuyen.Editor
         private static readonly string[] ValveTargetBones = { SourceWeapon, SourceWeapon + "_RHand", SourceWeapon + "_LHand" };
 
         /// <summary>
-        /// Game weapon id, world gun file, its reload take, and its shell-by-shell takes (start, insert, end) or none. A gun
-        /// whose own takes are not imported reloads with the AK's magazine change.
+        /// Game weapon id, world gun file, the file of the gun's own takes and the suffix on their slot takes' names, its reload
+        /// take, and its shell-by-shell takes (start, insert, end) or none. The shotgun's magazine-change slot keeps the AK's reload.
         /// </summary>
-        private static readonly (string weapon, string model, string reload, string[] shells)[] Guns =
+        private static readonly (string weapon, string model, string file, string suffix, string reload, string[] shells)[] Guns =
         {
-            ("rifle", "w_ak47", AkReload, null), ("smg", "w_mp5sd", "reload_mp5", null),
-            ("shotgun", "w_xm1014", AkReload, new[] { "reload_xm_start", "reload_xm_loop", "reload_xm_end" }),
+            ("rifle", "w_ak47", TakesPath, "", AkReload, null), ("smg", "w_mp5sd", Mp5Path, "_mp5", "reload_mp5", null),
+            ("shotgun", "w_xm1014", XmPath, "_xm", AkReload, new[] { "reload_xm_start", "reload_xm_loop", "reload_xm_end" }),
         };
         private const string AkReload = "reload";
 
-        /// <summary>Clip set slot, xdR take, shared by every gun.</summary>
+        /// <summary>Clip set slot and its xdR take; a gun's own take has the gun's suffix (stand_idle_mp5).</summary>
         private static readonly (string slot, string take)[] Slots =
             { ("hold", "stand_idle"), ("aim", "stand_aim"), ("run", "run_N"), ("fire", "fire") };
+        private static readonly string[] Suffixes = Guns.Select(g => g.suffix).Where(x => x.Length > 0).ToArray();
 
         private static readonly string[] Loops = { "stand_idle", "run_N", "run_S", "run_E", "run_W", "reload_xm_loop" };
 
@@ -127,31 +129,30 @@ namespace TienTuyen.Editor
             CopySources();
             var rest = HumanoidRigSetup.ImportRestPose(RestPath);
             var files = TakeFiles().ToArray();
-            var available = files.SelectMany(f => TakesIn(f).Select(t => (file: f, take: t))).GroupBy(t => t.take).ToDictionary(g => g.Key, g => g.First().file);
-            // A gun's own takes when the files have them; otherwise the AK reload.
-            string Reload(string take) => available.ContainsKey(take) ? take : AkReload;
-            string[] Shells(string[] takes) => takes != null && takes.All(available.ContainsKey) ? takes : null;
-            var wanted = Slots.Select(sl => sl.take).Concat(Guns.SelectMany(g => new[] { Reload(g.reload) }.Concat(Shells(g.shells) ?? Array.Empty<string>()))).Distinct().ToArray();
-            foreach (string take in wanted.Where(t => !available.ContainsKey(t))) throw new InvalidOperationException("No take " + take + " in the xdR files");
-            var takes = files.SelectMany(f => ReadSourceTakes(f, wanted.Where(t => available[t] == f))).ToDictionary(t => t.Key, t => t.Value);
+            string Slot(int gun, string slot) => Slots.First(sl => sl.slot == slot).take + Guns[gun].suffix;
+            string ReloadFile(int gun) => Guns[gun].reload == AkReload ? TakesPath : Guns[gun].file;
+            var wanted = Guns.SelectMany((g, i) => Slots.Select(sl => (file: g.file, take: Slot(i, sl.slot)))
+                    .Append((file: ReloadFile(i), take: g.reload))
+                    .Concat((g.shells ?? Array.Empty<string>()).Select(t => (file: g.file, take: t))))
+                .Distinct().ToArray();
+            foreach (var (file, take) in wanted.Where(w => !TakesIn(w.file).Contains(w.take))) throw new InvalidOperationException("No take " + take + " in " + file);
+            var takes = files.SelectMany(f => ReadSourceTakes(f, wanted.Where(w => w.file == f).Select(w => w.take))).ToDictionary(t => t.Key, t => t.Value);
             var avatar = ImportHumanoid(files, rest);
             var retarget = new Retarget(ReferencePose(AssetDatabase.LoadAssetAtPath<GameObject>(TakesPath), avatar), ReferencePose(profile.model, profile.avatar));
-            string aimTake = Slots.First(sl => sl.slot == "aim").take;
-            Vector3 aim = AimForward(profile, retarget, Clip(available[aimTake], aimTake), takes[aimTake]);
-            var clips = wanted.ToDictionary(take => take, take => Bake(profile, clipPrefix ?? profile.name, retarget, aim, available[take], take, takes[take]));
-            AnimationClip Slot(string slot) => clips[Slots.First(sl => sl.slot == slot).take];
-            return Guns.Select(g =>
+            // Each gun's clips square the hips onto its own aim take's bore.
+            var aims = Guns.Select((g, i) => AimForward(profile, retarget, Clip(g.file, Slot(i, "aim")), takes[Slot(i, "aim")])).ToArray();
+            var clips = new Dictionary<string, AnimationClip>();
+            AnimationClip Baked(int gun, string file, string take) => clips.TryGetValue(take, out var clip) ? clip
+                : clips[take] = Bake(profile, clipPrefix ?? profile.name, retarget, aims[gun], file, take, takes[take]);
+            return Guns.Select((g, i) => new WeaponClipSet
             {
-                var shells = Shells(g.shells);
-                return new WeaponClipSet
-                {
-                    weapon = g.weapon,
-                    model = AssetDatabase.LoadAssetAtPath<GameObject>(GunDir + "/" + g.model + ".fbx"),
-                    hold = Slot("hold"), aim = Slot("aim"), run = Slot("run"), fire = Slot("fire"), reload = clips[Reload(g.reload)],
-                    reloadStart = shells != null ? clips[shells[0]] : null,
-                    reloadInsert = shells != null ? clips[shells[1]] : null,
-                    reloadEnd = shells != null ? clips[shells[2]] : null,
-                };
+                weapon = g.weapon,
+                model = AssetDatabase.LoadAssetAtPath<GameObject>(GunDir + "/" + g.model + ".fbx"),
+                hold = Baked(i, g.file, Slot(i, "hold")), aim = Baked(i, g.file, Slot(i, "aim")), run = Baked(i, g.file, Slot(i, "run")),
+                fire = Baked(i, g.file, Slot(i, "fire")), reload = Baked(i, ReloadFile(i), g.reload),
+                reloadStart = g.shells != null ? Baked(i, g.file, g.shells[0]) : null,
+                reloadInsert = g.shells != null ? Baked(i, g.file, g.shells[1]) : null,
+                reloadEnd = g.shells != null ? Baked(i, g.file, g.shells[2]) : null,
             }).ToArray();
         }
 
@@ -176,7 +177,7 @@ namespace TienTuyen.Editor
             string repo = Path.GetFullPath(Path.Combine(Application.dataPath, "..", ".."));
             Copy(Path.Combine(repo, TakesSource, "xdr_ak.fbx"), TakesPath);
             Copy(Path.Combine(repo, TakesSource, "xdr_ak@TPose.fbx"), RestPath);
-            if (File.Exists(Path.Combine(repo, TakesSource, "xdr_ak@Reloads.fbx"))) Copy(Path.Combine(repo, TakesSource, "xdr_ak@Reloads.fbx"), ReloadsPath);
+            foreach (string path in new[] { Mp5Path, XmPath }) Copy(Path.Combine(repo, TakesSource, Path.GetFileName(path)), path);
             foreach (string model in Guns.Select(g => g.model))
             {
                 Copy(Path.Combine(repo, GunSource, model + ".fbx"), GunDir + "/" + model + ".fbx");
@@ -203,12 +204,8 @@ namespace TienTuyen.Editor
                 return Convert.ToBase64String(sha.ComputeHash(stream));
         }
 
-        /// <summary>The xdR files present: the main takes, then the optional reloads.</summary>
-        private static IEnumerable<string> TakeFiles()
-        {
-            yield return TakesPath;
-            if (AssetImporter.GetAtPath(ReloadsPath) is ModelImporter) yield return ReloadsPath;
-        }
+        /// <summary>The xdR files: the main takes, then the MP5-SD's and the XM1014's.</summary>
+        private static IEnumerable<string> TakeFiles() => new[] { TakesPath, Mp5Path, XmPath };
 
         private static IEnumerable<string> TakesIn(string path) =>
             ((ModelImporter)AssetImporter.GetAtPath(path)).importedTakeInfos.Select(t => TakeName(t.name));
@@ -244,7 +241,7 @@ namespace TienTuyen.Editor
             clip.name = prefix + take;
             // A one-frame take imports as an empty clip; span it to the next frame so its keys are kept.
             clip.lastFrame = Mathf.Max(clip.lastFrame, clip.firstFrame + 1);
-            clip.loopTime = Loops.Contains(take);
+            clip.loopTime = Loops.Contains(Suffixes.Where(take.EndsWith).Select(x => take.Substring(0, take.Length - x.Length)).FirstOrDefault() ?? take);
             // Root motion stays in the pose.
             clip.lockRootRotation = clip.lockRootHeightY = clip.lockRootPositionXZ = true;
             clip.keepOriginalOrientation = clip.keepOriginalPositionY = clip.keepOriginalPositionXZ = true;
