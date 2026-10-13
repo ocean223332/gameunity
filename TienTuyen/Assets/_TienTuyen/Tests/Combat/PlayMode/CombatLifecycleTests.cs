@@ -3,6 +3,7 @@ using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
 using TienTuyen.Content;
+using TienTuyen.Presentation;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
@@ -46,6 +47,48 @@ namespace TienTuyen.Combat.Tests
             Assert.That(game.Level, Is.EqualTo(1));
             Assert.That(game.Experience, Is.Zero);
             Assert.That(game.Kills, Is.Zero);
+        }
+
+        [Test]
+        public void MusicCrossfadeCanReverseAndPauseOrMuteBothTracks()
+        {
+            var audio = game.GetComponent<CombatAudio>();
+            var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            var tick = typeof(CombatAudio).GetMethod("TickMusic", flags);
+            var menu = (AudioSource)typeof(CombatAudio).GetField("menuMusic", flags).GetValue(audio);
+            var playing = (AudioSource)typeof(CombatAudio).GetField("playingMusic", flags).GetValue(audio);
+            float menuLevel = audio.MasterVolume * audio.MusicVolume;
+            float playingLevel = audio.MasterVolume * audio.PlayingMusicVolume;
+            game.ReturnToMenu();
+            audio.StartMusic();
+            Assert.That(menu.volume, Is.EqualTo(menuLevel).Within(.001f));
+            Assert.That(playing.volume, Is.Zero);
+
+            game.BeginRun();
+            tick.Invoke(audio, new object[] { .5f });
+            Assert.That(menu.volume, Is.GreaterThan(0f).And.LessThan(menuLevel));
+            Assert.That(playing.volume, Is.GreaterThan(0f).And.LessThan(playingLevel));
+            float menuHalf = menu.volume;
+            float playingHalf = playing.volume;
+            game.TogglePause();
+            tick.Invoke(audio, new object[] { 0f });
+            Assert.That(menu.volume, Is.EqualTo(menuHalf * .06f).Within(.001f));
+            Assert.That(playing.volume, Is.EqualTo(playingHalf * .06f).Within(.001f));
+            audio.MuteMusic = true;
+            tick.Invoke(audio, new object[] { 0f });
+            Assert.That(menu.volume + playing.volume, Is.Zero);
+            audio.MuteMusic = false;
+            game.ReturnToMenu();
+            tick.Invoke(audio, new object[] { .25f });
+            Assert.That(menu.volume, Is.GreaterThan(menuHalf));
+            Assert.That(playing.volume, Is.LessThan(playingHalf));
+            tick.Invoke(audio, new object[] { 1f });
+            Assert.That(menu.volume, Is.EqualTo(menuLevel).Within(.001f));
+            Assert.That(playing.volume, Is.Zero);
+            game.BeginRun();
+            tick.Invoke(audio, new object[] { 1f });
+            Assert.That(menu.volume, Is.Zero);
+            Assert.That(playing.volume, Is.EqualTo(playingLevel).Within(.001f));
         }
 
         [Test]

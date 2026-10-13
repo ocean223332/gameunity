@@ -14,7 +14,14 @@ publication; CC0 and public-domain sources are listed for provenance.
 | 5 Hit Sounds + Dying | TinyWorlds | [OpenGameArt](https://opengameart.org/content/5-hit-sounds-dying) | CC0 | Player hurt/death and enemy death vocal |
 | Swishes Sound Pack | artisticdude | [OpenGameArt](https://opengameart.org/content/swishes-sound-pack) | CC0 | Bullet near miss and charger dash |
 | Cicada Sounds | syncopika | [OpenGameArt](https://opengameart.org/content/cicada-sounds) | CC0 | Forest ambience |
-| Dipolog City March | Recorded in Dipolog City | [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Dipolog_City_March.ogg) | Recorded as public domain; current music retained | Combat music |
+| Adagio for Strings, Op. 11 (1936); Platoon soundtrack recording (Atlantic, 1986) | Samuel Barber; Vancouver Symphony Orchestra, conducted by Georges Delerue (orchestra as credited on the album; video names only Delerue) | [YouTube upload](https://www.youtube.com/watch?v=hqVFWlZcnUg), channel [서해지](https://www.youtube.com/channel/UC92UvwU5ZlP3M__GQRSuMHg), uploaded 2023-03-19; downloaded as Opus via yt-dlp | Copyrighted composition (Barber, d. 1981) and recording (Atlantic); fan upload with no licence | Menu music, transcoded to OGG and edited into an internal loop |
+| Constance (2011), ISRC USUAN1100850 | Kevin MacLeod (composition and production) | [incompetech.com](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100850) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); attribution below | In-game music, transcoded to OGG and edited into an internal loop |
+
+> "Constance" Kevin MacLeod (incompetech.com)
+>
+> Licensed under Creative Commons: By Attribution 4.0 License
+>
+> http://creativecommons.org/licenses/by/4.0/
 
 ## Environment
 

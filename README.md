@@ -55,6 +55,25 @@ Reload, draw, knife and shell contacts come from the [RAGNA SS GameBanana pack
 originals; their credits and the pack's licence note are recorded in
 [CREDITS](docs/CREDITS.md) and [Audio/Sources.md](TienTuyen/Assets/_TienTuyen/Audio/Sources.md).
 The remaining UI, impact, vocal, swish and cicada recordings are CC0 from Kenney,
-TinyWorlds, artisticdude and syncopika. The existing combat music remains unchanged.
+TinyWorlds, artisticdude and syncopika.
+
+The menu plays **Adagio for Strings, Op. 11** by Samuel Barber (1936), performed by
+the Vancouver Symphony Orchestra, conducted by Georges Delerue, from the *Platoon*
+soundtrack (Atlantic, 1986; orchestra credit from the album, the video names only
+Delerue). Source: [YouTube](https://www.youtube.com/watch?v=hqVFWlZcnUg), uploaded
+2023-03-19 by [서해지](https://www.youtube.com/channel/UC92UvwU5ZlP3M__GQRSuMHg).
+The composition and recording are copyrighted; the fan upload grants no licence.
+
+Starting a run crossfades to **Constance** (Kevin MacLeod, 2011, ISRC USUAN1100850)
+at the existing quieter in-game level; returning to the menu crossfades back.
+Both tracks use edited internal loops. Constance is sourced from
+[incompetech.com](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100850)
+under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/):
+
+> "Constance" Kevin MacLeod (incompetech.com)
+>
+> Licensed under Creative Commons: By Attribution 4.0 License
+>
+> http://creativecommons.org/licenses/by/4.0/
 
 The design documents describe the target experience; features are only considered available once implemented and verified. The confirmed configuration above supersedes the corresponding "undecided" notes in earlier proposal documents.

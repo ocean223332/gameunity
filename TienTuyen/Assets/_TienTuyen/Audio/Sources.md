@@ -27,6 +27,30 @@ the Valve originals. The pack is retained as the source archive and credited her
 | Bullet near miss and charger swish | [artisticdude, Swishes Sound Pack](https://opengameart.org/content/swishes-sound-pack) | CC0 |
 | Forest cicada ambience | [syncopika, Cicada Sounds](https://opengameart.org/content/cicada-sounds) | CC0 |
 
-`Music_Combat.ogg` remains the existing Dipolog City March from [Wikimedia
-Commons](https://commons.wikimedia.org/wiki/File:Dipolog_City_March.ogg), recorded as
-public domain. Music selection is outside this SFX change.
+## Music
+
+`Music_Menu_Adagio.ogg` is **Adagio for Strings, Op. 11**, composed by Samuel Barber
+(1936), performed by the Vancouver Symphony Orchestra, conducted by Georges Delerue,
+from the *Platoon* original soundtrack (Atlantic, 1986). The orchestra credit is from
+the soundtrack album; the video names only Delerue. Source: the
+[YouTube upload](https://www.youtube.com/watch?v=hqVFWlZcnUg) by channel
+[서해지](https://www.youtube.com/channel/UC92UvwU5ZlP3M__GQRSuMHg), uploaded 2023-03-19,
+downloaded with yt-dlp as Opus. The composition (Barber, d. 1981) and recording
+(Atlantic) are copyrighted; the fan upload has no licence.
+
+`Music_Combat_Constance.ogg` is **Constance**, composed and produced by Kevin MacLeod,
+released in 2011, ISRC USUAN1100850. Source:
+[incompetech.com](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100850),
+under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+
+> "Constance" Kevin MacLeod (incompetech.com)
+>
+> Licensed under Creative Commons: By Attribution 4.0 License
+>
+> http://creativecommons.org/licenses/by/4.0/
+
+Both imports are stereo OGG at 48 kHz, with an internal loop and a 1.5-second linear
+crossfade baked across its boundary. Adagio uses source seconds 13.19–386.45 (371.76
+seconds after the overlap); Constance uses 2.83–118.49 (114.16 seconds after overlap).
+Each file begins halfway through its baked overlap, so its end continues directly
+into its start. No gain normalization is baked into either track.

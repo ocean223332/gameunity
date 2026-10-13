@@ -16,7 +16,8 @@ namespace TienTuyen.Presentation
         private static readonly string[] ClipNames =
         {
             "Ambience_Forest__cicadas_loop",
-            "Music_Combat",
+            "Music_Menu_Adagio",
+            "Music_Combat_Constance",
             "Rifle_Shot__ak47_01",
             "Rifle_Shot_Distant__ak47_distant",
             "SMG_Shot__mp5_01",
@@ -78,16 +79,16 @@ namespace TienTuyen.Presentation
         private readonly Dictionary<string, ReloadSourceContacts> reloadSources =
             new Dictionary<string, ReloadSourceContacts>(StringComparer.Ordinal);
         private readonly List<AudioSource> worldSources = new List<AudioSource>();
-        private AudioSource music;
+        private AudioSource menuMusic;
+        private AudioSource playingMusic;
         private AudioSource ambience;
         private AudioSource sfx;
         private AudioSource ui;
         private CombatState previousState;
         private float previousHealth;
         private float unscaledTime;
-        private bool musicVolumeInitialized;
-        private bool previousMusicPaused;
-        private bool previousMuteMusic;
+        private bool musicStarted;
+        private float musicBlend;
         private Transform player;
         private readonly Dictionary<Transform, StepState> steps = new Dictionary<Transform, StepState>();
         private ReloadState reload;
@@ -106,6 +107,9 @@ namespace TienTuyen.Presentation
         public bool MuteSfx;
         public bool MuteUi;
         public bool MuteAmbience;
+
+        [Header("Music startup")]
+        public bool AutoStartMusic = true;
 
         private sealed class StepState
         {
@@ -176,7 +180,10 @@ namespace TienTuyen.Presentation
             player = transform.Find("Player");
             LoadClips();
             heroProfile = Resources.Load<SkinnedCharacterProfile>("Characters/PAVN/PAVN_ValveProfile");
-            music = CreateSource("Music", true, MusicVolume, false);
+            menuMusic = CreateSource("Music_Menu", true, 0f, false);
+            playingMusic = CreateSource("Music_Playing", true, 0f, false);
+            menuMusic.clip = clips["Music_Menu_Adagio"];
+            playingMusic.clip = clips["Music_Combat_Constance"];
             ambience = CreateSource("Ambience", true, AmbienceVolume, false);
             sfx = CreateSource("SFX", false, SfxVolume, false);
             ui = CreateSource("UI", false, UiVolume, false);
@@ -190,8 +197,22 @@ namespace TienTuyen.Presentation
 
         private void Start()
         {
-            PlayLoop(music, "Music_Combat");
+            if (AutoStartMusic && !musicStarted)
+            {
+                StartMusic();
+            }
             PlayLoop(ambience, "Ambience_Forest__cicadas_loop");
+        }
+
+        /// <summary>With AutoStartMusic disabled, an intro can start the menu score at its handoff offset.</summary>
+        public void StartMusic(float menuOffsetSeconds = 0f)
+        {
+            menuMusic.Stop();
+            playingMusic.Stop();
+            menuMusic.time = Mathf.Repeat(menuOffsetSeconds, menuMusic.clip.length);
+            musicBlend = game.State == CombatState.Menu ? 0f : 1f;
+            musicStarted = true;
+            TickMusic(0f);
         }
 
         private void OnEnable()
@@ -774,7 +795,8 @@ namespace TienTuyen.Presentation
             source.ignoreListenerPause = name == "UI";
             if (Mixer != null)
             {
-                var groups = Mixer.FindMatchingGroups(positional ? "SFX" : name);
+                string group = name.StartsWith("Music", StringComparison.Ordinal) ? "Music" : name;
+                var groups = Mixer.FindMatchingGroups(positional ? "SFX" : group);
                 if (groups != null && groups.Length > 0)
                     source.outputAudioMixerGroup = groups[0];
             }
@@ -785,26 +807,43 @@ namespace TienTuyen.Presentation
         {
             bool paused = game.State == CombatState.Paused;
             float duck = paused ? .06f : 1f;
-            float menu = MasterVolume * MusicVolume * (MuteMusic ? 0 : 1);
-            float playing = MasterVolume * PlayingMusicVolume * (MuteMusic ? 0 : 1);
-            float target = (game.State == CombatState.Menu ? menu : playing) * duck;
-            if (!musicVolumeInitialized || paused != previousMusicPaused || MuteMusic != previousMuteMusic)
-            {
-                music.volume = target;
-            }
-            else
-            {
-                float rate = Mathf.Max(Mathf.Abs(menu - playing), .05f);
-                music.volume = Mathf.MoveTowards(music.volume, target, rate * Time.unscaledDeltaTime);
-            }
-            musicVolumeInitialized = true;
-            previousMusicPaused = paused;
-            previousMuteMusic = MuteMusic;
+            TickMusic(Time.unscaledDeltaTime);
             ambience.volume = MasterVolume * AmbienceVolume * duck * (MuteAmbience ? 0 : 1);
             sfx.volume = MasterVolume * SfxVolume * duck * (MuteSfx ? 0 : 1);
             foreach (var source in worldSources)
                 source.volume = MasterVolume * SfxVolume * duck * (MuteSfx ? 0 : 1);
             ui.volume = MasterVolume * UiVolume * (MuteUi ? 0 : 1);
+        }
+
+        private void TickMusic(float deltaTime)
+        {
+            if (!musicStarted) return;
+            float target = game.State == CombatState.Menu ? 0f : 1f;
+            // Keep the blend independent of ducking/mute so either changes both tracks immediately.
+            musicBlend = Mathf.MoveTowards(musicBlend, target, deltaTime);
+            float volume = MasterVolume * (MuteMusic ? 0f : 1f);
+            if (game.State == CombatState.Paused) volume *= .06f;
+            SetMusicWeight(menuMusic, 1f - musicBlend, MusicVolume * volume);
+            SetMusicWeight(playingMusic, musicBlend, PlayingMusicVolume * volume);
+        }
+
+        private static void SetMusicWeight(AudioSource source, float weight, float volume)
+        {
+            source.volume = weight * volume;
+            if (weight <= 0f)
+            {
+                source.Pause();
+                return;
+            }
+            if (source.isPlaying)
+            {
+                return;
+            }
+            source.UnPause();
+            if (!source.isPlaying)
+            {
+                source.Play();
+            }
         }
 
         private static void PlayLoop(AudioSource source, string clipName)
