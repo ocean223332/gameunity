@@ -52,6 +52,10 @@ publication; CC0 and public-domain sources are listed for provenance.
 The four enemy bodies (Infantry, Charger, Shooter, Elite) were generated for the project with Hunyuan3D, then
 refitted and skinned to the xdR ValveBiped skeleton.
 
+The hero's mesh and textures (`Art/Characters/ValveBiped/Hero`) were generated for the project with Tripo, then
+skinned to the xdR ValveBiped skeleton. Its grips were posed by eye after Valve's CS:GO GIGN third-person
+model, which served only as a visual reference and is not shipped.
+
 ## CS:GO weapons and animations
 
 | Asset | Author / original creator | Source | Licence | Used for |
