@@ -13,9 +13,9 @@ namespace TienTuyen.Editor
     /// Installs the four enemy bodies fitted on the exact xdR ValveBiped bind (output/enemy/work, Hunyuan bodies with
     /// MakeHuman gloved hands) as the enemy profiles. Each keeps the actions and timings of the US rifleman profile it
     /// replaces. Infantry and Charger play the CS:GO knife takes as they are (they share the xdR bind), with the US
-    /// infantry flinch on an upper-body mask that leaves the fingers to the takes. Shooter and Elite keep the US clips
-    /// with speeds rescaled to the new body, and carry the CS:GO MP5-SD and AK on clips baked for the ValveBiped
-    /// skeleton, with each body's own hand correction (output/enemy/work/corr) when it exists.
+    /// infantry flinch on an upper-body mask that leaves the fingers to the takes. Shooter and Elite move on the CS:GO AK
+    /// takes (<see cref="GunLocomotion"/>) and carry the CS:GO MP5-SD and AK on clips baked for the ValveBiped skeleton,
+    /// with each body's own hand correction (output/enemy/work/corr) when it exists.
     /// </summary>
     public static class ValveBipedCharacterImporter
     {
@@ -30,9 +30,10 @@ namespace TienTuyen.Editor
         public const float EliteScale = 1.1f;
         // Fist centre from the wrist (metres along the hand, toward the palm) on the MakeHuman hands, set by render.
         private static readonly Vector2 DaggerFist = new Vector2(.075f, .025f);
-        // Planted-foot speeds of the knife runs on the xdR skeleton (m/s) and their cycle (s), measured by
-        // output/clip-source/_scripts/xdr_knife.py. E is the right strafe (Source +Y is left).
-        private const float KnifeRunN = 3.9f, KnifeRunS = 3.21f, KnifeRunE = 2.47f, KnifeRunW = 2.33f, KnifeRunCycle = .843f;
+        // Planted-foot speeds of the CS:GO runs on the xdR skeleton (m/s) and their cycle (s), measured on the knife runs by
+        // output/clip-source/_scripts/xdr_knife.py; every weapon's run shares the legs (a_move_run<d>). E is the right strafe
+        // (Source +Y is left).
+        private const float RunN = 3.9f, RunS = 3.21f, RunE = 2.47f, RunW = 2.33f, RunCycle = .843f;
 
         private static readonly (string type, string source, string weapon, string gun)[] Types =
         {
@@ -108,15 +109,20 @@ namespace TienTuyen.Editor
                         HumanScale(model, avatar) / HumanScale(knife.model, knife.avatar) * scale);
                 // The dagger's handle sits in the closed MakeHuman fist.
                 if (profile.guardHold) profile.fistChannel = DaggerFist;
-                profile.deathFloorLift = SkinnedCharacterProfileBaker.MeasureDeathFloorLift(profile);
-                SkinnedCharacterProfileBaker.MeasureSoles(profile);
-                SkinnedCharacterProfileBaker.MeasureBack(profile);
+                WeaponClipSet carried = null;
                 if (weapon != null)
                 {
                     sets = sets ?? WeaponClipImporter.BakeSets(profile, ClipPrefix);
-                    var set = Copy(sets.First(s => s.weapon == weapon));
-                    set.grip = Grip(type, gun, set);
-                    profile.weaponSets = new[] { set };
+                    carried = Copy(sets.First(s => s.weapon == weapon));
+                    GunLocomotion(profile, HumanScale(model, avatar) / HumanScale(knife.model, knife.avatar) * scale, knife.clips["death"]);
+                }
+                profile.deathFloorLift = SkinnedCharacterProfileBaker.MeasureDeathFloorLift(profile);
+                SkinnedCharacterProfileBaker.MeasureSoles(profile);
+                SkinnedCharacterProfileBaker.MeasureBack(profile);
+                if (carried != null)
+                {
+                    carried.grip = Grip(type, gun, carried);
+                    profile.weaponSets = new[] { carried };
                 }
                 EditorUtility.SetDirty(profile);
                 AssetDatabase.SaveAssets();
@@ -137,8 +143,8 @@ namespace TienTuyen.Editor
             profile.aim = null;
             profile.runForward = Take("run_N"); profile.runBackward = Take("run_S");
             profile.strafeLeft = Take("run_W"); profile.strafeRight = Take("run_E");
-            profile.runForwardSpeed = KnifeRunN * k; profile.runBackwardSpeed = KnifeRunS * k;
-            profile.strafeLeftSpeed = KnifeRunW * k; profile.strafeRightSpeed = KnifeRunE * k;
+            profile.runForwardSpeed = RunN * k; profile.runBackwardSpeed = RunS * k;
+            profile.strafeLeftSpeed = RunW * k; profile.strafeRightSpeed = RunE * k;
             profile.runCarriesUpperBody = false;
             profile.reload = null;
             profile.hit = hit;
@@ -149,9 +155,30 @@ namespace TienTuyen.Editor
             {
                 profile.chargeTelegraph = Take("stand_aim");
                 profile.chargeDash = Take("run_N");
-                profile.chargeDashCycleDistance = KnifeRunN * KnifeRunCycle * k;
+                profile.chargeDashCycleDistance = RunN * RunCycle * k;
                 profile.chargeRecovery = Take("stand_idle");
             }
+        }
+
+        /// <summary>
+        /// A gun body's locomotion on the CS:GO AK takes, played whole: the legs and hips move as in CS:GO under the carried
+        /// weapon's upper body. Idle, aim and the four runs, CS:GO's death (@Death1), and no hit flinch, as CS:GO plays none.
+        /// The takes must be imported (<see cref="WeaponClipImporter.BakeSets"/>).
+        /// </summary>
+        /// <param name="k">Human size of the body over the xdR skeleton's.</param>
+        internal static void GunLocomotion(SkinnedCharacterProfile profile, float k, AnimationClip death)
+        {
+            var takes = WeaponClipImporter.ImportBodyTakes();
+            AnimationClip Take(string name) => takes.TryGetValue(name, out var clip) ? clip : throw new InvalidOperationException("No body take " + name);
+            profile.idle = Take("stand_idle");
+            profile.aim = Take("stand_aim");
+            profile.runForward = Take("run_N"); profile.runBackward = Take("run_S");
+            profile.strafeLeft = Take("run_W"); profile.strafeRight = Take("run_E");
+            profile.runForwardSpeed = RunN * k; profile.runBackwardSpeed = RunS * k;
+            profile.strafeLeftSpeed = RunW * k; profile.strafeRightSpeed = RunE * k;
+            profile.runCarriesUpperBody = false;
+            profile.hit = null;
+            profile.death = death;
         }
 
         /// <summary>Spine, head and arms without the fingers: the flinch and the attack leave the hands to the knife takes.</summary>

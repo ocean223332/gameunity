@@ -774,10 +774,12 @@ namespace TienTuyen.Presentation
             {
                 if (carrySet >= 0)
                 {
-                    // The carry clips are baked on hips square to the facing: the spine takes back the turn the profile's
-                    // own clips give the hips (the leg yaw is already taken back above).
+                    // The carry clips are baked on hips square to the facing: the spine's root takes back, whole, the turn the
+                    // profile's own clips give the hips (the leg yaw is already taken back above), so every spine bone and the
+                    // Weapon bone under the lowest one sit as baked.
                     Vector3 hipsForward = Vector3.Cross(rightUpperLeg.position - leftUpperLeg.position, up);
-                    TwistSpine(yaw - Vector3.SignedAngle(Vector3.ProjectOnPlane(pose.forward, up), Vector3.ProjectOnPlane(hipsForward, up), up), up);
+                    float square = yaw - Vector3.SignedAngle(Vector3.ProjectOnPlane(pose.forward, up), Vector3.ProjectOnPlane(hipsForward, up), up);
+                    if (spineChain.Length > 0) spineChain[0].rotation = Quaternion.AngleAxis(square, up) * spineChain[0].rotation;
                     // The whole spine takes the aim, so the arms, the weapon and the cheek on its stock move as one.
                     Pitch(spineChain, AimPitch(aimPoint) * holdAim);
                     AimCarried(weaponRoot, weaponMuzzle, aimPoint);

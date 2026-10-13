@@ -10,9 +10,9 @@ namespace TienTuyen.Editor
 {
     /// <summary>
     /// Installs the PAVN hero on the ValveBiped skeleton (output/hero-valve: the Tripo body with its own finger rest, ring and
-    /// little fingers included, scale 1) as the player profile PAVN_ValveProfile. It keeps the locomotion, hit and death clips
-    /// of PAVN_HeroProfile (left as it is) with speeds rescaled to the new body, and carries all three CS:GO guns on clips
-    /// baked for its own body, each with the hero's hand correction (<see cref="Correction"/>).
+    /// little fingers included, scale 1) as the player profile PAVN_ValveProfile, from PAVN_HeroProfile (left as it is). It
+    /// moves on the CS:GO AK takes (<see cref="ValveBipedCharacterImporter.GunLocomotion"/>) and carries all three CS:GO guns
+    /// on clips baked for its own body, each with the hero's hand correction (<see cref="Correction"/>).
     /// Batch: Unity -batchmode -projectPath TienTuyen -executeMethod TienTuyen.Editor.HeroValveImporter.Import -quit
     /// </summary>
     public static class HeroValveImporter
@@ -40,19 +40,19 @@ namespace TienTuyen.Editor
             if (profile == null) { profile = ScriptableObject.CreateInstance<SkinnedCharacterProfile>(); AssetDatabase.CreateAsset(profile, ProfilePath); }
             EditorUtility.CopySerialized(source, profile);
             profile.name = Path.GetFileNameWithoutExtension(ProfilePath);
-            // Planted-foot speeds scale with the human size of the body that plays the clips.
-            float k = HumanScale(model, avatar) / HumanScale(source.model, source.avatar) / Mathf.Max(.01f, source.modelScale);
-            profile.runForwardSpeed *= k; profile.runBackwardSpeed *= k;
-            profile.strafeLeftSpeed *= k; profile.strafeRightSpeed *= k;
             profile.model = model;
             profile.avatar = avatar;
             profile.modelScale = 1f;
             profile.upperBodyMask = null;
             profile.weaponSets = new WeaponClipSet[0];
+            var knife = WeaponClipImporter.ImportKnifeTakes();
+            var sets = WeaponClipImporter.BakeSets(profile, ClipPrefix);
+            // Planted-foot speeds scale with the human size of the body that plays the takes.
+            float k = HumanScale(model, avatar) / HumanScale(knife.model, knife.avatar);
+            ValveBipedCharacterImporter.GunLocomotion(profile, k, knife.clips["death"]);
             profile.deathFloorLift = SkinnedCharacterProfileBaker.MeasureDeathFloorLift(profile);
             SkinnedCharacterProfileBaker.MeasureSoles(profile);
             SkinnedCharacterProfileBaker.MeasureBack(profile);
-            var sets = WeaponClipImporter.BakeSets(profile, ClipPrefix);
             string json = Path.Combine(Repo, Correction);
             profile.weaponSets = Guns.Select(g =>
             {

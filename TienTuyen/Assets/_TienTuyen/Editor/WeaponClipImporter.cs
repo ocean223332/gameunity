@@ -60,6 +60,11 @@ namespace TienTuyen.Editor
 
         private static readonly string[] Loops = { "stand_idle", "run_N", "run_S", "run_E", "run_W", "reload_xm_loop" };
 
+        // The gun bodies' locomotion: these AK takes imported a second time as body_<take>, whole and with the knife takes' turn,
+        // for the legs and hips under the carried weapon's upper body (the bake reads the takes as they are).
+        private static readonly string[] BodyTakes = { "stand_idle", "stand_aim", "run_N", "run_S", "run_E", "run_W" };
+        private const string BodyPrefix = "body_";
+
         private static readonly Dictionary<HumanBodyBones, string> ValveBiped = new Dictionary<HumanBodyBones, string>
         {
             { HumanBodyBones.Hips, "Bip01_Pelvis" },
@@ -222,20 +227,37 @@ namespace TienTuyen.Editor
             importer.materialImportMode = ModelImporterMaterialImportMode.None;
             importer.optimizeGameObjects = false;
             var clips = importer.defaultClipAnimations;
-            foreach (var clip in clips)
+            foreach (var clip in clips) Setup(clip, path == KnifePath ? KnifeTurn : 0f);
+            if (path == TakesPath)
             {
-                clip.name = TakeName(clip.takeName);
-                // A one-frame take imports as an empty clip; span it to the next frame so its keys are kept.
-                clip.lastFrame = Mathf.Max(clip.lastFrame, clip.firstFrame + 1);
-                clip.loopTime = Loops.Contains(clip.name);
-                // Root motion stays in the pose; only the upper body is used.
-                clip.lockRootRotation = clip.lockRootHeightY = clip.lockRootPositionXZ = true;
-                clip.keepOriginalOrientation = clip.keepOriginalPositionY = clip.keepOriginalPositionXZ = true;
-                clip.rotationOffset = path == KnifePath ? KnifeTurn : 0f;
+                var body = importer.defaultClipAnimations.Where(c => BodyTakes.Contains(TakeName(c.takeName))).ToArray();
+                foreach (var clip in body) Setup(clip, KnifeTurn, BodyPrefix);
+                clips = clips.Concat(body).ToArray();
             }
             importer.clipAnimations = clips;
             return importer;
         }
+
+        private static void Setup(ModelImporterClipAnimation clip, float turn, string prefix = "")
+        {
+            string take = TakeName(clip.takeName);
+            clip.name = prefix + take;
+            // A one-frame take imports as an empty clip; span it to the next frame so its keys are kept.
+            clip.lastFrame = Mathf.Max(clip.lastFrame, clip.firstFrame + 1);
+            clip.loopTime = Loops.Contains(take);
+            // Root motion stays in the pose.
+            clip.lockRootRotation = clip.lockRootHeightY = clip.lockRootPositionXZ = true;
+            clip.keepOriginalOrientation = clip.keepOriginalPositionY = clip.keepOriginalPositionXZ = true;
+            clip.rotationOffset = turn;
+        }
+
+        /// <summary>
+        /// The gun bodies' locomotion takes (stand_idle, stand_aim, run_N/S/E/W) as Humanoid clips on the xdR avatar, whole and
+        /// turned to the bodies' facing, by take name. The takes must be imported (<see cref="BakeSets"/> or <see cref="ImportKnifeTakes"/>).
+        /// </summary>
+        public static Dictionary<string, AnimationClip> ImportBodyTakes() =>
+            AssetDatabase.LoadAllAssetsAtPath(TakesPath).OfType<AnimationClip>().Where(c => c.name.StartsWith(BodyPrefix))
+                .ToDictionary(c => c.name.Substring(BodyPrefix.Length));
 
         /// <summary>FBX take "ValveBiped|stand_idle" is the take "stand_idle".</summary>
         private static string TakeName(string take) => take.Substring(take.LastIndexOf('|') + 1);
