@@ -42,9 +42,11 @@ namespace TienTuyen.Editor
         /// <summary>
         /// Writes the bone map and reference pose into the rig's importer and reimports. The reference is the one
         /// Unity generates for the file (arms put into a T), except the finger segments, which take their
-        /// rotation from the rest pose take.
+        /// rotation from the rest pose take. With <paramref name="restReference"/> every bone takes the rest pose and
+        /// the upper arms are then swung level into the T (<see cref="RestReference"/>).
         /// </summary>
-        public static void Configure(ModelImporter importer, AnimationClip restPose, IReadOnlyDictionary<HumanBodyBones, string> bones = null)
+        public static void Configure(ModelImporter importer, AnimationClip restPose, IReadOnlyDictionary<HumanBodyBones, string> bones = null,
+            bool restReference = false)
         {
             var rest = FirstRotations(restPose);
             var description = importer.humanDescription;
@@ -61,6 +63,7 @@ namespace TienTuyen.Editor
                     throw new InvalidOperationException("Rest pose take has no rotation for " + bone);
             for (int i = 0; i < description.skeleton.Length; i++)
                 if (fingerBones.Contains(description.skeleton[i].name)) description.skeleton[i].rotation = rest[description.skeleton[i].name];
+            if (restReference) RestReference(importer, description.skeleton, restPose, bones);
             var human = new List<HumanBone>();
             for (var slot = HumanBodyBones.Hips; slot < HumanBodyBones.LastBone; slot++)
             {
@@ -71,6 +74,52 @@ namespace TienTuyen.Editor
             description.human = human.ToArray();
             importer.humanDescription = description;
             importer.SaveAndReimport();
+        }
+
+        /// <summary>
+        /// A takes file has no rest of its own, so Unity builds its reference from the first take's first frame, and
+        /// whatever that frame holds (a stance's spine curl, head nod, knee bend) reads as zero muscle and is lost on
+        /// every other body. Here the reference takes the rest pose take's rotations instead (bone lengths stay the
+        /// file's: the rest take keys them a few mm off the takes, which Unity reports as a rig mis-match), with each
+        /// upper arm then swung, as little as it takes, to point its forearm straight out to its side level: the T that
+        /// Unity generates for a body whose own rest is this pose.
+        /// </summary>
+        private static void RestReference(ModelImporter importer, SkeletonBone[] skeleton, AnimationClip restPose, IReadOnlyDictionary<HumanBodyBones, string> bones)
+        {
+            var rotations = FirstRotations(restPose);
+            var instance = (GameObject)UnityEngine.Object.Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>(importer.assetPath));
+            try
+            {
+                var transforms = instance.GetComponentsInChildren<Transform>(true).Where(t => t != instance.transform)
+                    .GroupBy(t => t.name).ToDictionary(g => g.Key, g => g.First());
+                foreach (var bone in skeleton)
+                    if (transforms.TryGetValue(bone.name, out var t))
+                    {
+                        t.localPosition = bone.position;
+                        t.localRotation = rotations.TryGetValue(bone.name, out var r) ? r : bone.rotation;
+                    }
+                for (var slot = HumanBodyBones.Hips; slot < HumanBodyBones.LastBone; slot++)
+                {
+                    string name = BoneName(bones, slot);
+                    if (name != null && transforms.ContainsKey(name) && !rotations.ContainsKey(name))
+                        throw new InvalidOperationException("Rest pose take has no rotation for " + name);
+                }
+                Transform Slot(HumanBodyBones slot) => transforms[BoneName(bones, slot)];
+                Vector3 up = Vector3.up;   // the model stands on world up; its root carries the file's axis turn
+                Vector3 right = Vector3.ProjectOnPlane(Slot(HumanBodyBones.RightUpperArm).position - Slot(HumanBodyBones.LeftUpperArm).position, up).normalized;
+                foreach (var (arm, forearm, side) in new[] { (HumanBodyBones.RightUpperArm, HumanBodyBones.RightLowerArm, 1f), (HumanBodyBones.LeftUpperArm, HumanBodyBones.LeftLowerArm, -1f) })
+                {
+                    Transform upper = Slot(arm);
+                    upper.rotation = Quaternion.FromToRotation(Slot(forearm).position - upper.position, right * side) * upper.rotation;
+                }
+                for (int i = 0; i < skeleton.Length; i++)
+                    if (transforms.TryGetValue(skeleton[i].name, out var t))
+                        skeleton[i].rotation = t.localRotation;
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(instance);
+            }
         }
 
         /// <summary>

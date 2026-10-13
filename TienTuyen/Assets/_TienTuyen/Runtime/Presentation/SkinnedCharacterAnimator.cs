@@ -663,8 +663,8 @@ namespace TienTuyen.Presentation
             float hit = hitWeight * CarriedHitShare;
             float carried = Mathf.Max(0f, 1f - meleeWeight);
             float ready = 1f - reloadShare, fire = fireWeight * ready, stand = (ready - fire) * (1f - carryMoving);
-            // The chest and head still take the aim pitch whenever the weapon is up.
-            holdAim = carried * ready * (1f - drawDip);
+            // The chest and head take the aim as far as the weapon is brought to the sights: from the hip they keep the clip's.
+            holdAim = carried * ready * (1f - drawDip) * aimShare;
             int c = carrySet * CarrySlots;
             for (int i = 0; i < carryClips.Length; i++) carryMixer.SetInputWeight(i, 0f);
             carryMixer.SetInputWeight(c + HoldSlot, stand * (1f - aimShare));

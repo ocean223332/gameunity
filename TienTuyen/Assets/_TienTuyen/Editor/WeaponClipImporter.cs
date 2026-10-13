@@ -285,7 +285,7 @@ namespace TienTuyen.Editor
         {
             var importer = TakesImporter(TakesPath, ModelImporterAnimationType.Human);
             importer.SaveAndReimport();
-            HumanoidRigSetup.Configure(importer, restPose, ValveBiped);
+            HumanoidRigSetup.Configure(importer, restPose, ValveBiped, restReference: true);
             var avatar = AssetDatabase.LoadAllAssetsAtPath(TakesPath).OfType<Avatar>().Single();
             if (!avatar.isValid || !avatar.isHuman) throw new InvalidOperationException("xdR Humanoid avatar is invalid");
             HumanoidRigSetup.CheckFingers(avatar, AssetDatabase.LoadAssetAtPath<GameObject>(TakesPath), ValveBiped);
