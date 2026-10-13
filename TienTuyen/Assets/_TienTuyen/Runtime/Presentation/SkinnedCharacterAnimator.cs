@@ -81,9 +81,14 @@ namespace TienTuyen.Presentation
         private readonly Transform pose;
         private readonly Animator animator;
         private PlayableGraph graph;
-        private readonly AnimationClipPlayable[] loco = new AnimationClipPlayable[5];
-        private readonly float[] locoLength = new float[5];
-        private readonly float[] locoSpeed = new float[5];
+        // Standing locomotion clips (Loco order), then the crouched ones; the speeds the legs carry are blended by the crouch.
+        private const int LocoCount = 5;
+        private readonly AnimationClipPlayable[] loco = new AnimationClipPlayable[LocoCount * 2];
+        private readonly float[] locoLength = new float[LocoCount * 2];
+        private readonly float[] postureSpeed = new float[LocoCount * 2];
+        private readonly float[] locoSpeed = new float[LocoCount];
+        // 0 standing to 1 crouched (the game's crouch, eased).
+        private float crouch;
         private AnimationMixerPlayable locoMixer, bodyMixer, upperMixer;
         private AnimationLayerMixerPlayable layers;
         private AnimationClipPlayable aimPlayable, reloadPlayable, hitPlayable, deathPlayable, meleePlayable;
@@ -121,8 +126,9 @@ namespace TienTuyen.Presentation
         private readonly Quaternion chestBindInverse;
         private readonly float shoulderWidth;
 
-        // Weapons on clip sets (profile.weaponSets): hold, aim, run, fire and reload clips per set; the weapon rides the Weapon bone.
-        private const int CarrySlots = 8;
+        // Weapons on clip sets (profile.weaponSets): hold, aim, run, fire and reload clips per set, standing then crouched
+        // (PostureSlots each); the weapon rides the Weapon bone.
+        private const int PostureSlots = 8, Postures = 2, CarrySlots = PostureSlots * Postures;
         private const int HoldSlot = 0, AimSlot = 1, RunSlot = 2, FireSlot = 3, ReloadSlot = 4, ReloadStartSlot = 5, ReloadInsertSlot = 6, ReloadEndSlot = 7;
         private readonly WeaponClipSet[] sets;
         private readonly Transform weaponBone, rightTarget, leftTarget;
@@ -132,8 +138,10 @@ namespace TienTuyen.Presentation
         private float fireTime = -1f, fireWeight, drawProgress = -1f, drawDip, carryMoving, reloadSeconds;
         // A reload by the round: the game's start and end phases (seconds); zero for a whole reload.
         private Vector2 reloadPhases;
-        // Share of the reload each slot plays (whole, start, insert, end).
+        // Share of the reload each slot plays (whole, start, insert, end), in each posture.
         private readonly float[] reloadParts = { 1f, 0f, 0f, 0f };
+        // Reload slots across both postures (standing whole, start, insert, end, then crouched).
+        private const int ReloadTracks = 4 * Postures;
         // Seconds the insert loop crossfades into the end.
         private const float ShellEndBlend = .1f;
         // Finger bones of the sets' grip data, by name and per delta list (resolved once).
@@ -187,6 +195,9 @@ namespace TienTuyen.Presentation
 
         /// <summary>Progress 0..1 of drawing the carried weapon (the game's switch timing); negative when not drawing.</summary>
         public void Draw(float progress) => drawProgress = progress;
+
+        /// <summary>How far down the body is, 0 standing to 1 crouched: the crouched clips blend in by it.</summary>
+        public void Crouch(float amount) => crouch = Mathf.Clamp01(amount);
 
         public SkinnedCharacterAnimator(SkinnedCharacterProfile profile, Transform pose, Transform model)
         {
@@ -266,6 +277,11 @@ namespace TienTuyen.Presentation
             AddLoco(Loco.Backward, profile.runBackward != null ? profile.runBackward : forward, profile.runBackward != null ? profile.runBackwardSpeed : profile.runForwardSpeed);
             AddLoco(Loco.Left, profile.strafeLeft != null ? profile.strafeLeft : forward, profile.strafeLeft != null ? profile.strafeLeftSpeed : profile.runForwardSpeed);
             AddLoco(Loco.Right, profile.strafeRight != null ? profile.strafeRight : forward, profile.strafeRight != null ? profile.strafeRightSpeed : profile.runForwardSpeed);
+            AddCrouch(Loco.Idle, profile.crouchIdle, 0f);
+            AddCrouch(Loco.Forward, profile.crouchForward, profile.crouchForwardSpeed);
+            AddCrouch(Loco.Backward, profile.crouchBackward, profile.crouchBackwardSpeed);
+            AddCrouch(Loco.Left, profile.crouchLeft, profile.crouchLeftSpeed);
+            AddCrouch(Loco.Right, profile.crouchRight, profile.crouchRightSpeed);
             locoMixer = AnimationMixerPlayable.Create(graph, loco.Length);
             for (int i = 0; i < loco.Length; i++) graph.Connect(loco[i], 0, locoMixer, i);
 
@@ -453,13 +469,21 @@ namespace TienTuyen.Presentation
             return arm;
         }
 
-        private void AddLoco(Loco slot, AnimationClip clip, float speed)
+        private void AddLoco(Loco slot, AnimationClip clip, float speed, int posture = 0)
         {
-            int i = (int)slot;
+            int i = (int)slot + posture * LocoCount;
             loco[i] = AnimationClipPlayable.Create(graph, clip);
             Freeze(loco[i]);
             locoLength[i] = Mathf.Max(clip.length, 1f / 30f);
-            locoSpeed[i] = speed;
+            postureSpeed[i] = speed;
+        }
+
+        /// <summary>The crouched locomotion slot; without its clip it plays the standing one at the standing speed.</summary>
+        private void AddCrouch(Loco slot, AnimationClip clip, float speed)
+        {
+            int i = (int)slot;
+            if (clip != null) AddLoco(slot, clip, speed, 1);
+            else AddLoco(slot, loco[i].GetAnimationClip(), postureSpeed[i], 1);
         }
 
         private static void Freeze(AnimationClipPlayable playable)
@@ -525,6 +549,7 @@ namespace TienTuyen.Presentation
             }
 
             // ---- locomotion: one shared phase; every loop starts at left-foot touchdown
+            for (int i = 0; i < LocoCount; i++) locoSpeed[i] = Mathf.Lerp(postureSpeed[i], postureSpeed[i + LocoCount], crouch);
             Vector2 v = new Vector2(localVelocity.x, localVelocity.z);
             float speed = v.magnitude;
             float targetYaw = speed > .3f && !dying ? ChooseLegYaw(v, speed) : 0f;
@@ -545,15 +570,20 @@ namespace TienTuyen.Presentation
             directionKnown |= speed > .01f;
             float rate = capacity > .01f ? Mathf.Clamp(speed / capacity, .5f, Mathf.Max(1f, profile.maxPlaybackRate)) : 1f;
             float cycle = 0f;
-            for (int i = 1; i < 5; i++) cycle += w[i] * locoLength[i];
+            for (int i = 1; i < 5; i++) cycle += w[i] * Mathf.Lerp(locoLength[i], locoLength[i + LocoCount], crouch);
             if (moving > .001f && cycle > .01f) phase = Mathf.Repeat(phase + dt * rate / cycle, 1f);
             idleTime += dt;
-            locoMixer.SetInputWeight((int)Loco.Idle, 1f - moving);
-            loco[(int)Loco.Idle].SetTime(Mathf.Repeat(idleTime, locoLength[0]));
-            for (int i = 1; i < 5; i++)
+            for (int posture = 0; posture < Postures; posture++)
             {
-                locoMixer.SetInputWeight(i, w[i] * moving);
-                loco[i].SetTime(phase * locoLength[i]);
+                int o = posture * LocoCount;
+                float share = PostureShare(posture);
+                locoMixer.SetInputWeight(o + (int)Loco.Idle, (1f - moving) * share);
+                loco[o + (int)Loco.Idle].SetTime(Mathf.Repeat(idleTime, locoLength[o]));
+                for (int i = 1; i < 5; i++)
+                {
+                    locoMixer.SetInputWeight(o + i, w[i] * moving * share);
+                    loco[o + i].SetTime(phase * locoLength[o + i]);
+                }
             }
             // ---- charge actions: full body, faded over the locomotion; death overrides them
             float fade = dt / ActionFadeTime;
@@ -582,16 +612,19 @@ namespace TienTuyen.Presentation
             else if (reloading) reloadPlayable.SetTime(Mathf.Clamp01(reload) * profile.reload.length);
             if (carrySet >= 0)
             {
-                carryClips[c + HoldSlot].SetTime(ClipTime(carryClips[c + HoldSlot], idleTime, true));
-                carryClips[c + AimSlot].SetTime(ClipTime(carryClips[c + AimSlot], idleTime, true));
-                // The moving carry keeps the gait's phase.
-                carryClips[c + RunSlot].SetTime(phase * carryClips[c + RunSlot].GetAnimationClip().length);
-                carryMoving = moving;
                 // The fire clip plays once from each shot and fades out over its last frames.
                 AnimationClip fire = sets[carrySet].fire;
                 if (fireTime >= 0f) fireTime += dt;
                 fireWeight = fire != null && fireTime >= 0f && fireTime < fire.length ? Mathf.Clamp01((fire.length - fireTime) / ActionFadeTime) : 0f;
-                if (fireWeight > 0f) carryClips[c + FireSlot].SetTime(fireTime);
+                for (int s = c; s < c + CarrySlots; s += PostureSlots)
+                {
+                    carryClips[s + HoldSlot].SetTime(ClipTime(carryClips[s + HoldSlot], idleTime, true));
+                    carryClips[s + AimSlot].SetTime(ClipTime(carryClips[s + AimSlot], idleTime, true));
+                    // The moving carry keeps the gait's phase.
+                    carryClips[s + RunSlot].SetTime(phase * carryClips[s + RunSlot].GetAnimationClip().length);
+                    if (fireWeight > 0f) carryClips[s + FireSlot].SetTime(fireTime);
+                }
+                carryMoving = moving;
                 // A draw dips the weapon quickly, keeps it low, then raises it to the ready by the end.
                 bool drawing = drawProgress >= 0f && drawProgress < 1f && !dying;
                 float dip = drawing ? Mathf.SmoothStep(0f, 1f, drawProgress / DrawDipIn)
@@ -667,11 +700,16 @@ namespace TienTuyen.Presentation
             holdAim = carried * ready * (1f - drawDip) * aimShare;
             int c = carrySet * CarrySlots;
             for (int i = 0; i < carryClips.Length; i++) carryMixer.SetInputWeight(i, 0f);
-            carryMixer.SetInputWeight(c + HoldSlot, stand * (1f - aimShare));
-            carryMixer.SetInputWeight(c + AimSlot, stand * aimShare);
-            carryMixer.SetInputWeight(c + RunSlot, (ready - fire) * carryMoving);
-            carryMixer.SetInputWeight(c + FireSlot, fire);
-            for (int part = 0; part < reloadParts.Length; part++) carryMixer.SetInputWeight(c + ReloadSlot + part, reloadShare * reloadParts[part]);
+            for (int posture = 0; posture < Postures; posture++)
+            {
+                int s = c + posture * PostureSlots;
+                float share = PostureShare(posture);
+                carryMixer.SetInputWeight(s + HoldSlot, share * stand * (1f - aimShare));
+                carryMixer.SetInputWeight(s + AimSlot, share * stand * aimShare);
+                carryMixer.SetInputWeight(s + RunSlot, share * (ready - fire) * carryMoving);
+                carryMixer.SetInputWeight(s + FireSlot, share * fire);
+                for (int part = 0; part < reloadParts.Length; part++) carryMixer.SetInputWeight(s + ReloadSlot + part, share * reloadShare * reloadParts[part]);
+            }
             upperMixer.SetInputWeight(0, 0f);
             upperMixer.SetInputWeight(1, 0f);
             upperMixer.SetInputWeight(2, 0f);
@@ -694,28 +732,55 @@ namespace TienTuyen.Presentation
             if (!set.ShellReload || reloadSeconds <= 0f || start <= 0f || end <= 0f || start + end > reloadSeconds)
             {
                 reloadParts[0] = 1f;
-                carryClips[c + ReloadSlot].SetTime(progress * carryClips[c + ReloadSlot].GetAnimationClip().length);
+                FitReload(c, ReloadSlot, progress);
                 return;
             }
             float time = progress * reloadSeconds, ending = reloadSeconds - end;
             if (time < start)
             {
                 reloadParts[1] = 1f;
-                carryClips[c + ReloadStartSlot].SetTime(time / start * set.reloadStart.length);
+                FitReload(c, ReloadStartSlot, time / start);
                 return;
             }
             float toEnd = Mathf.Clamp01((time - ending) / ShellEndBlend);
             reloadParts[2] = 1f - toEnd;
             reloadParts[3] = toEnd;
-            carryClips[c + ReloadInsertSlot].SetTime(ClipTime(carryClips[c + ReloadInsertSlot], time - start, true));
-            carryClips[c + ReloadEndSlot].SetTime(Mathf.Clamp01((time - ending) / end) * set.reloadEnd.length);
+            for (int s = c; s < c + CarrySlots; s += PostureSlots)
+                carryClips[s + ReloadInsertSlot].SetTime(ClipTime(carryClips[s + ReloadInsertSlot], time - start, true));
+            FitReload(c, ReloadEndSlot, Mathf.Clamp01((time - ending) / end));
         }
 
+        /// <summary>Both postures' clips in reload slot <paramref name="slot"/> at <paramref name="fraction"/> of their length.</summary>
+        private void FitReload(int c, int slot, float fraction)
+        {
+            for (int s = c + slot; s < c + CarrySlots; s += PostureSlots) carryClips[s].SetTime(fraction * carryClips[s].GetAnimationClip().length);
+        }
+
+        /// <summary>Share of the pose posture 0 (standing) or 1 (crouched) takes.</summary>
+        private float PostureShare(int posture) => posture == 0 ? 1f - crouch : crouch;
+
         /// <summary>A set's clip by slot; a missing hold, aim or run falls back to the others, then to the profile's aim clip, and a
-        /// missing reload to the profile's reload. A missing fire clip stays missing (the kick alone).</summary>
+        /// missing reload to the profile's reload. A missing fire clip stays missing (the kick alone). A missing crouched clip
+        /// is its standing one.</summary>
         private AnimationClip CarryClip(int set, int slot)
         {
             var s = sets[set];
+            if (slot >= PostureSlots)
+            {
+                AnimationClip crouched;
+                switch (slot - PostureSlots)
+                {
+                    case HoldSlot: crouched = s.crouchHold; break;
+                    case AimSlot: crouched = s.crouchAim; break;
+                    case RunSlot: crouched = s.crouchRun; break;
+                    case FireSlot: crouched = s.crouchFire; break;
+                    case ReloadStartSlot: crouched = s.crouchReloadStart; break;
+                    case ReloadInsertSlot: crouched = s.crouchReloadInsert; break;
+                    case ReloadEndSlot: crouched = s.crouchReloadEnd; break;
+                    default: crouched = s.crouchReload; break;
+                }
+                return crouched != null ? crouched : CarryClip(set, slot - PostureSlots);
+            }
             AnimationClip hold = s.hold != null ? s.hold : s.aim != null ? s.aim : profile.aim;
             switch (slot)
             {
@@ -761,6 +826,12 @@ namespace TienTuyen.Presentation
             }
             CarryThroughHit();
             FollowFingers();
+            // A carried weapon rides the chest as the clips place it (the bake keeps it there), though it hangs under the lowest
+            // spine bone: the leg-yaw twist below turns that bone by only its share.
+            Transform torso = Chest;
+            bool onChest = armed && weaponRoot != null && carrySet >= 0 && weaponBone != null;
+            Vector3 weaponOnChest = onChest ? torso.InverseTransformPoint(weaponBone.position) : default;
+            Quaternion weaponTurnOnChest = onChest ? Quaternion.Inverse(torso.rotation) * weaponBone.rotation : default;
 
             Vector3 up = pose.up;
             float action = ActionWeight;
@@ -780,6 +851,7 @@ namespace TienTuyen.Presentation
                     Vector3 hipsForward = Vector3.Cross(rightUpperLeg.position - leftUpperLeg.position, up);
                     float square = yaw - Vector3.SignedAngle(Vector3.ProjectOnPlane(pose.forward, up), Vector3.ProjectOnPlane(hipsForward, up), up);
                     if (spineChain.Length > 0) spineChain[0].rotation = Quaternion.AngleAxis(square, up) * spineChain[0].rotation;
+                    if (onChest) weaponBone.SetPositionAndRotation(torso.TransformPoint(weaponOnChest), torso.rotation * weaponTurnOnChest);
                     // The whole spine takes the aim, so the arms, the weapon and the cheek on its stock move as one.
                     Pitch(spineChain, AimPitch(aimPoint) * holdAim);
                     AimCarried(weaponRoot, weaponMuzzle, aimPoint);
@@ -958,12 +1030,12 @@ namespace TienTuyen.Presentation
             GripPose grip = left ? data.left : data.right;
             int c = carrySet * CarrySlots;
             float tracked = 0f;
-            for (int part = 0; part < reloadParts.Length; part++)
+            for (int part = 0; part < ReloadTracks; part++)
                 if (ReloadTrack(data, c, part, out _, out _) is float w) tracked += w;
             float still = Mathf.Max(0f, 1f - tracked), sum = still;
             Vector3 local = grip.position * still;
             Quaternion turn = grip.rotation;
-            for (int part = 0; part < reloadParts.Length; part++)
+            for (int part = 0; part < ReloadTracks; part++)
             {
                 if (!(ReloadTrack(data, c, part, out var track, out float frame) is float w)) continue;
                 var poses = left ? track.left : track.right;
@@ -986,13 +1058,18 @@ namespace TienTuyen.Presentation
             if (still > 0f)
                 for (int i = 0; i < fingers.Length; i++)
                     if (bones[i] != null) bones[i].localRotation = Quaternion.Slerp(bones[i].localRotation, fingers[i].rotation, still);
-            // The fire clip's fingers (the gun's trigger pull) on the static grip, by the fire clip's share of it.
-            var firing = carryClips[c + FireSlot];
-            float fire = still > 0f && firing.IsValid() ? carryMixer.GetInputWeight(c + FireSlot) : 0f;
-            if (fire > 0f && data.Track(firing.GetAnimationClip()) is GripTrack fireTrack)
-                BlendFingers(fireTrack, left, (float)firing.GetTime() * HandGripData.TrackRate, Mathf.Min(1f, fire / still));
+            // The fire clips' fingers (the gun's trigger pull) on the static grip, by the fire clips' share of it.
+            float fired = 0f;
+            for (int posture = 0; posture < Postures; posture++)
+            {
+                var firing = carryClips[c + posture * PostureSlots + FireSlot];
+                float fire = still > 0f && firing.IsValid() ? carryMixer.GetInputWeight(c + posture * PostureSlots + FireSlot) : 0f;
+                if (fire <= 0f || !(TrackOf(data, c, posture, FireSlot) is GripTrack fireTrack)) continue;
+                fired += fire;
+                BlendFingers(fireTrack, left, (float)firing.GetTime() * HandGripData.TrackRate, Mathf.Min(1f, fired / still) * fire / fired);
+            }
             float blended = still;
-            for (int part = 0; part < reloadParts.Length; part++)
+            for (int part = 0; part < ReloadTracks; part++)
             {
                 if (!(ReloadTrack(data, c, part, out var track, out float frame) is float w)) continue;
                 var names = left ? track.leftBones : track.rightBones;
@@ -1022,17 +1099,25 @@ namespace TienTuyen.Presentation
         }
 
         /// <summary>
-        /// Weight of reload part <paramref name="part"/> (whole, start, insert, end) when it plays a clip with a track in
+        /// The grip track of the clip in <paramref name="slot"/> of <paramref name="posture"/>; a crouched clip without its own
+        /// takes its standing clip's (the CS:GO crouched reloads and shots move the hands on the gun as the standing ones do).
+        /// </summary>
+        private GripTrack TrackOf(HandGripData data, int c, int posture, int slot) =>
+            data.Track(carryClips[c + posture * PostureSlots + slot].GetAnimationClip()) ?? (posture > 0 ? data.Track(carryClips[c + slot].GetAnimationClip()) : null);
+
+        /// <summary>
+        /// Weight of reload part <paramref name="part"/> (whole, start, insert, end, standing then crouched) when it plays a clip with a track in
         /// <paramref name="data"/>, with that track and the clip's frame at the track rate; null otherwise.
         /// </summary>
         private float? ReloadTrack(HandGripData data, int c, int part, out GripTrack track, out float frame)
         {
             track = null;
             frame = 0f;
-            float w = reloadShare * reloadParts[part];
+            int posture = part / reloadParts.Length, piece = part % reloadParts.Length;
+            float w = reloadShare * reloadParts[piece] * PostureShare(posture);
             if (w <= 0f) return null;
-            var playable = carryClips[c + ReloadSlot + part];
-            track = data.Track(playable.GetAnimationClip());
+            var playable = carryClips[c + posture * PostureSlots + ReloadSlot + piece];
+            track = TrackOf(data, c, posture, ReloadSlot + piece);
             if (track == null) return null;
             frame = (float)playable.GetTime() * HandGripData.TrackRate;
             return w;
@@ -1054,7 +1139,7 @@ namespace TienTuyen.Presentation
             bool shown = true;
             float strongest = 0f;
             int c = carrySet * CarrySlots;
-            for (int part = 0; part < reloadParts.Length; part++)
+            for (int part = 0; part < ReloadTracks; part++)
             {
                 if (!(ReloadTrack(data, c, part, out var track, out float frame) is float w) || w <= strongest || track.magazine.Length == 0) continue;
                 strongest = w;
@@ -1081,7 +1166,7 @@ namespace TienTuyen.Presentation
             if (data != null && data.HasShell)
             {
                 int c = carrySet * CarrySlots;
-                for (int part = 0; part < reloadParts.Length; part++)
+                for (int part = 0; part < ReloadTracks; part++)
                 {
                     if (!(ReloadTrack(data, c, part, out var track, out float frame) is float)) continue;
                     held = track.HoldsShell(frame);

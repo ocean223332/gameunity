@@ -60,6 +60,12 @@ namespace TienTuyen.Presentation
         [Tooltip("Locomotion never plays faster than this; beyond it the hips turn toward travel.")]
         public float maxPlaybackRate = 1.3f;
 
+        [Header("Crouched locomotion (optional; an empty clip keeps the standing one)")]
+        public AnimationClip crouchIdle;
+        public AnimationClip crouchForward, crouchBackward, crouchLeft, crouchRight;
+        [Tooltip("Planted-foot speed of each crouched locomotion clip at 1x (m/s).")]
+        public float crouchForwardSpeed, crouchBackwardSpeed, crouchLeftSpeed, crouchRightSpeed;
+
         [Header("Faction flag")]
         [Tooltip("Catalog model whose 'banner pole' / 'banner cloth*' meshes become the back flag.")]
         public GameObject bannerSource;
@@ -106,6 +112,9 @@ namespace TienTuyen.Presentation
         [Tooltip("Shell-by-shell reload, used instead of reload when all three are set and the game reloads by the round: " +
                  "start and end fitted to the game's start and end phases, the insert looping at its own speed between them.")]
         public AnimationClip reloadStart, reloadInsert, reloadEnd;
+        [Tooltip("The same slots crouched, blended in by the crouch; an empty one keeps its standing clip. A crouched reload " +
+                 "or fire clip without its own grip track takes its standing clip's.")]
+        public AnimationClip crouchHold, crouchAim, crouchRun, crouchFire, crouchReload, crouchReloadStart, crouchReloadInsert, crouchReloadEnd;
         [Tooltip("This body's hands on this gun: grip frames, reload tracks and finger corrections. Empty: the hands follow " +
                  "the clips' wrist targets.")]
         public HandGripData grip;

@@ -124,8 +124,11 @@ namespace TienTuyen.Combat.Tests
         public void HeldWeaponAimsAtRealTargetsAndBothHandsFollowTheirGrips()
         {
             var target = CreateTarget();
+            // Standing, then crouched on the crouched clips.
+            foreach (float crouch in new[] { 0f, 1f })
             foreach (var direction in new[] { Vector3.right, Vector3.forward, Vector3.left, Vector3.back })
             {
+                hero.Crouch = crouch;
                 target.position = game.transform.Find("Player").position + direction * 4f;
                 FireReadyWeapon();
                 Assert.That(Vector3.Dot(game.PlayerAimDirection.normalized, direction), Is.GreaterThan(.99f));
@@ -137,6 +140,7 @@ namespace TienTuyen.Combat.Tests
                 Assert.That(Vector3.Dot(hero.MuzzleTransform.forward.normalized, direction), Is.GreaterThan(.97f));
                 AssertHandsAttached(hero);
             }
+            hero.Crouch = 0f;
         }
 
         // The right cheek in the hero's bind pose (body mesh space, metres).
@@ -215,10 +219,12 @@ namespace TienTuyen.Combat.Tests
             var shooter = actor.GetComponentInChildren<CombatCharacterRig>();
             Assert.That(shooter.IsSkinned, Is.True);
             var failures = new List<string>();
-            foreach (var (rig, weapon) in new[] { (hero, 0), (hero, 1), (hero, 2), (shooter, 0) })
+            // The hero's guns standing and crouched (its crouched clips, reloads on the standing reloads' hand tracks).
+            foreach (var (rig, weapon, crouch) in new[] { (hero, 0, 0f), (hero, 1, 0f), (hero, 2, 0f), (shooter, 0, 0f), (hero, 0, 1f), (hero, 1, 1f), (hero, 2, 1f) })
             {
                 rig.ResetPose();
                 rig.SelectWeapon(weapon);
+                rig.Crouch = crouch;
                 // The hero's reload timed as the game times it (CombatArtDirector): a reload by the round plays the shell clips.
                 var definition = rig == hero ? TienTuyen.Content.ContentCatalog.P2.Weapons[weapon] : null;
                 var rounds = definition?.RoundReload;
@@ -231,11 +237,13 @@ namespace TienTuyen.Combat.Tests
                     // Idle, run, strafe both ways, run back with a hit, shots, then a full reload.
                     var velocity = frame < 40 ? Vector3.zero : frame < 80 ? Vector3.forward * 4f : frame < 110 ? Vector3.right * 3f :
                         frame < 140 ? Vector3.left * 3f : frame < 170 ? Vector3.back * 2f : Vector3.zero;
+                    // Crouched, the game moves at its crouch speed.
+                    velocity *= Mathf.Lerp(1f, CombatRules.CrouchSpeedFactor, crouch);
                     float hit = frame >= 150 && frame < 155 ? 1f : 0f;
                     float reload = frame >= 200 ? (frame - 200) / 59f : -1f;
                     if (frame == 175 || frame == 185) rig.Fire(weapon);
                     rig.Tick(1f / 60f, velocity, Vector3.forward, reload, hit);
-                    string state = rig.Profile.name + " weapon " + weapon + " frame " + frame + ": ";
+                    string state = rig.Profile.name + (crouch > 0f ? " crouched" : "") + " weapon " + weapon + " frame " + frame + ": ";
                     var set = CarriedSet(rig);
                     HandGaps(rig, out float grip, out float support);
                     if (grip > .02f) failures.Add(state + "grip hand off its grip");
@@ -247,6 +255,7 @@ namespace TienTuyen.Combat.Tests
                         failures.Add(state + "support hand off the fore-end " + (support * 1000f).ToString("F0") + " mm");
                     left.Check(state, 70f, failures);
                 }
+                rig.Crouch = 0f;
             }
             // The wrist limits sit past the approved hands' worst (bend 70 degrees): they catch broken data (a flipped or wrongly
             // framed hand turns 90 degrees and more), not the look of a wrist, which is judged by eye.

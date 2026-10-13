@@ -181,6 +181,26 @@ namespace TienTuyen.Editor
             profile.death = death;
         }
 
+        // CS:GO's cycle displacement (in) of the crouch walk and the run per direction, and the crouch-walk cycle (s): a crouch
+        // walk's planted distance per cycle is the run's (speed x RunCycle) scaled by their displacements (xdR MANIFEST).
+        private static readonly (float crouch, float run) DisplacementN = (67.8f, 145.7f), DisplacementS = (54.9f, 118.1f),
+            DisplacementE = (55.4f, 125.4f), DisplacementW = (54.1f, 125.4f);
+        private const float CrouchCycle = .8f;
+
+        /// <summary>A gun body's crouched locomotion: the AK crouch takes (as <see cref="GunLocomotion"/>'s stand ones) and their speeds.</summary>
+        /// <param name="k">Human size of the body over the xdR skeleton's.</param>
+        internal static void CrouchLocomotion(SkinnedCharacterProfile profile, float k)
+        {
+            var takes = WeaponClipImporter.ImportBodyTakes();
+            AnimationClip Take(string name) => takes.TryGetValue(name, out var clip) ? clip : throw new InvalidOperationException("No body take " + name);
+            float Speed(float run, (float crouch, float run) d) => run * RunCycle * d.crouch / d.run / CrouchCycle * k;
+            profile.crouchIdle = Take("crouch_idle_ak");
+            profile.crouchForward = Take("cwalk_N_ak"); profile.crouchBackward = Take("cwalk_S_ak");
+            profile.crouchLeft = Take("cwalk_W_ak"); profile.crouchRight = Take("cwalk_E_ak");
+            profile.crouchForwardSpeed = Speed(RunN, DisplacementN); profile.crouchBackwardSpeed = Speed(RunS, DisplacementS);
+            profile.crouchLeftSpeed = Speed(RunW, DisplacementW); profile.crouchRightSpeed = Speed(RunE, DisplacementE);
+        }
+
         /// <summary>Spine, head and arms without the fingers: the flinch and the attack leave the hands to the knife takes.</summary>
         private static AvatarMask KnifeUpperBodyMask()
         {

@@ -978,6 +978,15 @@ MonoBehaviour:
   strafeLeftSpeed: 2.57374
   strafeRightSpeed: 2.7283854
   maxPlaybackRate: 1.3
+  crouchIdle: {fileID: -8711780483062119182, guid: dd5a1fa950ea83c4aaacf7a513a798ab, type: 3}
+  crouchForward: {fileID: 4380557447375374950, guid: dd5a1fa950ea83c4aaacf7a513a798ab, type: 3}
+  crouchBackward: {fileID: -3951895298235416752, guid: dd5a1fa950ea83c4aaacf7a513a798ab, type: 3}
+  crouchLeft: {fileID: -8799561533895661437, guid: dd5a1fa950ea83c4aaacf7a513a798ab, type: 3}
+  crouchRight: {fileID: 840666996247408071, guid: dd5a1fa950ea83c4aaacf7a513a798ab, type: 3}
+  crouchForwardSpeed: 2.1124241
+  crouchBackwardSpeed: 1.7368962
+  crouchLeftSpeed: 1.1700433
+  crouchRightSpeed: 1.2701515
   bannerSource: {fileID: 919132149155446097, guid: db264defb73a21c4495892748724bbc2, type: 3}
   bannerOffset: {x: 0, y: 0, z: 0}
   chestBack: {x: 0.011267188, y: -0.064969, z: -0.000000008227454}
@@ -993,6 +1002,14 @@ MonoBehaviour:
     reloadStart: {fileID: 0}
     reloadInsert: {fileID: 0}
     reloadEnd: {fileID: 0}
+    crouchHold: {fileID: 7400000, guid: 61322eba91cbd3945980b804be2e9a75, type: 2}
+    crouchAim: {fileID: 7400000, guid: f2edb8245dda4664da8b2caa37be68c5, type: 2}
+    crouchRun: {fileID: 7400000, guid: 3358a699551dd3847aa9818e8304d665, type: 2}
+    crouchFire: {fileID: 7400000, guid: 9615da8de04b36a4696d4043d163a2ad, type: 2}
+    crouchReload: {fileID: 7400000, guid: b2f428d90df8b28448786947f15a1945, type: 2}
+    crouchReloadStart: {fileID: 0}
+    crouchReloadInsert: {fileID: 0}
+    crouchReloadEnd: {fileID: 0}
     grip: {fileID: 11400000, guid: 42a93b13c0616014aab0cc676bd88877, type: 2}
   - weapon: smg
     model: {fileID: 919132149155446097, guid: 90f258aa0187fb34e901f9598cd61001, type: 3}
@@ -1004,6 +1021,14 @@ MonoBehaviour:
     reloadStart: {fileID: 0}
     reloadInsert: {fileID: 0}
     reloadEnd: {fileID: 0}
+    crouchHold: {fileID: 7400000, guid: 8750defe9a15c9341893c87431c6aab8, type: 2}
+    crouchAim: {fileID: 7400000, guid: b5285f4a6a7a803408ebeb31e109463b, type: 2}
+    crouchRun: {fileID: 7400000, guid: ceb7f2a8ae4c03d49bfebd4246bf8b06, type: 2}
+    crouchFire: {fileID: 7400000, guid: d44ea3df9d567bf45946a1dad954d723, type: 2}
+    crouchReload: {fileID: 7400000, guid: 44c5960e0e2f65148aadf9c1db94c5f4, type: 2}
+    crouchReloadStart: {fileID: 0}
+    crouchReloadInsert: {fileID: 0}
+    crouchReloadEnd: {fileID: 0}
     grip: {fileID: 11400000, guid: 5d64806fdc9bcdd4d8610f37a1402271, type: 2}
   - weapon: shotgun
     model: {fileID: 919132149155446097, guid: 294c4f2eaeda2394683fc5a106f54a64, type: 3}
@@ -1015,4 +1040,12 @@ MonoBehaviour:
     reloadStart: {fileID: 7400000, guid: e150d7e939944e347a0b905b682bef11, type: 2}
     reloadInsert: {fileID: 7400000, guid: bd2c1cb6eed927d4abeb84f00e0a3d50, type: 2}
     reloadEnd: {fileID: 7400000, guid: 6bdac199a32ceb740bc233d539e4ffb0, type: 2}
+    crouchHold: {fileID: 7400000, guid: 567086958777c104e917b9c117928154, type: 2}
+    crouchAim: {fileID: 7400000, guid: 9327a03dd5b91f245a0ca5a610e7b08e, type: 2}
+    crouchRun: {fileID: 7400000, guid: e5b9fc69415cb344ba69220d51aaf138, type: 2}
+    crouchFire: {fileID: 7400000, guid: 4f78c7ea3c6160e469ae84f97123ec94, type: 2}
+    crouchReload: {fileID: 7400000, guid: b2f428d90df8b28448786947f15a1945, type: 2}
+    crouchReloadStart: {fileID: 7400000, guid: 9c0e8123af1d88f4094b55b4faccc835, type: 2}
+    crouchReloadInsert: {fileID: 7400000, guid: 95f36bf23db263e47938d6c5fa2387cb, type: 2}
+    crouchReloadEnd: {fileID: 7400000, guid: 4e27d72dcfb3c8949bdb70d3316e7f78, type: 2}
     grip: {fileID: 11400000, guid: 705625bf5d492bc419fcd52d703097ad, type: 2}
