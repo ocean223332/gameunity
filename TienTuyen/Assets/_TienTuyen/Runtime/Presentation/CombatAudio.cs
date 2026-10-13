@@ -33,11 +33,15 @@ namespace TienTuyen.Presentation
         private float previousReload;
         private bool previousChargerDash;
         private float unscaledTime;
+        private bool musicVolumeInitialized;
+        private bool previousMusicPaused;
+        private bool previousMuteMusic;
 
         [Header("Per-group volume")]
         public AudioMixer Mixer;
         [Range(0, 1)] public float MasterVolume = .88f;
         [Range(0, 1)] public float MusicVolume = .38f;
+        [Range(0, 1)] public float PlayingMusicVolume = .19f;
         [Range(0, 1)] public float SfxVolume = .75f;
         [Range(0, 1)] public float UiVolume = .72f;
         [Range(0, 1)] public float AmbienceVolume = .32f;
@@ -132,8 +136,22 @@ namespace TienTuyen.Presentation
         {
             // Combat audio respects pause by ducking simulation ambience/music while UI
             // feedback continues with unscaled time and ignoreListenerPause.
-            float paused = game.State == CombatState.Paused ? .06f : 1f;
-            music.volume = MasterVolume * MusicVolume * paused * (MuteMusic ? 0 : 1);
+            bool pausedState = game.State == CombatState.Paused;
+            float paused = pausedState ? .06f : 1f;
+            float menuMusicVolume = MasterVolume * MusicVolume * (MuteMusic ? 0 : 1);
+            float playingMusicVolume = MasterVolume * PlayingMusicVolume * (MuteMusic ? 0 : 1);
+            float targetMusicVolume = (game.State == CombatState.Menu ? menuMusicVolume : playingMusicVolume) * paused;
+            if (!musicVolumeInitialized || pausedState || pausedState != previousMusicPaused || MuteMusic != previousMuteMusic)
+                music.volume = targetMusicVolume;
+            else
+            {
+                // Menu and play levels cross in about a second; the floor keeps a volume tweak from stalling it.
+                float stateFadeRate = Mathf.Max(Mathf.Abs(menuMusicVolume - playingMusicVolume), .05f);
+                music.volume = Mathf.MoveTowards(music.volume, targetMusicVolume, stateFadeRate * Time.unscaledDeltaTime);
+            }
+            musicVolumeInitialized = true;
+            previousMusicPaused = pausedState;
+            previousMuteMusic = MuteMusic;
             ambience.volume = MasterVolume * AmbienceVolume * paused * (MuteAmbience ? 0 : 1);
             sfx.volume = MasterVolume * SfxVolume * paused * (MuteSfx ? 0 : 1);
             ui.volume = MasterVolume * UiVolume * (MuteUi ? 0 : 1);
