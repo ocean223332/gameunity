@@ -45,4 +45,16 @@ Building and compiling do not replace a full 6-wave playtest. Automated lifecycl
 - [ART_DIRECTION — style and assets](docs/ART_DIRECTION.md)
 - [CREDITS — third-party and derived assets](docs/CREDITS.md)
 
+### Audio provenance
+
+The approved combat SFX are stored in `TienTuyen/Assets/_TienTuyen/Audio/Resources/CombatAudio`.
+Valve's AK47, MP5-SD and XM1014 recordings and the ground footsteps come from the
+pinned [sourcesounds/csgo mirror](https://github.com/sourcesounds/csgo/tree/08f1bd6835d4f510d2ccaedeab6bb9f637b388ab).
+Reload, draw, knife and shell contacts come from the [RAGNA SS GameBanana pack
+552059](https://gamebanana.com/mods/552059). Both sets contain Valve proprietary
+originals; their credits and the pack's licence note are recorded in
+[CREDITS](docs/CREDITS.md) and [Audio/Sources.md](TienTuyen/Assets/_TienTuyen/Audio/Sources.md).
+The remaining UI, impact, vocal, swish and cicada recordings are CC0 from Kenney,
+TinyWorlds, artisticdude and syncopika. The existing combat music remains unchanged.
+
 The design documents describe the target experience; features are only considered available once implemented and verified. The confirmed configuration above supersedes the corresponding "undecided" notes in earlier proposal documents.

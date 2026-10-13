@@ -611,6 +611,15 @@ namespace TienTuyen.Presentation
         public static float GrassCover(float x, float z) =>
             GrassCover(x, z, L.OutsideDistance(x, z), ProceduralArt.Fbm(x * .19f, z * .19f, 3));
 
+        /// <summary>Cheap presentation query for the mud puddles already painted into the ground.</summary>
+        public static bool WetPatch(float x, float z)
+        {
+            // The 1.6x radius follows the painted puddle edge closely enough for wet footsteps.
+            foreach (var puddle in Puddles)
+                if (Vector2.Distance(new Vector2(x, z), new Vector2(puddle.x, puddle.y)) <= puddle.z * 1.6f) return true;
+            return false;
+        }
+
         private static float GrassCover(float x, float z, float outside, float medium) => Band(GrassPatch(x, z, outside, medium), .56f, .7f);
 
         /// <summary>The continuous grass field behind GrassCover, whose .56-.7 band is where the clumps grow.</summary>

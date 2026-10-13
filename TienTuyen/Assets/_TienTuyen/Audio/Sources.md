@@ -1,16 +1,32 @@
 # Combat audio source record
 
-The first pass used procedural fallback tones. The following clips are now imported
-from publicly reusable sources and are kept in `Resources/CombatAudio` so the build
-is self-contained:
+The runtime clips live in `Resources/CombatAudio`. The approved WAVs were prepared at
+48 kHz, 16-bit PCM; the cicada ambience is stereo and the other clips are mono.
 
-| Runtime clip | Source | License / attribution |
+## Valve and CS:GO audio
+
+The AK47, MP5-SD and XM1014 shots, plus dirt, grass and mud footsteps, are Valve
+Corporation originals from the [sourcesounds/csgo mirror](https://github.com/sourcesounds/csgo/tree/08f1bd6835d4f510d2ccaedeab6bb9f637b388ab),
+pinned to commit `08f1bd6835d4f510d2ccaedeab6bb9f637b388ab`. The repository does not
+state a reuse licence; these are proprietary Valve assets and are included for this
+coursework project with the user's requested full credit.
+
+Reload, draw, knife and XM shell recordings are Valve / Hidden Path originals from
+the [RAGNA SS GameBanana pack 552059](https://gamebanana.com/mods/552059). RAGNA SS's
+page lists CC BY-NC-ND 4.0 for the pack; that page does not grant a reuse licence for
+the Valve originals. The pack is retained as the source archive and credited here.
+
+## CC0 recordings
+
+| Runtime clips | Source | Licence |
 |---|---|---|
-| `Rifle_Shot.wav`, `SMG_Shot.wav` | [gunshot1.wav by Mihacappy on Freesound](https://freesound.org/people/Mihacappy/sounds/833404/) | CC0 1.0; downloaded as the 24 kHz preview and normalized to mono 22.05 kHz. SMG is a pitch-shifted presentation variant of the same recording. |
-| `Shotgun_Shot.wav`, `Enemy_Shot.wav` | [Gunshot.wav by Cloud-10 on Freesound](https://freesound.org/people/Cloud-10/sounds/632821/) | CC0 1.0; trimmed and normalized to mono 22.05 kHz. |
-| `Music_Combat.ogg` | [Dipolog City March](https://commons.wikimedia.org/wiki/File:Dipolog_City_March.ogg) on Wikimedia Commons | Public domain; used as a martial, period-neutral combat march. |
+| UI, shop, result and progress cues | [Kenney Interface Sounds](https://kenney.nl/assets/interface-sounds) | CC0 |
+| Pickup, reload cloth, latch and charger cloth | [Kenney RPG Audio](https://kenney.nl/assets/rpg-audio) | CC0 |
+| Body and cover impacts | [Kenney Impact Sounds](https://kenney.nl/assets/impact-sounds) | CC0 |
+| Player hurt and death vocal | [TinyWorlds, 5 Hit Sounds + Dying](https://opengameart.org/content/5-hit-sounds-dying) | CC0 |
+| Bullet near miss and charger swish | [artisticdude, Swishes Sound Pack](https://opengameart.org/content/swishes-sound-pack) | CC0 |
+| Forest cicada ambience | [syncopika, Cicada Sounds](https://opengameart.org/content/cicada-sounds) | CC0 |
 
-`Charger_Dash.wav` and `Player_Hurt.mp3` are short variations derived from the CC0
-gunshot source for transitional impact cues. Other UI, ambience, hit, victory and
-defeat cues remain lightweight authored fallback tones until dedicated production
-recordings are commissioned.
+`Music_Combat.ogg` remains the existing Dipolog City March from [Wikimedia
+Commons](https://commons.wikimedia.org/wiki/File:Dipolog_City_March.ogg), recorded as
+public domain. Music selection is outside this SFX change.

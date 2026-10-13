@@ -25,6 +25,17 @@ namespace TienTuyen.Combat
         public event Action<Vector3, float> PlayerDamaged;
         /// <summary>A melee enemy swung: raised on every attack, also when invulnerability absorbs the damage.</summary>
         public event Action<Transform> EnemyMeleeStruck;
+        public event Action<Transform> EnemyMeleeSwing;
+        public event Action<Transform, EnemyActionKind> EnemyChargeStarted;
+        public event Action<Vector3, bool> SurfaceImpact;
+        public event Action<Vector3> BulletNearMiss;
+        public event Action<Vector3> PickupCollected;
+        public event Action<Vector3> SupplySpawned, SupplyClaimed;
+        public event Action<int> SupplyMilestone;
+        public event Action<int, float, int> ReloadStarted;
+        public event Action<Transform, float> EnemyReloadStarted;
+        /// <summary>Actors were cleared by a wave transition, death, menu or restart; never a hit or collection.</summary>
+        public event Action TransientsCleared;
 
         /// <summary>True once a view controller has supplied manual aim; tests and tools keep auto-aim.</summary>
         public bool ManualAim => manualAim;
@@ -126,7 +137,11 @@ namespace TienTuyen.Combat
             enemy.burstTimer = EnemyBurstSpacing(enemy);
             if (enemy.burstLeft > 0) return;
             enemy.attackTimer = enemy.definition.AttackCooldownSeconds;
-            if (enemy.ammo == 0) enemy.reloadTimer = EnemyReloadSeconds(enemy);
+            if (enemy.ammo == 0)
+            {
+                enemy.reloadTimer = EnemyReloadSeconds(enemy);
+                EnemyReloadStarted?.Invoke(enemy.body.transform, enemy.reloadTimer);
+            }
         }
 
         public bool TryGetEnemyAction(Transform actor, out EnemyActionState state)
@@ -135,6 +150,7 @@ namespace TienTuyen.Combat
             foreach (var enemy in enemies)
             {
                 if (enemy == null || !enemy.active || enemy.body.transform != actor) continue;
+                state.Role = enemy.definition.Role;
                 state.AttackCooldownRemaining = enemy.attackTimer;
                 if (enemy.charger)
                 {
@@ -190,12 +206,14 @@ namespace TienTuyen.Combat
             public float hp, attackTimer, aimTimer, warningTimer, pathTimer, chargeRemaining, reloadTimer, burstTimer;
             public int ammo, burstLeft;
             public Vector2 aimDirection;
+            public bool swingAnnounced;
         }
 
         private sealed class Bullet
         {
             public GameObject body;
             public bool active;
+            public bool nearMissPlayed;
             public Vector3 velocity;
             public float remaining, damage;
         }
@@ -334,6 +352,7 @@ namespace TienTuyen.Combat
         {
             float seconds = WeaponAt(slot).ReloadSecondsFor(MagazineSizeAt(slot) - weaponAmmo[slot]) * Stats.ReloadFactor;
             weaponReload[slot] = weaponReloadTotal[slot] = seconds;
+            ReloadStarted?.Invoke(slot, seconds, MagazineSizeAt(slot) - weaponAmmo[slot]);
         }
 
         /// <summary>
@@ -830,9 +849,15 @@ namespace TienTuyen.Combat
                     UpdateCharger(enemy, dt, toPlayer, distance);
                 else if (distance <= MeleeReach(enemy))
                 {
+                    if (!enemy.swingAnnounced && enemy.attackTimer <= MeleeWindup(enemy))
+                    {
+                        enemy.swingAnnounced = true;
+                        EnemyMeleeSwing?.Invoke(enemy.body.transform);
+                    }
                     if (enemy.attackTimer <= 0)
                     {
                         enemy.attackTimer = enemy.definition.AttackCooldownSeconds;
+                        enemy.swingAnnounced = false;
                         EnemyMeleeStruck?.Invoke(enemy.body.transform);
                         DamagePlayer(enemy.definition.AttackDamage, enemy.body.transform.position);
                         // A killing blow hides every enemy and clears its definition.
@@ -843,6 +868,7 @@ namespace TienTuyen.Combat
                 {
                     // Out of reach the attack stays at least a windup away, so a strike on arrival
                     // is always telegraphed by the full swing.
+                    enemy.swingAnnounced = false;
                     enemy.attackTimer = Mathf.Max(enemy.attackTimer, MeleeWindup(enemy));
                     MoveEnemy(enemy, dt, enemy.definition.MoveSpeed);
                 }
@@ -872,6 +898,7 @@ namespace TienTuyen.Combat
                     !RayHitsCover(start, actualMotion.normalized, actualMotion.magnitude, out _))
                 {
                     enemy.chargeHit = true;
+                    EnemyMeleeStruck?.Invoke(enemy.body.transform);
                     DamagePlayer(enemy.definition.AttackDamage, end);
                     if (State != CombatState.Playing) return;
                 }
@@ -894,6 +921,7 @@ namespace TienTuyen.Combat
                     enemy.aiming = false;
                     enemy.warning.SetActive(false);
                     enemy.charging = true;
+                    EnemyChargeStarted?.Invoke(enemy.body.transform, EnemyActionKind.ChargeDash);
                     enemy.chargeRemaining = ChargerDashSeconds;
                     enemy.chargeHit = false;
                 }
@@ -904,6 +932,7 @@ namespace TienTuyen.Combat
             {
                 enemy.aiming = true;
                 enemy.aimTimer = enemy.definition.TelegraphSeconds;
+                EnemyChargeStarted?.Invoke(enemy.body.transform, EnemyActionKind.ChargeTelegraph);
                 enemy.aimDirection = new Vector2(toPlayer.x, toPlayer.z).normalized;
                 DrawChargeLane(enemy.body.transform.position, enemy.aimDirection, enemy.warning,
                     enemy.definition.AttackRange);
@@ -961,7 +990,12 @@ namespace TienTuyen.Combat
                 Vector3 start = bullet.body.transform.position;
                 Vector3 delta = bullet.velocity * dt;
                 float length = delta.magnitude;
-                if (RayHitsCover(start, delta.normalized, length, out _)) { Deactivate(bullet); continue; }
+                if (RayHitsCover(start, delta.normalized, length, out float coverHit))
+                {
+                    SurfaceImpact?.Invoke(start + delta.normalized * coverHit, true);
+                    Deactivate(bullet);
+                    continue;
+                }
                 var point = ClosestPointOnSegment(player.position, start, start + delta);
                 if ((point - player.position).sqrMagnitude <= 0.47f * 0.47f)
                 {
@@ -969,6 +1003,13 @@ namespace TienTuyen.Combat
                     Deactivate(bullet);
                     if (State != CombatState.Playing) return;
                     continue;
+                }
+                // Wait until the segment passes the player, rather than announcing an approaching bullet.
+                if (!bullet.nearMissPlayed && (point - player.position).sqrMagnitude <= 1.5f * 1.5f &&
+                    Vector3.Dot(player.position - start - delta, bullet.velocity) <= 0f)
+                {
+                    bullet.nearMissPlayed = true;
+                    BulletNearMiss?.Invoke(point);
                 }
                 bullet.body.transform.position = start + delta;
                 bullet.remaining -= dt;
@@ -985,7 +1026,8 @@ namespace TienTuyen.Combat
                 Vector3 difference = player.position - pickup.body.transform.position;
                 difference.y = 0;
                 if (difference.sqrMagnitude > Stats.PickupRadius * Stats.PickupRadius) continue;
-                Run.TryCollectPickup(pickup.id, pickup.valueMinor);
+                if (Run.TryCollectPickup(pickup.id, pickup.valueMinor))
+                    PickupCollected?.Invoke(pickup.body.transform.position);
                 pickup.active = false;
                 pickup.body.SetActive(false);
             }
@@ -1049,6 +1091,7 @@ namespace TienTuyen.Combat
             int target = FindAimTarget(range);
             Vector3 start = player.position + Vector3.up * .08f;
             Vector3 end;
+            bool surfaceHit = false, hitCover = false;
             if (target >= 0)
             {
                 // Keep the hit on the view ray so the tracer and impact share the actual
@@ -1061,9 +1104,18 @@ namespace TienTuyen.Combat
             {
                 Vector3 rayOrigin = hasViewRay ? viewRayOrigin : start;
                 Vector3 rayDirection = hasViewRay ? viewRayDirection : aimDirection;
-                float distance = RayHitsCover(rayOrigin, rayDirection, range, out float hit) ? hit : range;
+                hitCover = RayHitsCover(rayOrigin, rayDirection, range, out float hit);
+                float distance = hitCover ? hit : range;
+                surfaceHit = hitCover;
                 if (hasViewRay && RayHitsGround(rayOrigin, rayDirection, range, out float ground))
-                    distance = Mathf.Min(distance, ground);
+                {
+                    if (ground < distance)
+                    {
+                        distance = ground;
+                        hitCover = false;
+                    }
+                    surfaceHit = true;
+                }
                 end = rayOrigin + rayDirection * distance;
             }
             weaponAmmo[slot]--;
@@ -1073,6 +1125,7 @@ namespace TienTuyen.Combat
             ShowTracer();
             WeaponFired?.Invoke(slot, start, end);
             ShotImpact?.Invoke(end, target >= 0);
+            if (surfaceHit) SurfaceImpact?.Invoke(end, hitCover);
             if (target >= 0) ApplyShotDamage(enemies[target], ShotDamage(slot, weapon, out bool critical), critical);
             if (weaponAmmo[slot] == 0) StartReload(slot);
         }
@@ -1227,6 +1280,7 @@ namespace TienTuyen.Combat
         private void UpdateSupply(float dt, bool waveComplete)
         {
             if (supplyEvent == null) return;
+            float previousProgress = SupplyProgress;
             float elapsed = WaveDuration(Wave) - WaveRemaining;
             bool inRange = supplyCrate != null && supplyCrate.activeSelf &&
                 PlanarDistanceSquared(player.position, supplyCrate.transform.position) <= 1.5f * 1.5f;
@@ -1241,16 +1295,21 @@ namespace TienTuyen.Combat
                     supplyCrate.transform.position = new Vector3(0, .36f, 7.4f);
                     supplyCrate.SetActive(true);
                     SupplyVisible = true;
+                    SupplySpawned?.Invoke(supplyCrate.transform.position);
                 }
             }
             SupplyProgress = supplyEvent.RecoverySeconds <= 0 ? 0 :
                 Mathf.Clamp01(supplyEvent.ProgressSeconds / supplyEvent.RecoverySeconds);
+            for (int milestone = 1; milestone < 4; milestone++)
+                if (previousProgress < milestone * .25f && SupplyProgress >= milestone * .25f)
+                    SupplyMilestone?.Invoke(milestone);
             if (supplyEvent.IsClaimable && supplyEvent.TryClaim(Health > 0, out var reward))
             {
                 Run.AddCurrency(reward.CurrencyMinorUnits);
                 Health = Mathf.Min(MaxHealth, Health + reward.Heal);
                 SupplyVisible = false;
                 SupplyProgress = 1;
+                SupplyClaimed?.Invoke(supplyCrate != null ? supplyCrate.transform.position : player.position);
                 if (supplyCrate != null) supplyCrate.SetActive(false);
             }
         }
@@ -1279,6 +1338,7 @@ namespace TienTuyen.Combat
             {
                 if (bullet.active) continue;
                 bullet.active = true;
+                bullet.nearMissPlayed = false;
                 bullet.remaining = 3f;
                 float spread = UnityEngine.Random.Range(-spreadDegrees, spreadDegrees) * Mathf.Deg2Rad;
                 Vector2 shot = new Vector2(direction.x * Mathf.Cos(spread) - direction.y * Mathf.Sin(spread),
@@ -1385,6 +1445,7 @@ namespace TienTuyen.Combat
 
         private void HideTransientObjects()
         {
+            TransientsCleared?.Invoke();
             foreach (var enemy in enemies)
             {
                 enemy.active = enemy.pending = enemy.shooter = enemy.elite = enemy.charger =
@@ -1393,6 +1454,7 @@ namespace TienTuyen.Combat
                 enemy.hp = enemy.attackTimer = enemy.aimTimer = enemy.warningTimer =
                     enemy.pathTimer = enemy.chargeRemaining = enemy.reloadTimer = enemy.burstTimer = 0;
                 enemy.ammo = enemy.burstLeft = 0;
+                enemy.swingAnnounced = false;
                 enemy.aimDirection = Vector2.zero;
                 enemy.body.SetActive(false);
                 enemy.warning.SetActive(false);
@@ -1548,6 +1610,7 @@ namespace TienTuyen.Combat
     /// <summary>Read-only attack state of one enemy, see <see cref="CombatGame.TryGetEnemyAction"/>.</summary>
     public struct EnemyActionState
     {
+        public EnemyRole Role;
         public EnemyActionKind Kind;
         /// <summary>Charger telegraph, 0 at its start to 1 when the dash begins.</summary>
         public float TelegraphProgress;

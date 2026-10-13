@@ -247,6 +247,29 @@ namespace TienTuyen.Combat.Tests
         }
 
         [Test]
+        public void BulletNearMissIsAnnouncedOnceAfterPassingThePlayer()
+        {
+            var player = (Transform)typeof(CombatGame).GetField("player", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(game);
+            var bullets = (System.Array)typeof(CombatGame).GetField("bullets", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(game);
+            var bullet = bullets.GetValue(0);
+            var type = bullet.GetType();
+            type.GetField("active", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic).SetValue(bullet, true);
+            type.GetField("velocity", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic).SetValue(bullet, Vector3.left * 18f);
+            type.GetField("remaining", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic).SetValue(bullet, 3f);
+            type.GetField("nearMissPlayed", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic).SetValue(bullet, false);
+            var body = (GameObject)type.GetField("body", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic).GetValue(bullet);
+            body.SetActive(true);
+            body.transform.position = player.position + new Vector3(.8f, 0, .7f);
+            var announcements = 0;
+            System.Action<Vector3> onNearMiss = _ => announcements++;
+            game.BulletNearMiss += onNearMiss;
+            game.StepSimulation(.1f, Vector2.zero);
+            game.StepSimulation(.1f, Vector2.zero);
+            game.BulletNearMiss -= onNearMiss;
+            Assert.That(announcements, Is.EqualTo(1));
+        }
+
+        [Test]
         public void DeathStopsClockAndDoesNotPaySurvivalReward()
         {
             var currency = game.Currency;

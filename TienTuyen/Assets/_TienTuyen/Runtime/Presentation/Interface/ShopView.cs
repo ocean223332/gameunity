@@ -75,7 +75,7 @@ namespace TienTuyen.Presentation.Interface
             {
                 bool ok = game.RerollShop();
                 message.text = ok ? "Đã đổi hàng mới." : "Không thể đổi hàng.";
-                sound("Reroll");
+                sound(ok ? "Reroll" : "Buy_Fail");
             });
             bandage = Button(UiButton.Style.Secondary, "BĂNG BÓ  ·  +25 HP  ·  15", Margin, -464, 250, 38, () =>
             {

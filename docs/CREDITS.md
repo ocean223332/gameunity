@@ -3,6 +3,19 @@
 Third-party material shipped in the Unity project. CC BY assets require the attribution below in any build or
 publication; CC0 and public-domain sources are listed for provenance.
 
+## Audio
+
+| Asset | Author / original creator | Source | Licence / note | Used for |
+|---|---|---|---|---|
+| AK47, MP5-SD, XM1014 shots and ground footsteps | Valve Corporation | [sourcesounds/csgo](https://github.com/sourcesounds/csgo/tree/08f1bd6835d4f510d2ccaedeab6bb9f637b388ab), commit `08f1bd6835d4f510d2ccaedeab6bb9f637b388ab` | Valve proprietary assets; the mirror states no reuse licence | Rifle, SMG and shotgun shots; dirt, grass and mud footsteps |
+| Reload, draw, knife and XM shell recordings | RAGNA SS pack; Valve Corporation / Hidden Path Entertainment originals | [GameBanana pack 552059](https://gamebanana.com/mods/552059) | Pack page lists CC BY-NC-ND 4.0; that does not separately license the Valve originals | Weapon contacts and enemy knife actions |
+| Interface Sounds | Kenney | [kenney.nl/assets/interface-sounds](https://kenney.nl/assets/interface-sounds) | CC0 | Buttons, shop, results and progress |
+| RPG Audio and Impact Sounds | Kenney | [kenney.nl/assets/rpg-audio](https://kenney.nl/assets/rpg-audio), [kenney.nl/assets/impact-sounds](https://kenney.nl/assets/impact-sounds) | CC0 | Pickup, cloth, latch, body and cover impacts |
+| 5 Hit Sounds + Dying | TinyWorlds | [OpenGameArt](https://opengameart.org/content/5-hit-sounds-dying) | CC0 | Player hurt/death and enemy death vocal |
+| Swishes Sound Pack | artisticdude | [OpenGameArt](https://opengameart.org/content/swishes-sound-pack) | CC0 | Bullet near miss and charger dash |
+| Cicada Sounds | syncopika | [OpenGameArt](https://opengameart.org/content/cicada-sounds) | CC0 | Forest ambience |
+| Dipolog City March | Recorded in Dipolog City | [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Dipolog_City_March.ogg) | Recorded as public domain; current music retained | Combat music |
+
 ## Environment
 
 | Asset | Author | Source | Licence | Used for |
