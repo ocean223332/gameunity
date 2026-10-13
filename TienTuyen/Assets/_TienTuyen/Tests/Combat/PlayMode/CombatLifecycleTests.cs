@@ -60,7 +60,22 @@ namespace TienTuyen.Combat.Tests
             float menuLevel = audio.MasterVolume * audio.MusicVolume;
             float playingLevel = audio.MasterVolume * audio.PlayingMusicVolume;
             game.ReturnToMenu();
+            var ambience = (AudioSource)typeof(CombatAudio).GetField("ambience", flags).GetValue(audio);
+            audio.SetIntroPlaying(true);
+            Assert.That(ambience.isPlaying, Is.False);
+            Assert.That(audio.GetComponentsInChildren<AudioSource>().All(source => source.volume == 0f), Is.True);
+            audio.SetIntroPlaying(false);
+            Assert.That(ambience.isPlaying, Is.True);
+            Assert.That(ambience.volume, Is.EqualTo(audio.MasterVolume * audio.AmbienceVolume).Within(.001f));
+            audio.StartMusic(IntroVideoGate.HandoffMenuOffsetSeconds, .25f);
+            Assert.That(menu.time, Is.EqualTo(54.1f).Within(.05f));
+            Assert.That(menu.volume + playing.volume, Is.Zero);
+            tick.Invoke(audio, new object[] { .125f });
+            Assert.That(menu.volume, Is.EqualTo(menuLevel * .5f).Within(.001f));
+            tick.Invoke(audio, new object[] { .125f });
+            Assert.That(menu.volume, Is.EqualTo(menuLevel).Within(.001f));
             audio.StartMusic();
+            Assert.That(menu.time, Is.Zero.Within(.05f));
             Assert.That(menu.volume, Is.EqualTo(menuLevel).Within(.001f));
             Assert.That(playing.volume, Is.Zero);
 

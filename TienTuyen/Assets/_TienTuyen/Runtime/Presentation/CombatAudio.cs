@@ -88,7 +88,10 @@ namespace TienTuyen.Presentation
         private float previousHealth;
         private float unscaledTime;
         private bool musicStarted;
+        private bool introPlaying;
         private float musicBlend;
+        private float musicFade = 1f;
+        private float musicFadeDuration = 1f;
         private Transform player;
         private readonly Dictionary<Transform, StepState> steps = new Dictionary<Transform, StepState>();
         private ReloadState reload;
@@ -201,16 +204,33 @@ namespace TienTuyen.Presentation
             {
                 StartMusic();
             }
-            PlayLoop(ambience, "Ambience_Forest__cicadas_loop");
+            if (!introPlaying) StartAmbience();
+        }
+
+        /// <summary>Silences game sources while the intro owns the soundtrack, then starts menu ambience.</summary>
+        public void SetIntroPlaying(bool playing)
+        {
+            introPlaying = playing;
+            if (playing) ambience.Stop();
+            else StartAmbience();
+            UpdateVolumes();
+        }
+
+        private void StartAmbience()
+        {
+            ambience.clip = clips["Ambience_Forest__cicadas_loop"];
+            if (!ambience.isPlaying) ambience.Play();
         }
 
         /// <summary>With AutoStartMusic disabled, an intro can start the menu score at its handoff offset.</summary>
-        public void StartMusic(float menuOffsetSeconds = 0f)
+        public void StartMusic(float menuOffsetSeconds = 0f, float fadeInSeconds = 0f)
         {
             menuMusic.Stop();
             playingMusic.Stop();
             menuMusic.time = Mathf.Repeat(menuOffsetSeconds, menuMusic.clip.length);
             musicBlend = game.State == CombatState.Menu ? 0f : 1f;
+            musicFadeDuration = Mathf.Max(.01f, fadeInSeconds);
+            musicFade = fadeInSeconds > 0f ? 0f : 1f;
             musicStarted = true;
             TickMusic(0f);
         }
@@ -807,21 +827,26 @@ namespace TienTuyen.Presentation
         {
             bool paused = game.State == CombatState.Paused;
             float duck = paused ? .06f : 1f;
+            float master = introPlaying ? 0f : MasterVolume;
             TickMusic(Time.unscaledDeltaTime);
-            ambience.volume = MasterVolume * AmbienceVolume * duck * (MuteAmbience ? 0 : 1);
-            sfx.volume = MasterVolume * SfxVolume * duck * (MuteSfx ? 0 : 1);
+            ambience.volume = master * AmbienceVolume * duck * (MuteAmbience ? 0 : 1);
+            sfx.volume = master * SfxVolume * duck * (MuteSfx ? 0 : 1);
             foreach (var source in worldSources)
-                source.volume = MasterVolume * SfxVolume * duck * (MuteSfx ? 0 : 1);
-            ui.volume = MasterVolume * UiVolume * (MuteUi ? 0 : 1);
+                source.volume = master * SfxVolume * duck * (MuteSfx ? 0 : 1);
+            ui.volume = master * UiVolume * (MuteUi ? 0 : 1);
         }
 
         private void TickMusic(float deltaTime)
         {
             if (!musicStarted) return;
+            if (musicFade < 1f)
+            {
+                musicFade = Mathf.MoveTowards(musicFade, 1f, deltaTime / musicFadeDuration);
+            }
             float target = game.State == CombatState.Menu ? 0f : 1f;
             // Keep the blend independent of ducking/mute so either changes both tracks immediately.
             musicBlend = Mathf.MoveTowards(musicBlend, target, deltaTime);
-            float volume = MasterVolume * (MuteMusic ? 0f : 1f);
+            float volume = (introPlaying ? 0f : MasterVolume) * musicFade * (MuteMusic ? 0f : 1f);
             if (game.State == CombatState.Paused) volume *= .06f;
             SetMusicWeight(menuMusic, 1f - musicBlend, MusicVolume * volume);
             SetMusicWeight(playingMusic, musicBlend, PlayingMusicVolume * volume);
@@ -844,15 +869,6 @@ namespace TienTuyen.Presentation
             {
                 source.Play();
             }
-        }
-
-        private static void PlayLoop(AudioSource source, string clipName)
-        {
-            if (source == null || source.clip != null) return;
-            var root = source.transform.parent.GetComponent<CombatAudio>();
-            if (root == null || !root.clips.TryGetValue(clipName, out var clip)) return;
-            source.clip = clip;
-            source.Play();
         }
 
         private static AudioClip CreateFallbackClip(string name)
