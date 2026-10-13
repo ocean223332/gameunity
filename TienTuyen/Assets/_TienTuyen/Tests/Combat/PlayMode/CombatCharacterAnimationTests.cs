@@ -532,35 +532,99 @@ namespace TienTuyen.Combat.Tests
         }
 
         [Test]
-        public void HeroFingertipsKeepTheirBindInEveryGripPose()
+        public void HeroFingersBendAsCleanChainsInEveryGripPose()
         {
-            // The approved hands bend two joints per finger: each tip, ring and little included, keeps its bind turn on its
-            // middle phalanx in the static grips and in every frame of every track.
-            var bind = new Dictionary<string, Quaternion>();
-            foreach (var t in hero.Profile.model.GetComponentsInChildren<Transform>(true)) bind[t.name] = t.localRotation;
-            var tip = new System.Text.RegularExpressions.Regex(@"_Finger\d2$");
-            var failures = new List<string>();
-            int checkedTips = 0;
-            void Check(string bone, Quaternion rotation, string where)
+            // The approved hands pose fingers 1-4 as clean chains: the base swings from bind and may roll the whole finger; the
+            // mid and tip then bend in the one plane the base's hinge sets, with no roll of their own. A clip's crumpled finger
+            // (a mid bone rolled 100 degrees and more) breaks this in the static grips or any track frame. The approved data's
+            // worst whole-finger roll is 59.8 degrees (right little finger mid-reload); its segments hold under 0.05.
+            const float MaxFingerRoll = 62f, MaxSegmentRoll = .5f, MaxOffHinge = .5f;
+            var bindRotation = new Dictionary<string, Quaternion>();
+            var bindPosition = new Dictionary<string, Vector3>();
+            foreach (var t in hero.Profile.model.GetComponentsInChildren<Transform>(true))
             {
-                if (!tip.IsMatch(bone)) return;
-                checkedTips++;
-                float angle = Quaternion.Angle(bind[bone], rotation);
-                if (angle > .5f) failures.Add(where + " " + bone + " " + angle.ToString("F1") + " deg off bind");
+                bindRotation[t.name] = t.localRotation;
+                bindPosition[t.name] = t.localPosition;
+            }
+            // A tip's long axis runs to its farthest skinned vertex (the hand solve measured it so); the base and mid run to
+            // their child joints.
+            var tip = new System.Text.RegularExpressions.Regex(@"_[LR]_Finger[1-4]2$");
+            var tipAxis = new Dictionary<string, Vector3>();
+            foreach (var skin in hero.Profile.model.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                var mesh = skin.sharedMesh;
+                var vertices = mesh.vertices;
+                var weights = mesh.boneWeights;
+                var bindposes = mesh.bindposes;
+                for (int v = 0; v < vertices.Length; v++)
+                {
+                    var w = weights[v];
+                    int bone = w.weight0 >= w.weight1 && w.weight0 >= w.weight2 && w.weight0 >= w.weight3 ? w.boneIndex0 :
+                        w.weight1 >= w.weight2 && w.weight1 >= w.weight3 ? w.boneIndex1 : w.weight2 >= w.weight3 ? w.boneIndex2 : w.boneIndex3;
+                    string name = skin.bones[bone].name;
+                    if (!tip.IsMatch(name)) continue;
+                    Vector3 p = bindposes[bone].MultiplyPoint3x4(vertices[v]);
+                    if (!tipAxis.TryGetValue(name, out var far) || p.sqrMagnitude > far.sqrMagnitude) tipAxis[name] = p;
+                }
+            }
+            Assert.That(tipAxis.Count, Is.EqualTo(8), "a skinned tip on fingers 1-4 of both hands");
+            static float Twist(Quaternion q, Vector3 axis) =>
+                Mathf.Abs(Mathf.DeltaAngle(0f, 2f * Mathf.Atan2(Vector3.Dot(new Vector3(q.x, q.y, q.z), axis), q.w) * Mathf.Rad2Deg));
+            var failures = new List<string>();
+            var worst = new float[3];
+            var worstAt = new string[3];
+            int chains = 0;
+            void Note(int metric, float value, float limit, string what)
+            {
+                if (value > worst[metric]) { worst[metric] = value; worstAt[metric] = what; }
+                if (value > limit) failures.Add(what + " " + value.ToString("F1"));
+            }
+            void Check(Dictionary<string, Quaternion> pose, char side, string where)
+            {
+                string hand = "ValveBiped.Bip01_" + side + "_Finger";
+                Vector3 Knuckle(int f) => bindPosition[hand + f];
+                Vector3 palm = Vector3.Cross((Knuckle(1) + Knuckle(2) + Knuckle(3) + Knuckle(4)) / 4f, Knuckle(4) - Knuckle(1)).normalized;
+                for (int f = 1; f <= 4; f++)
+                {
+                    var bones = new[] { hand + f, hand + f + "1", hand + f + "2" };
+                    var local = bones.Select(b => pose.TryGetValue(b, out var r) ? r : bindRotation[b]).ToArray();
+                    var axis = new[] { bindPosition[bones[1]].normalized, bindPosition[bones[2]].normalized, tipAxis[bones[2]].normalized };
+                    string what = where + " " + side + f;
+                    Note(0, Twist(Quaternion.Inverse(bindRotation[bones[0]]) * local[0], axis[0]), MaxFingerRoll, what + " finger roll");
+                    for (int k = 1; k < 3; k++)
+                        Note(1, Twist(Quaternion.Inverse(bindRotation[bones[k]]) * local[k], axis[k]), MaxSegmentRoll, what + " segment " + k + " roll");
+                    // In the hand's frame: the base's bind hinge (across the bind finger and the palm normal), carried by its turn.
+                    Vector3 hinge = (local[0] * Quaternion.Inverse(bindRotation[bones[0]]) * Vector3.Cross(bindRotation[bones[0]] * axis[0], palm)).normalized;
+                    Quaternion frame = local[0];
+                    for (int k = 1; k < 3; k++)
+                    {
+                        frame *= local[k];
+                        Note(2, Mathf.Asin(Mathf.Min(1f, Mathf.Abs(Vector3.Dot(frame * axis[k], hinge)))) * Mathf.Rad2Deg, MaxOffHinge, what + " segment " + k + " off the hinge");
+                    }
+                    chains++;
+                }
             }
             foreach (var set in hero.Profile.weaponSets)
             {
                 var data = set.grip;
                 Assert.That(data, Is.Not.Null, set.weapon + " has no grip data");
-                var grip = data.rightFingers.Concat(data.leftFingers).ToArray();
-                Assert.That(grip.Count(f => tip.IsMatch(f.bone)), Is.EqualTo(10), data.gun + ": every finger of both hands, ring and little included");
-                foreach (var f in grip) Check(f.bone, f.rotation, data.gun + " grip");
+                var grip = data.rightFingers.Concat(data.leftFingers).ToDictionary(f => f.bone, f => f.rotation);
+                Check(grip, 'R', data.gun + " grip");
+                Check(grip, 'L', data.gun + " grip");
                 foreach (var track in data.tracks)
-                    foreach (var (names, rows) in new[] { (track.rightBones, track.rightFingers), (track.leftBones, track.leftFingers) })
-                        for (int i = 0; i < rows.Length; i++) Check(names[i % names.Length], rows[i], data.gun + " " + track.clip.name + " frame " + i / names.Length);
+                    foreach (var (side, names, rows) in new[] { ('R', track.rightBones, track.rightFingers), ('L', track.leftBones, track.leftFingers) })
+                        for (int i = 0; i + names.Length <= rows.Length; i += names.Length)
+                        {
+                            var pose = new Dictionary<string, Quaternion>();
+                            for (int j = 0; j < names.Length; j++) pose[names[j]] = rows[i + j];
+                            Check(pose, side, data.gun + " " + track.clip.name + " frame " + i / names.Length);
+                        }
             }
-            Assert.That(checkedTips, Is.GreaterThan(30));
-            Assert.That(failures, Is.Empty, string.Join("; ", failures.Take(12)) + (failures.Count > 12 ? " ... " + failures.Count : ""));
+            Assert.That(chains, Is.GreaterThan(100));
+            Assert.That(failures, Is.Empty, "Fingers 1-4 must stay clean chains (whole-finger roll <= " + MaxFingerRoll + ", segment roll <= " +
+                MaxSegmentRoll + ", mid and tip off the base's hinge plane <= " + MaxOffHinge + " deg). Worst: " +
+                string.Join("; ", Enumerable.Range(0, 3).Select(m => worstAt[m] + " " + worst[m].ToString("F1"))) + ". " +
+                string.Join("; ", failures.Take(8)) + (failures.Count > 8 ? " ... " + failures.Count : ""));
         }
 
         [Test]
