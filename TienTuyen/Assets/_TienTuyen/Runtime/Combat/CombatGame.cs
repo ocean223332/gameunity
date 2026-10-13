@@ -35,6 +35,9 @@ namespace TienTuyen.Combat
         /// <summary>How far down the player is, 0 standing to 1 crouched, eased over <see cref="CombatRules.CrouchSeconds"/>.</summary>
         public float Crouch { get; private set; }
         public float PlayerHeight => Mathf.Lerp(CombatRules.PlayerStandHeight, CombatRules.PlayerCrouchHeight, Crouch);
+        /// <summary>How far the player has slowed to a walk, 0 running to 1 walking, eased over <see cref="CombatRules.WalkSeconds"/>; a crouch wins.</summary>
+        public float Walk { get; private set; }
+        private bool walkHeld;
         public Vector3 PlayerAimDirection
         {
             get
@@ -276,6 +279,7 @@ namespace TienTuyen.Combat
             }
             crouchHeld = (keyboard != null && (keyboard.leftCtrlKey.isPressed || keyboard.cKey.isPressed)) ||
                 (Gamepad.current != null && Gamepad.current.rightStickButton.isPressed);
+            walkHeld = keyboard != null && keyboard.shiftKey.isPressed;
             if (Mouse.current != null)
             {
                 float wheel = Mouse.current.scroll.ReadValue().y;
@@ -391,6 +395,8 @@ namespace TienTuyen.Combat
             player.gameObject.SetActive(true);
             crouchHeld = false;
             Crouch = 0;
+            walkHeld = false;
+            Walk = 0;
             ResetWave();
             State = CombatState.Playing;
         }
@@ -633,11 +639,16 @@ namespace TienTuyen.Combat
         /// <summary>Hold-to-crouch, as the keyboard and gamepad set it each frame; also used by PlayMode tests.</summary>
         public void SetCrouchInput(bool held) => crouchHeld = held;
 
+        /// <summary>Hold-to-walk, as the keyboard sets it each frame; also used by PlayMode tests.</summary>
+        public void SetWalkInput(bool held) => walkHeld = held;
+
         private void MovePlayer(float dt, Vector2 movement)
         {
             if (movement.sqrMagnitude > 1) movement.Normalize();
             Crouch = Mathf.MoveTowards(Crouch, crouchHeld ? 1f : 0f, dt / CombatRules.CrouchSeconds);
-            float speed = CombatRules.PlayerSpeed * Stats.SpeedFactor * Mathf.Lerp(1f, CombatRules.CrouchSpeedFactor, Crouch);
+            Walk = Mathf.MoveTowards(Walk, walkHeld ? 1f : 0f, dt / CombatRules.WalkSeconds);
+            float speed = CombatRules.PlayerSpeed * Stats.SpeedFactor * Mathf.Lerp(1f, CombatRules.CrouchSpeedFactor, Crouch) *
+                Mathf.Lerp(1f, CombatRules.WalkSpeedFactor, Walk * (1f - Crouch));
             var displacement = new Vector3(movement.x, 0, movement.y) * (speed * dt);
             MoveWithCover(player, displacement, PlayerRadius);
             var p = player.position;

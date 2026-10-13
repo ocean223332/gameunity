@@ -46,11 +46,12 @@ namespace TienTuyen.Editor
             profile.upperBodyMask = null;
             profile.weaponSets = new WeaponClipSet[0];
             var knife = WeaponClipImporter.ImportKnifeTakes();
-            var sets = WeaponClipImporter.BakeSets(profile, ClipPrefix, crouch: true);
+            var sets = WeaponClipImporter.BakeSets(profile, ClipPrefix, crouch: true, walk: true);
             // Planted-foot speeds scale with the human size of the body that plays the takes.
             float k = HumanScale(model, avatar) / HumanScale(knife.model, knife.avatar);
             ValveBipedCharacterImporter.GunLocomotion(profile, k, knife.clips["death"]);
             ValveBipedCharacterImporter.CrouchLocomotion(profile, k);
+            ValveBipedCharacterImporter.WalkLocomotion(profile, k);
             profile.deathFloorLift = SkinnedCharacterProfileBaker.MeasureDeathFloorLift(profile);
             SkinnedCharacterProfileBaker.MeasureSoles(profile);
             SkinnedCharacterProfileBaker.MeasureBack(profile);

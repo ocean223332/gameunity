@@ -987,6 +987,14 @@ MonoBehaviour:
   crouchBackwardSpeed: 1.7368962
   crouchLeftSpeed: 1.1700433
   crouchRightSpeed: 1.2701515
+  walkForward: {fileID: -4665636384203054344, guid: 156ea0b29229e804e9fb1d9415059558, type: 3}
+  walkBackward: {fileID: 2484718559715551824, guid: 156ea0b29229e804e9fb1d9415059558, type: 3}
+  walkLeft: {fileID: -275629538026729818, guid: 156ea0b29229e804e9fb1d9415059558, type: 3}
+  walkRight: {fileID: -132189757796707179, guid: 156ea0b29229e804e9fb1d9415059558, type: 3}
+  walkForwardSpeed: 2.3273327
+  walkBackwardSpeed: 2.0429246
+  walkLeftSpeed: 1.4208771
+  walkRightSpeed: 1.6369311
   bannerSource: {fileID: 919132149155446097, guid: db264defb73a21c4495892748724bbc2, type: 3}
   bannerOffset: {x: 0, y: 0, z: 0}
   chestBack: {x: 0.011267188, y: -0.064969, z: -0.000000008227454}
@@ -1010,6 +1018,7 @@ MonoBehaviour:
     crouchReloadStart: {fileID: 0}
     crouchReloadInsert: {fileID: 0}
     crouchReloadEnd: {fileID: 0}
+    walkRun: {fileID: 7400000, guid: a830f2abe94af0245b07f45051b748c3, type: 2}
     grip: {fileID: 11400000, guid: 42a93b13c0616014aab0cc676bd88877, type: 2}
   - weapon: smg
     model: {fileID: 919132149155446097, guid: 90f258aa0187fb34e901f9598cd61001, type: 3}
@@ -1029,6 +1038,7 @@ MonoBehaviour:
     crouchReloadStart: {fileID: 0}
     crouchReloadInsert: {fileID: 0}
     crouchReloadEnd: {fileID: 0}
+    walkRun: {fileID: 7400000, guid: b2020cbcf302ff14ea367f9e2d4eb547, type: 2}
     grip: {fileID: 11400000, guid: 5d64806fdc9bcdd4d8610f37a1402271, type: 2}
   - weapon: shotgun
     model: {fileID: 919132149155446097, guid: 294c4f2eaeda2394683fc5a106f54a64, type: 3}
@@ -1048,4 +1058,5 @@ MonoBehaviour:
     crouchReloadStart: {fileID: 7400000, guid: 9c0e8123af1d88f4094b55b4faccc835, type: 2}
     crouchReloadInsert: {fileID: 7400000, guid: 95f36bf23db263e47938d6c5fa2387cb, type: 2}
     crouchReloadEnd: {fileID: 7400000, guid: 4e27d72dcfb3c8949bdb70d3316e7f78, type: 2}
+    walkRun: {fileID: 7400000, guid: d86b704b5d0bd594b8546135537cd0d4, type: 2}
     grip: {fileID: 11400000, guid: 705625bf5d492bc419fcd52d703097ad, type: 2}

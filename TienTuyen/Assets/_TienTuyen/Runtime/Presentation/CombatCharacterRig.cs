@@ -86,6 +86,8 @@ namespace TienTuyen.Presentation
         public Vector2 ReloadPhases { get; set; }
         /// <summary>0 standing to 1 crouched (the game's crouch); a skinned body blends in its crouched clips.</summary>
         public float Crouch { get; set; }
+        /// <summary>0 running to 1 walking (the game's walk); a skinned body blends in its walking clips unless crouched.</summary>
+        public float Walk { get; set; }
         /// <summary>World point the shouldered bore meets (the crosshair); null keeps the bore level.</summary>
         public Vector3? AimPoint { get; set; }
         public SkinnedCharacterProfile Profile { get; private set; }
@@ -410,6 +412,7 @@ namespace TienTuyen.Presentation
             skinned.Draw(DrawProgress);
             skinned.ReloadLength(ReloadSeconds, ReloadPhases);
             skinned.Crouch(Crouch);
+            skinned.Walk(Walk);
             skinned.Advance(dt, localVelocity, movementBlend, reload, hit, death, weapon != null, aim, action);
             // A falling body drops its weapon and flag from view (a rigid pole would spear the
             // floor in a backward fall); respawn/reset shows them again.

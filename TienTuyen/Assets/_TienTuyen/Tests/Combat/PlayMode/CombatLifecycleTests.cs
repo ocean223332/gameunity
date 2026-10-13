@@ -371,7 +371,7 @@ namespace TienTuyen.Combat.Tests
         }
 
         [Test]
-        public void HoldingCrouchLowersAndSlowsThePlayerUntilReleased()
+        public void HoldingCrouchOrWalkSlowsThePlayerUntilReleased()
         {
             var player = game.transform.Find("Player");
             float Walk()
@@ -392,6 +392,19 @@ namespace TienTuyen.Combat.Tests
             Simulate(CombatRules.CrouchSeconds, Vector2.zero);
             Assert.That(game.Crouch, Is.EqualTo(0f).Within(1e-4f));
             Assert.That(game.PlayerHeight, Is.EqualTo(CombatRules.PlayerStandHeight).Within(1e-4f));
+            Assert.That(Walk(), Is.EqualTo(standing).Within(1e-3f));
+
+            game.SetWalkInput(true);
+            Simulate(CombatRules.WalkSeconds, Vector2.zero);
+            Assert.That(Walk(), Is.EqualTo(standing * CombatRules.WalkSpeedFactor).Within(1e-3f));
+            // Crouching while walking moves at the crouch speed, as in CS:GO.
+            game.SetCrouchInput(true);
+            Simulate(CombatRules.CrouchSeconds, Vector2.zero);
+            Assert.That(Walk(), Is.EqualTo(standing * CombatRules.CrouchSpeedFactor).Within(1e-3f));
+
+            game.SetCrouchInput(false);
+            game.SetWalkInput(false);
+            Simulate(Mathf.Max(CombatRules.CrouchSeconds, CombatRules.WalkSeconds), Vector2.zero);
             Assert.That(Walk(), Is.EqualTo(standing).Within(1e-3f));
         }
 

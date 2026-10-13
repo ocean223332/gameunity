@@ -181,11 +181,14 @@ namespace TienTuyen.Editor
             profile.death = death;
         }
 
-        // CS:GO's cycle displacement (in) of the crouch walk and the run per direction, and the crouch-walk cycle (s): a crouch
-        // walk's planted distance per cycle is the run's (speed x RunCycle) scaled by their displacements (xdR MANIFEST).
-        private static readonly (float crouch, float run) DisplacementN = (67.8f, 145.7f), DisplacementS = (54.9f, 118.1f),
-            DisplacementE = (55.4f, 125.4f), DisplacementW = (54.1f, 125.4f);
-        private const float CrouchCycle = .8f;
+        // CS:GO's cycle displacement (in) of the crouch walk, the walk and the run per direction, and the crouch-walk and walk
+        // cycles (s): a gait's planted distance per cycle is the run's (speed x RunCycle) scaled by their displacements (xdR MANIFEST).
+        private static readonly (float crouch, float walk, float run) DisplacementN = (67.8f, 99.6f, 145.7f), DisplacementS = (54.9f, 86.1f, 118.1f),
+            DisplacementE = (55.4f, 95.2f, 125.4f), DisplacementW = (54.1f, 87.6f, 125.4f);
+        private const float CrouchCycle = .8f, WalkCycle = 1.0667f;
+
+        /// <summary>Planted-foot speed of a gait whose <paramref name="cycle"/> s covers <paramref name="distance"/> where a run cycle covers <paramref name="runDistance"/>.</summary>
+        private static float GaitSpeed(float run, float distance, float runDistance, float cycle, float k) => run * RunCycle * distance / runDistance / cycle * k;
 
         /// <summary>A gun body's crouched locomotion: the AK crouch takes (as <see cref="GunLocomotion"/>'s stand ones) and their speeds.</summary>
         /// <param name="k">Human size of the body over the xdR skeleton's.</param>
@@ -193,12 +196,25 @@ namespace TienTuyen.Editor
         {
             var takes = WeaponClipImporter.ImportBodyTakes();
             AnimationClip Take(string name) => takes.TryGetValue(name, out var clip) ? clip : throw new InvalidOperationException("No body take " + name);
-            float Speed(float run, (float crouch, float run) d) => run * RunCycle * d.crouch / d.run / CrouchCycle * k;
+            float Speed(float run, (float crouch, float walk, float run) d) => GaitSpeed(run, d.crouch, d.run, CrouchCycle, k);
             profile.crouchIdle = Take("crouch_idle_ak");
             profile.crouchForward = Take("cwalk_N_ak"); profile.crouchBackward = Take("cwalk_S_ak");
             profile.crouchLeft = Take("cwalk_W_ak"); profile.crouchRight = Take("cwalk_E_ak");
             profile.crouchForwardSpeed = Speed(RunN, DisplacementN); profile.crouchBackwardSpeed = Speed(RunS, DisplacementS);
             profile.crouchLeftSpeed = Speed(RunW, DisplacementW); profile.crouchRightSpeed = Speed(RunE, DisplacementE);
+        }
+
+        /// <summary>A gun body's walking locomotion: the AK walk takes (as <see cref="GunLocomotion"/>'s run ones) and their speeds.</summary>
+        /// <param name="k">Human size of the body over the xdR skeleton's.</param>
+        internal static void WalkLocomotion(SkinnedCharacterProfile profile, float k)
+        {
+            var takes = WeaponClipImporter.ImportBodyTakes();
+            AnimationClip Take(string name) => takes.TryGetValue(name, out var clip) ? clip : throw new InvalidOperationException("No body take " + name);
+            float Speed(float run, (float crouch, float walk, float run) d) => GaitSpeed(run, d.walk, d.run, WalkCycle, k);
+            profile.walkForward = Take("walk_N"); profile.walkBackward = Take("walk_S");
+            profile.walkLeft = Take("walk_W"); profile.walkRight = Take("walk_E");
+            profile.walkForwardSpeed = Speed(RunN, DisplacementN); profile.walkBackwardSpeed = Speed(RunS, DisplacementS);
+            profile.walkLeftSpeed = Speed(RunW, DisplacementW); profile.walkRightSpeed = Speed(RunE, DisplacementE);
         }
 
         /// <summary>Spine, head and arms without the fingers: the flinch and the attack leave the hands to the knife takes.</summary>

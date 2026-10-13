@@ -219,12 +219,14 @@ namespace TienTuyen.Combat.Tests
             var shooter = actor.GetComponentInChildren<CombatCharacterRig>();
             Assert.That(shooter.IsSkinned, Is.True);
             var failures = new List<string>();
-            // The hero's guns standing and crouched (its crouched clips, reloads on the standing reloads' hand tracks).
-            foreach (var (rig, weapon, crouch) in new[] { (hero, 0, 0f), (hero, 1, 0f), (hero, 2, 0f), (shooter, 0, 0f), (hero, 0, 1f), (hero, 1, 1f), (hero, 2, 1f) })
+            // The hero's guns standing, crouched (its crouched clips, reloads on the standing reloads' hand tracks) and walking.
+            foreach (var (rig, weapon, crouch, walk) in new[] { (hero, 0, 0f, 0f), (hero, 1, 0f, 0f), (hero, 2, 0f, 0f), (shooter, 0, 0f, 0f),
+                         (hero, 0, 1f, 0f), (hero, 1, 1f, 0f), (hero, 2, 1f, 0f), (hero, 0, 0f, 1f), (hero, 1, 0f, 1f), (hero, 2, 0f, 1f) })
             {
                 rig.ResetPose();
                 rig.SelectWeapon(weapon);
                 rig.Crouch = crouch;
+                rig.Walk = walk;
                 // The hero's reload timed as the game times it (CombatArtDirector): a reload by the round plays the shell clips.
                 var definition = rig == hero ? TienTuyen.Content.ContentCatalog.P2.Weapons[weapon] : null;
                 var rounds = definition?.RoundReload;
@@ -237,13 +239,13 @@ namespace TienTuyen.Combat.Tests
                     // Idle, run, strafe both ways, run back with a hit, shots, then a full reload.
                     var velocity = frame < 40 ? Vector3.zero : frame < 80 ? Vector3.forward * 4f : frame < 110 ? Vector3.right * 3f :
                         frame < 140 ? Vector3.left * 3f : frame < 170 ? Vector3.back * 2f : Vector3.zero;
-                    // Crouched, the game moves at its crouch speed.
-                    velocity *= Mathf.Lerp(1f, CombatRules.CrouchSpeedFactor, crouch);
+                    // Crouched or walking, the game moves at its crouch or walk speed.
+                    velocity *= Mathf.Lerp(1f, CombatRules.CrouchSpeedFactor, crouch) * Mathf.Lerp(1f, CombatRules.WalkSpeedFactor, walk);
                     float hit = frame >= 150 && frame < 155 ? 1f : 0f;
                     float reload = frame >= 200 ? (frame - 200) / 59f : -1f;
                     if (frame == 175 || frame == 185) rig.Fire(weapon);
                     rig.Tick(1f / 60f, velocity, Vector3.forward, reload, hit);
-                    string state = rig.Profile.name + (crouch > 0f ? " crouched" : "") + " weapon " + weapon + " frame " + frame + ": ";
+                    string state = rig.Profile.name + (crouch > 0f ? " crouched" : walk > 0f ? " walking" : "") + " weapon " + weapon + " frame " + frame + ": ";
                     var set = CarriedSet(rig);
                     HandGaps(rig, out float grip, out float support);
                     if (grip > .02f) failures.Add(state + "grip hand off its grip");
@@ -255,7 +257,7 @@ namespace TienTuyen.Combat.Tests
                         failures.Add(state + "support hand off the fore-end " + (support * 1000f).ToString("F0") + " mm");
                     left.Check(state, 70f, failures);
                 }
-                rig.Crouch = 0f;
+                rig.Crouch = rig.Walk = 0f;
             }
             // The wrist limits sit past the approved hands' worst (bend 70 degrees): they catch broken data (a flipped or wrongly
             // framed hand turns 90 degrees and more), not the look of a wrist, which is judged by eye.

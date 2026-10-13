@@ -17,6 +17,10 @@ namespace TienTuyen.Combat
         public const float PlayerStandHeight = 1.6f, PlayerCrouchHeight = 1.2f;
         /// <summary>Seconds to go fully down or back up.</summary>
         public const float CrouchSeconds = 0.15f;
+        /// <summary>Walk speed over run speed: CS:GO's walk (0.52 of the run; its walk takes cover 93.4 in/s against the run's 180.6).</summary>
+        public const float WalkSpeedFactor = 0.52f;
+        /// <summary>Seconds to slow fully to a walk or speed back up.</summary>
+        public const float WalkSeconds = 0.15f;
         public const int MaxWaves = 6;
         public const int SupplyWave = 3;
         public const float WaveSeconds = 40f;

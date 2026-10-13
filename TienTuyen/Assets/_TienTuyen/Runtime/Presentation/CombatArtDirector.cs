@@ -432,6 +432,7 @@ namespace TienTuyen.Presentation
                 playerRig.SelectWeapon(weaponIndex);
                 playerRig.DrawProgress = game.State == CombatState.Playing && game.IsSwitching ? game.SwitchProgress : -1f;
                 playerRig.Crouch = game.Crouch;
+                playerRig.Walk = game.Walk;
                 // On the menu shot the hero stands relaxed and turned to the camera; gameplay aim and fire stay out of it.
                 bool menuShot = thirdPersonCamera != null && thirdPersonCamera.MenuBlend > .4f;
                 playerRig.Relaxed = menuShot;

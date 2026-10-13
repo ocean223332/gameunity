@@ -32,6 +32,8 @@ namespace TienTuyen.Editor
         private const string XmPath = AnimationDir + "/xdr_ak@XM.fbx";
         // The AK's crouched takes (the MP5-SD's and XM1014's are in their own files).
         private const string CrouchPath = AnimationDir + "/xdr_ak@Crouch.fbx";
+        // The MP5-SD's and XM1014's walk takes (the AK's are in the main file).
+        private const string WalkPath = AnimationDir + "/xdr_ak@Walk.fbx";
         // The knife takes (output/clip-source/_scripts/xdr_knife.py), played as they are by the bodies on the xdR bind.
         private const string KnifePath = AnimationDir + "/xdr_ak@Knife.fbx";
         // The knife takes play whole on the ValveBiped bodies, which face a quarter turn right of the takes' original
@@ -49,13 +51,14 @@ namespace TienTuyen.Editor
         /// <summary>
         /// Game weapon id, world gun file, the file of the gun's own takes and the suffix on their slot takes' names, its reload
         /// take, and its shell-by-shell takes (start, insert, end) or none; then the file and suffix of its crouched takes, named
-        /// after <see cref="CrouchSlots"/> or crouch_&lt;reload take&gt;. The shotgun's magazine-change slot keeps the AK's reload.
+        /// after <see cref="CrouchSlots"/> or crouch_&lt;reload take&gt;; then the file of its walk takes (<see cref="WalkRun"/> with
+        /// the gun's suffix). The shotgun's magazine-change slot keeps the AK's reload.
         /// </summary>
-        private static readonly (string weapon, string model, string file, string suffix, string reload, string[] shells, string crouchFile, string crouchSuffix)[] Guns =
+        private static readonly (string weapon, string model, string file, string suffix, string reload, string[] shells, string crouchFile, string crouchSuffix, string walkFile)[] Guns =
         {
-            ("rifle", "w_ak47", TakesPath, "", AkReload, null, CrouchPath, "_ak"),
-            ("smg", "w_mp5sd", Mp5Path, "_mp5", "reload_mp5", null, Mp5Path, "_mp5"),
-            ("shotgun", "w_xm1014", XmPath, "_xm", AkReload, new[] { "reload_xm_start", "reload_xm_loop", "reload_xm_end" }, XmPath, "_xm"),
+            ("rifle", "w_ak47", TakesPath, "", AkReload, null, CrouchPath, "_ak", TakesPath),
+            ("smg", "w_mp5sd", Mp5Path, "_mp5", "reload_mp5", null, Mp5Path, "_mp5", WalkPath),
+            ("shotgun", "w_xm1014", XmPath, "_xm", AkReload, new[] { "reload_xm_start", "reload_xm_loop", "reload_xm_end" }, XmPath, "_xm", WalkPath),
         };
         private const string AkReload = "reload";
 
@@ -65,14 +68,17 @@ namespace TienTuyen.Editor
         /// <summary>The same slots crouched, with the gun's crouched suffix (crouch_idle_ak).</summary>
         private static readonly (string slot, string take)[] CrouchSlots =
             { ("hold", "crouch_idle"), ("aim", "crouch_aim"), ("run", "cwalk_N"), ("fire", "crouch_fire") };
+        /// <summary>The walking run carry's take, with the gun's suffix (walk_N_mp5).</summary>
+        private const string WalkRun = "walk_N";
         private static readonly string[] Suffixes = Guns.SelectMany(g => new[] { g.suffix, g.crouchSuffix }).Where(x => x.Length > 0).Distinct().ToArray();
 
         private static readonly string[] Loops =
-            { "stand_idle", "run_N", "run_S", "run_E", "run_W", "reload_xm_loop", "crouch_idle", "cwalk_N", "cwalk_S", "cwalk_E", "cwalk_W", "crouch_reload_xm_loop" };
+            { "stand_idle", "run_N", "run_S", "run_E", "run_W", "reload_xm_loop", "crouch_idle", "cwalk_N", "cwalk_S", "cwalk_E", "cwalk_W", "crouch_reload_xm_loop",
+              "walk_N", "walk_S", "walk_E", "walk_W" };
 
         // The gun bodies' locomotion: these AK takes imported a second time as body_<take>, whole and with the knife takes' turn,
         // for the legs and hips under the carried weapon's upper body (the bake reads the takes as they are).
-        private static readonly string[] BodyTakes = { "stand_idle", "stand_aim", "run_N", "run_S", "run_E", "run_W" };
+        private static readonly string[] BodyTakes = { "stand_idle", "stand_aim", "run_N", "run_S", "run_E", "run_W", "walk_N", "walk_S", "walk_E", "walk_W" };
         private static readonly string[] CrouchBodyTakes = { "crouch_idle_ak", "cwalk_N_ak", "cwalk_S_ak", "cwalk_E_ak", "cwalk_W_ak" };
         private const string BodyPrefix = "body_";
 
@@ -131,9 +137,9 @@ namespace TienTuyen.Editor
         /// <summary>
         /// Imports the takes and guns and bakes one clip set per gun on <paramref name="profile"/>'s model (clips named after
         /// <paramref name="clipPrefix"/>, default the profile's); the profile itself is not changed. With
-        /// <paramref name="crouch"/> the sets' crouched slots are baked too.
+        /// <paramref name="crouch"/> the sets' crouched slots are baked too, and with <paramref name="walk"/> their walking run carry.
         /// </summary>
-        public static WeaponClipSet[] BakeSets(SkinnedCharacterProfile profile, string clipPrefix = null, bool crouch = false)
+        public static WeaponClipSet[] BakeSets(SkinnedCharacterProfile profile, string clipPrefix = null, bool crouch = false, bool walk = false)
         {
             if (profile == null || !profile.IsValid) throw new ArgumentException("A valid Humanoid profile is required");
             CopySources();
@@ -150,7 +156,8 @@ namespace TienTuyen.Editor
                     .Concat((g.shells ?? Array.Empty<string>()).Select(t => (file: g.file, take: t)))
                     .Concat(!crouch ? Enumerable.Empty<(string file, string take)>() : CrouchSlots.Select(sl => (file: g.crouchFile, take: CrouchSlot(i, sl.slot)))
                         .Append((file: CrouchReloadFile(i), take: CrouchReload(i)))
-                        .Concat((CrouchShells(i) ?? Array.Empty<string>()).Select(t => (file: g.crouchFile, take: t)))))
+                        .Concat((CrouchShells(i) ?? Array.Empty<string>()).Select(t => (file: g.crouchFile, take: t))))
+                    .Concat(walk ? new[] { (file: g.walkFile, take: WalkRun + g.suffix) } : Enumerable.Empty<(string file, string take)>()))
                 .Distinct().ToArray();
             foreach (var (file, take) in wanted.Where(w => !TakesIn(w.file).Contains(w.take))) throw new InvalidOperationException("No take " + take + " in " + file);
             var takes = files.SelectMany(f => ReadSourceTakes(f, wanted.Where(w => w.file == f).Select(w => w.take))).ToDictionary(t => t.Key, t => t.Value);
@@ -179,6 +186,7 @@ namespace TienTuyen.Editor
                 crouchReloadStart = Crouched(i, g.crouchFile, CrouchShells(i)?[0]),
                 crouchReloadInsert = Crouched(i, g.crouchFile, CrouchShells(i)?[1]),
                 crouchReloadEnd = Crouched(i, g.crouchFile, CrouchShells(i)?[2]),
+                walkRun = walk ? Baked(i, g.walkFile, WalkRun + g.suffix) : null,
             }).ToArray();
         }
 
@@ -203,7 +211,7 @@ namespace TienTuyen.Editor
             string repo = Path.GetFullPath(Path.Combine(Application.dataPath, "..", ".."));
             Copy(Path.Combine(repo, TakesSource, "xdr_ak.fbx"), TakesPath);
             Copy(Path.Combine(repo, TakesSource, "xdr_ak@TPose.fbx"), RestPath);
-            foreach (string path in new[] { Mp5Path, XmPath, CrouchPath }) Copy(Path.Combine(repo, TakesSource, Path.GetFileName(path)), path);
+            foreach (string path in new[] { Mp5Path, XmPath, CrouchPath, WalkPath }) Copy(Path.Combine(repo, TakesSource, Path.GetFileName(path)), path);
             foreach (string model in Guns.Select(g => g.model))
             {
                 Copy(Path.Combine(repo, GunSource, model + ".fbx"), GunDir + "/" + model + ".fbx");
@@ -230,8 +238,8 @@ namespace TienTuyen.Editor
                 return Convert.ToBase64String(sha.ComputeHash(stream));
         }
 
-        /// <summary>The xdR files: the main takes, then the MP5-SD's, the XM1014's and the AK's crouched.</summary>
-        private static IEnumerable<string> TakeFiles() => new[] { TakesPath, Mp5Path, XmPath, CrouchPath };
+        /// <summary>The xdR files: the main takes, then the MP5-SD's, the XM1014's, the AK's crouched and the other guns' walks.</summary>
+        private static IEnumerable<string> TakeFiles() => new[] { TakesPath, Mp5Path, XmPath, CrouchPath, WalkPath };
 
         private static IEnumerable<string> TakesIn(string path) =>
             ((ModelImporter)AssetImporter.GetAtPath(path)).importedTakeInfos.Select(t => TakeName(t.name));
@@ -276,7 +284,7 @@ namespace TienTuyen.Editor
         }
 
         /// <summary>
-        /// The gun bodies' locomotion takes (stand_idle, stand_aim, run_N/S/E/W, and the AK's crouch_idle_ak, cwalk_N/S/E/W_ak) as
+        /// The gun bodies' locomotion takes (stand_idle, stand_aim, run_N/S/E/W, walk_N/S/E/W, and the AK's crouch_idle_ak, cwalk_N/S/E/W_ak) as
         /// Humanoid clips on the xdR avatar, whole and turned to the bodies' facing, by take name. The takes must be imported
         /// (<see cref="BakeSets"/> or <see cref="ImportKnifeTakes"/>).
         /// </summary>

@@ -66,6 +66,11 @@ namespace TienTuyen.Presentation
         [Tooltip("Planted-foot speed of each crouched locomotion clip at 1x (m/s).")]
         public float crouchForwardSpeed, crouchBackwardSpeed, crouchLeftSpeed, crouchRightSpeed;
 
+        [Header("Walking locomotion (optional; an empty clip keeps the run; idle keeps the standing one)")]
+        public AnimationClip walkForward, walkBackward, walkLeft, walkRight;
+        [Tooltip("Planted-foot speed of each walking locomotion clip at 1x (m/s).")]
+        public float walkForwardSpeed, walkBackwardSpeed, walkLeftSpeed, walkRightSpeed;
+
         [Header("Faction flag")]
         [Tooltip("Catalog model whose 'banner pole' / 'banner cloth*' meshes become the back flag.")]
         public GameObject bannerSource;
@@ -115,6 +120,8 @@ namespace TienTuyen.Presentation
         [Tooltip("The same slots crouched, blended in by the crouch; an empty one keeps its standing clip. A crouched reload " +
                  "or fire clip without its own grip track takes its standing clip's.")]
         public AnimationClip crouchHold, crouchAim, crouchRun, crouchFire, crouchReload, crouchReloadStart, crouchReloadInsert, crouchReloadEnd;
+        [Tooltip("The moving carry while walking, blended in by the walk; empty keeps run. Every other walking slot is the standing one.")]
+        public AnimationClip walkRun;
         [Tooltip("This body's hands on this gun: grip frames, reload tracks and finger corrections. Empty: the hands follow " +
                  "the clips' wrist targets.")]
         public HandGripData grip;
