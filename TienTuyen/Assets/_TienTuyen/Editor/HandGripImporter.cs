@@ -27,8 +27,10 @@ namespace TienTuyen.Editor
 
         /// <param name="json">Absolute path of the body's correction file.</param>
         /// <param name="gun">Gun key in the file (ak47, mp5sd, xm1014).</param>
-        /// <param name="takes">The clip each tracked take plays as (reloads); tracks of takes not listed are skipped.</param>
-        public static HandGripData Import(string json, string gun, string assetPath, IReadOnlyDictionary<string, AnimationClip> takes)
+        /// <param name="takes">The clip each tracked take plays as (reloads, fire); tracks of takes not listed are skipped.</param>
+        /// <param name="body">The body the data poses: its ring and little fingers (bones the source takes lack) take the
+        /// middle finger's turn from bind, as the correction's ValveBiped does; null keeps the takes' fingers only.</param>
+        public static HandGripData Import(string json, string gun, string assetPath, IReadOnlyDictionary<string, AnimationClip> takes, GameObject body = null)
         {
             var root = JObject.Parse(File.ReadAllText(json));
             var model = (JObject)(root["model"] ?? root);
@@ -46,27 +48,39 @@ namespace TienTuyen.Editor
             data.gun = gun;
             data.right = Grip((JObject)frames["R"]);
             data.left = Grip((JObject)frames["L"]);
-            var grip = Take(GripTake);
+            var bind = Bind(body);
+            var grip = Take(GripTake, bind);
             data.rightFingers = Fingers(grip, "R", (JObject)fingers["R"]);
             data.leftFingers = Fingers(grip, "L", (JObject)fingers["L"]);
 
             var magazine = (JObject)(model["magazine"] ?? root["magazine"])?[gun];
+            var shell = (JObject)model["shell"]?[gun];
             var tracks = new List<GripTrack>();
             var trackFingers = (JObject)runtime["track_fingers"] ?? new JObject();
-            foreach (var take in ((JObject)runtime["tracks"] ?? new JObject()).Properties())
+            var gunFingers = (JObject)runtime["finger_tracks"] ?? new JObject();
+            var poses = (JObject)runtime["tracks"] ?? new JObject();
+            // A take with wrist frames (the reloads) moves the hands; one with only this gun's finger rows (fire) moves the fingers.
+            foreach (string name in poses.Properties().Concat(gunFingers.Properties()).Select(p => p.Name).Distinct())
             {
-                if (!takes.TryGetValue(take.Name, out var clip) || clip == null) continue;
+                if (!takes.TryGetValue(name, out var clip) || clip == null) continue;
+                var rows = (JObject)gunFingers[name]?[gun] ?? (JObject)trackFingers[name];
                 var track = new GripTrack { clip = clip };
-                track.right = ((JArray)take.Value["R"]).Select(f => Pose((JArray)f)).ToArray();
-                track.left = ((JArray)take.Value["L"]).Select(f => Pose((JArray)f)).ToArray();
-                var source = Take(take.Name);
-                (track.rightBones, track.rightFingers) = FingerRows(source, "R", (JArray)trackFingers[take.Name]?["R"], track.right.Length);
-                (track.leftBones, track.leftFingers) = FingerRows(source, "L", (JArray)trackFingers[take.Name]?["L"], track.left.Length);
-                if (magazine?["takes"]?[take.Name] is JObject path) Magazine(track, path, take.Name);
+                if (poses[name] is JObject wrists)
+                {
+                    track.right = ((JArray)wrists["R"]).Select(f => Pose((JArray)f)).ToArray();
+                    track.left = ((JArray)wrists["L"]).Select(f => Pose((JArray)f)).ToArray();
+                }
+                else if (rows == null) continue;
+                var source = Take(name, bind);
+                (track.rightBones, track.rightFingers) = FingerRows(source, "R", (JArray)rows?["R"], Count(track.right, rows, "R"));
+                (track.leftBones, track.leftFingers) = FingerRows(source, "L", (JArray)rows?["L"], Count(track.left, rows, "L"));
+                if (magazine?["takes"]?[name] is JObject path) Magazine(track, path, name);
+                if (shell?["takes"]?[name] is JArray held) (track.shellFrom, track.shellTo) = ((int)held[0], (int)held[1]);
                 tracks.Add(track);
             }
             data.tracks = tracks.ToArray();
             data.magazineBox = magazine == null ? new Bounds() : MagazineBox(magazine, gun);
+            Shell(data, shell);
             EditorUtility.SetDirty(data);
             AssetDatabase.SaveAssets();
             return data;
@@ -105,6 +119,92 @@ namespace TienTuyen.Editor
                     track.magazineRelease + " to insert " + track.magazineInsert);
         }
 
+        /// <summary>First-person models, Resources/Viewmodels/&lt;weapon id&gt;/v_&lt;gun&gt;.fbx, whose loading shell the carried one copies.</summary>
+        public const string ShellModel = "Assets/_TienTuyen/Art/Resources/Viewmodels/weapon.shotgun/v_xm1014.fbx";
+        private const string ShellMaterialName = "shell_shotgun", ShellBone = "v_weapon.xm1014_Shell1";
+
+        /// <summary>
+        /// The carried shell: its frame in the left hand, and a copy of the first-person model's first loading shell (the
+        /// <see cref="ShellMaterialName"/> triangles skinned to <see cref="ShellBone"/>) with that model's material, centred on
+        /// its axis with the axis on +Z and the brass rim on −Z, kept inside the data asset. Removed when the file has none.
+        /// </summary>
+        private static void Shell(HandGripData data, JObject shell)
+        {
+            if (shell == null)
+            {
+                if (data.shellMesh != null) UnityEngine.Object.DestroyImmediate(data.shellMesh, true);
+                data.shellMesh = null;
+                data.shellMaterial = null;
+                return;
+            }
+            data.shell = Pose((JArray)shell["pose"]);
+            var assets = AssetDatabase.LoadAllAssetsAtPath(ShellModel);
+            data.shellMaterial = assets.OfType<Material>().FirstOrDefault(m => m.name == ShellMaterialName)
+                ?? throw new InvalidOperationException("No " + ShellMaterialName + " material in " + ShellModel);
+            var model = assets.OfType<GameObject>().FirstOrDefault(g => g.transform.parent == null)
+                ?? throw new FileNotFoundException("No model " + ShellModel);
+            var skin = model.GetComponentsInChildren<SkinnedMeshRenderer>(true).FirstOrDefault(r => r.sharedMaterials.Contains(data.shellMaterial))
+                ?? throw new InvalidOperationException("No skin with " + ShellMaterialName + " in " + ShellModel);
+            var source = skin.sharedMesh;
+            int bone = Array.FindIndex(skin.bones, b => b != null && b.name == ShellBone);
+            int sub = Array.IndexOf(skin.sharedMaterials, data.shellMaterial);
+            if (bone < 0) throw new InvalidOperationException("No " + ShellBone + " in " + ShellModel);
+
+            // The shell's vertices at the model's rest, in the model's root space.
+            var weights = source.boneWeights;
+            var toRoot = model.transform.worldToLocalMatrix * skin.bones[bone].localToWorldMatrix * source.bindposes[bone];
+            var map = new Dictionary<int, int>();
+            var triangles = new List<int>();
+            var corners = source.GetTriangles(sub);
+            for (int t = 0; t < corners.Length; t += 3)
+            {
+                if (!Enumerable.Range(t, 3).All(k => weights[corners[k]].boneIndex0 == bone && weights[corners[k]].weight0 >= .5f)) continue;
+                for (int k = t; k < t + 3; k++)
+                {
+                    if (!map.TryGetValue(corners[k], out int at)) map[corners[k]] = at = map.Count;
+                    triangles.Add(at);
+                }
+            }
+            if (triangles.Count == 0) throw new InvalidOperationException("No " + ShellMaterialName + " triangles on " + ShellBone + " in " + ShellModel);
+            var order = map.OrderBy(e => e.Value).Select(e => e.Key).ToArray();
+            var sourceVertices = source.vertices;
+            var sourceNormals = source.normals;
+            var points = order.Select(i => toRoot.MultiplyPoint3x4(sourceVertices[i])).ToArray();
+
+            // The axis: the points' main direction; the rim is the wider end.
+            var centroid = points.Aggregate(Vector3.zero, (a, p) => a + p) / points.Length;
+            var axis = Vector3.one;
+            for (int it = 0; it < 32; it++)
+                axis = points.Aggregate(Vector3.zero, (a, p) => a + (p - centroid) * Vector3.Dot(p - centroid, axis)).normalized;
+            float low = points.Min(p => Vector3.Dot(p, axis)), high = points.Max(p => Vector3.Dot(p, axis)), length = high - low;
+            if (length < .05f || length > .09f)
+                throw new InvalidOperationException(ShellModel + " shell is " + length + " long; a 12-gauge shell is about 0.07 m");
+            Vector3 centre = centroid + axis * ((low + high) / 2f - Vector3.Dot(centroid, axis));
+            float Width(float from, float to) => points.Where(p => Vector3.Dot(p, axis) >= from && Vector3.Dot(p, axis) <= to)
+                .Select(p => Vector3.ProjectOnPlane(p - centre, axis).magnitude).DefaultIfEmpty(0f).Max();
+            if (Width(low, low + length * .1f) < Width(high - length * .1f, high)) axis = -axis;
+            var toShell = Quaternion.Inverse(Quaternion.LookRotation(axis, Vector3.Cross(axis, Vector3.right).sqrMagnitude > .01f ? Vector3.Cross(axis, Vector3.right) : Vector3.up));
+
+            var mesh = data.shellMesh;
+            if (mesh == null)
+            {
+                mesh = new Mesh();
+                AssetDatabase.AddObjectToAsset(mesh, data);
+            }
+            mesh.Clear();
+            mesh.name = data.name + "_Shell";
+            mesh.vertices = points.Select(p => toShell * (p - centre)).ToArray();
+            if (sourceNormals.Length > 0) mesh.normals = order.Select(i => toShell * toRoot.MultiplyVector(sourceNormals[i]).normalized).ToArray();
+            var uv = new List<Vector2>();
+            source.GetUVs(0, uv);
+            if (uv.Count > 0) mesh.uv = order.Select(i => uv[i]).ToArray();
+            mesh.triangles = triangles.ToArray();
+            mesh.RecalculateBounds();
+            mesh.RecalculateTangents();
+            data.shellMesh = mesh;
+            Debug.Log($"{data.name}: carried shell of {order.Length} vertices, {triangles.Count / 3} triangles, {length * 1000f:F0} mm");
+        }
+
         public static Vector3 Position(float x, float y, float z) => new Vector3(-x, y, z);
 
         public static Quaternion Rotation(float x, float y, float z, float w) => new Quaternion(x, -y, -z, w);
@@ -120,25 +220,50 @@ namespace TienTuyen.Editor
         /// <summary>A track frame: position then quaternion, seven numbers.</summary>
         private static GripPose Pose(JArray f) => new GripPose(Position((float)f[0], (float)f[1], (float)f[2]), Rotation(f, 3));
 
-        /// <summary>A source take: bone names and, per frame, each bone's local [quaternion, position].</summary>
+        /// <summary>Frames of a track: its wrist frames, or its finger rows when it has none.</summary>
+        private static int Count(GripPose[] poses, JObject rows, string side) => poses.Length > 0 ? poses.Length : ((JArray)rows[side]).Count;
+
+        /// <summary>
+        /// A source take: bone names and, per frame, each bone's local [quaternion, position]. A body finger bone the take lacks
+        /// (ring Finger3*, little Finger4*) follows its middle-finger <see cref="HandGripData.Leader"/>: its bind × the leader's turn from bind.
+        /// </summary>
         private sealed class SourceTake
         {
             public string[] bones;
             public JArray frames;
+            private Dictionary<string, Quaternion> bind;
+            private string[] followers = new string[0];
 
-            public IEnumerable<string> Fingers(string side) => bones.Where(b => b.Contains("_" + side + "_Finger"));
+            public SourceTake Follow(Dictionary<string, Quaternion> body)
+            {
+                bind = body;
+                if (body != null)
+                    followers = body.Keys.Where(n => !bones.Contains(n) && HandGripData.Leader(n) is string l && bones.Contains(l) && body.ContainsKey(l)).ToArray();
+                return this;
+            }
 
-            public Quaternion Local(string bone, int frame) =>
-                Rotation((JArray)frames[Mathf.Clamp(frame, 0, frames.Count - 1)][Array.IndexOf(bones, bone)][0]);
+            public IEnumerable<string> Fingers(string side) => bones.Concat(followers).Where(b => b.Contains("_" + side + "_Finger"));
+
+            public Quaternion Local(string bone, int frame)
+            {
+                int at = Array.IndexOf(bones, bone);
+                if (at >= 0) return Rotation((JArray)frames[Mathf.Clamp(frame, 0, frames.Count - 1)][at][0]);
+                string leader = HandGripData.Leader(bone);
+                return bind[bone] * Quaternion.Inverse(bind[leader]) * Local(leader, frame);
+            }
         }
 
-        private static SourceTake Take(string name)
+        /// <summary>The body's finger bones' bind local rotations by name, or null without a body.</summary>
+        private static Dictionary<string, Quaternion> Bind(GameObject body) => body == null ? null :
+            body.GetComponentsInChildren<Transform>(true).Where(t => t.name.Contains("_Finger")).ToDictionary(t => t.name, t => t.localRotation);
+
+        private static SourceTake Take(string name, Dictionary<string, Quaternion> bind = null)
         {
             string root = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "..", SourceTakes));
             string file = Directory.GetDirectories(root, "takes_*").Select(d => Path.Combine(d, name + ".json")).FirstOrDefault(File.Exists)
                 ?? throw new FileNotFoundException("No source take " + name + " under " + root);
             var take = JObject.Parse(File.ReadAllText(file));
-            return new SourceTake { bones = take["bones"].ToObject<string[]>(), frames = (JArray)take["frames"] };
+            return new SourceTake { bones = take["bones"].ToObject<string[]>(), frames = (JArray)take["frames"] }.Follow(bind);
         }
 
         /// <summary>Every finger of the side: the take's first-frame rotation × the delta (if any).</summary>

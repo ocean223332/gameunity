@@ -23,8 +23,14 @@ namespace TienTuyen.Presentation
         public GripTrack[] tracks = new GripTrack[0];
         [Tooltip("The magazine's bounds in the weapon bone's space; empty for a gun without one. MagazineSplit cuts it out.")]
         public Bounds magazineBox;
+        [Tooltip("The shell the left hand carries to a tube-fed gun's loading port (the first-person one's look); none without one.")]
+        public Mesh shellMesh;
+        public Material shellMaterial;
+        [Tooltip("The carried shell's frame in the left Hand bone's space (its axis +Z toward the muzzle on insert).")]
+        public GripPose shell;
 
         public bool HasMagazine => magazineBox.size != Vector3.zero;
+        public bool HasShell => shellMesh != null;
 
         public GripTrack Track(AnimationClip clip)
         {
@@ -32,9 +38,23 @@ namespace TienTuyen.Presentation
             foreach (var track in tracks) if (track != null && track.clip == clip) return track;
             return null;
         }
+
+        /// <summary>
+        /// The middle-finger bone (same joint) a ring (Finger3*) or little (Finger4*) finger bone follows, or null. The source
+        /// clips have neither, so a body's ring and little fingers take their leader's turn from bind.
+        /// </summary>
+        public static string Leader(string bone)
+        {
+            foreach (string finger in new[] { "_Finger3", "_Finger4" })
+            {
+                int at = bone.IndexOf(finger, StringComparison.Ordinal);
+                if (at >= 0) return bone.Substring(0, at) + "_Finger2" + bone.Substring(at + finger.Length);
+            }
+            return null;
+        }
     }
 
-    /// <summary>A wrist frame in the weapon bone's space.</summary>
+    /// <summary>A wrist frame in the weapon bone's space (the shell's in the left Hand bone's).</summary>
     [Serializable]
     public struct GripPose
     {
@@ -58,8 +78,9 @@ namespace TienTuyen.Presentation
 
     /// <summary>
     /// One reload clip's hands, frame by frame at <see cref="HandGripData.TrackRate"/> from the clip's start, and the
-    /// magazine's path between release and insert (it already follows the corrected left hand). Finger local rotations are
-    /// frames × bones, row major.
+    /// magazine's path between release and insert (it already follows the corrected left hand); or, without wrist frames,
+    /// one clip's fingers alone on the static grip (fire: the gun's trigger pull). Finger local rotations are frames × bones,
+    /// row major.
     /// </summary>
     [Serializable]
     public sealed class GripTrack
@@ -74,5 +95,10 @@ namespace TienTuyen.Presentation
         public int magazineHiddenFrom = -1, magazineHiddenTo = -1;
         [Tooltip("From release to insert − 1: the magazine's frame over its seated pose, in the weapon bone's space.")]
         public GripPose[] magazine = new GripPose[0];
+        [Tooltip("Frames, inclusive, the left hand holds a shell (to the loading port); from > to wraps the loop; -1 for none.")]
+        public int shellFrom = -1, shellTo = -1;
+
+        public bool HoldsShell(float frame) => shellFrom >= 0 &&
+            (shellFrom <= shellTo ? frame >= shellFrom && frame < shellTo + 1 : frame >= shellFrom || frame < shellTo + 1);
     }
 }

@@ -11,10 +11,11 @@ namespace TienTuyen.Editor
 {
     /// <summary>
     /// Installs the four enemy bodies fitted on the exact xdR ValveBiped bind (output/enemy/work, Hunyuan bodies with
-    /// MakeHuman gloved hands) as the enemy profiles. Each keeps the clips and actions of the US rifleman profile it
-    /// replaces (Infantry and Charger daggers on the infantry guard; Shooter and Elite ranged) with speeds rescaled to the
-    /// new body. Shooter and Elite carry the CS:GO MP5-SD and AK on clips baked for the ValveBiped skeleton, with each
-    /// body's own hand correction (output/enemy/work/corr) when it exists.
+    /// MakeHuman gloved hands) as the enemy profiles. Each keeps the actions and timings of the US rifleman profile it
+    /// replaces. Infantry and Charger play the CS:GO knife takes as they are (they share the xdR bind), with the US
+    /// infantry flinch on an upper-body mask that leaves the fingers to the takes. Shooter and Elite keep the US clips
+    /// with speeds rescaled to the new body, and carry the CS:GO MP5-SD and AK on clips baked for the ValveBiped
+    /// skeleton, with each body's own hand correction (output/enemy/work/corr) when it exists.
     /// </summary>
     public static class ValveBipedCharacterImporter
     {
@@ -23,12 +24,15 @@ namespace TienTuyen.Editor
         private const string RestPath = "Assets/_TienTuyen/Art/Animations/xdR/xdr_ak@TPose.fbx";
         private const string OldDir = EnemyCharacterImporter.ResourceDir;
         private const string CorrectionDir = "output/enemy/work/corr";
-        // Prefix of the clips baked for the ValveBiped skeleton, shared by every body on it.
+        // Prefix of the enemies' baked clips (baked on the first gun body, Shooter, and played by Elite too); the hero bakes its own.
         private const string ClipPrefix = "ValveBiped";
         /// <summary>Uniform scale of the Elite body (gun and grips scale with it); the others stay at the bind's own size.</summary>
         public const float EliteScale = 1.1f;
         // Fist centre from the wrist (metres along the hand, toward the palm) on the MakeHuman hands, set by render.
         private static readonly Vector2 DaggerFist = new Vector2(.075f, .025f);
+        // Planted-foot speeds of the knife runs on the xdR skeleton (m/s) and their cycle (s), measured by
+        // output/clip-source/_scripts/xdr_knife.py. E is the right strafe (Source +Y is left).
+        private const float KnifeRunN = 3.9f, KnifeRunS = 3.21f, KnifeRunE = 2.47f, KnifeRunW = 2.33f, KnifeRunCycle = .843f;
 
         private static readonly (string type, string source, string weapon, string gun)[] Types =
         {
@@ -66,12 +70,15 @@ namespace TienTuyen.Editor
         {
             var rest = HumanoidRigSetup.ImportRestPose(RestPath);
             var infantry = Load(OldDir + "/USRiflemanInfantryProfile.asset");
+            var knife = WeaponClipImporter.ImportKnifeTakes();
+            var knifeMask = KnifeUpperBodyMask();
             WeaponClipSet[] sets = null;
             Directory.CreateDirectory(ResourceDir);
             foreach (var (type, sourceName, weapon, gun) in Types)
             {
                 var source = Load(OldDir + "/" + sourceName + ".asset");
-                var (model, avatar) = ImportBody(type, rest);
+                // The knife bodies play the knife takes as they are, so they take the takes' reference pose.
+                var (model, avatar) = ImportBody(type, rest, null, type == "Infantry" || type == "Charger" ? (knife.model, knife.avatar) : default);
                 string path = ProfilePath(type);
                 var profile = AssetDatabase.LoadAssetAtPath<SkinnedCharacterProfile>(path);
                 if (profile == null) { profile = ScriptableObject.CreateInstance<SkinnedCharacterProfile>(); AssetDatabase.CreateAsset(profile, path); }
@@ -96,6 +103,9 @@ namespace TienTuyen.Editor
                     profile.reload = null;
                     profile.guardHold = true;
                 }
+                if (profile.guardHold)
+                    Knife(profile, knife.clips, infantry.hit, knifeMask,
+                        HumanScale(model, avatar) / HumanScale(knife.model, knife.avatar) * scale);
                 // The dagger's handle sits in the closed MakeHuman fist.
                 if (profile.guardHold) profile.fistChannel = DaggerFist;
                 profile.deathFloorLift = SkinnedCharacterProfileBaker.MeasureDeathFloorLift(profile);
@@ -115,12 +125,58 @@ namespace TienTuyen.Editor
             }
         }
 
+        /// <summary>
+        /// A knife body on the CS:GO knife takes. Every take carries its own knife arms, so there is no separate guard layer;
+        /// the dagger attack keeps its contact time and the dash runs on the forward knife run.
+        /// </summary>
+        /// <param name="k">Human size of the body over the xdR skeleton's.</param>
+        private static void Knife(SkinnedCharacterProfile profile, Dictionary<string, AnimationClip> takes, AnimationClip hit, AvatarMask mask, float k)
+        {
+            AnimationClip Take(string name) => takes.TryGetValue(name, out var clip) ? clip : throw new InvalidOperationException("No knife take " + name);
+            profile.idle = Take("stand_idle");
+            profile.aim = null;
+            profile.runForward = Take("run_N"); profile.runBackward = Take("run_S");
+            profile.strafeLeft = Take("run_W"); profile.strafeRight = Take("run_E");
+            profile.runForwardSpeed = KnifeRunN * k; profile.runBackwardSpeed = KnifeRunS * k;
+            profile.strafeLeftSpeed = KnifeRunW * k; profile.strafeRightSpeed = KnifeRunE * k;
+            profile.runCarriesUpperBody = false;
+            profile.reload = null;
+            profile.hit = hit;
+            profile.death = Take("death");
+            profile.upperBodyMask = mask;
+            if (profile.meleeAttack != null) profile.meleeAttack = Take("attack");
+            if (profile.chargeDash != null)
+            {
+                profile.chargeTelegraph = Take("stand_aim");
+                profile.chargeDash = Take("run_N");
+                profile.chargeDashCycleDistance = KnifeRunN * KnifeRunCycle * k;
+                profile.chargeRecovery = Take("stand_idle");
+            }
+        }
+
+        /// <summary>Spine, head and arms without the fingers: the flinch and the attack leave the hands to the knife takes.</summary>
+        private static AvatarMask KnifeUpperBodyMask()
+        {
+            string path = ArtDir + "/KnifeUpperBody.mask";
+            var mask = AssetDatabase.LoadAssetAtPath<AvatarMask>(path);
+            if (mask == null) { mask = new AvatarMask(); AssetDatabase.CreateAsset(mask, path); }
+            for (var part = AvatarMaskBodyPart.Root; part < AvatarMaskBodyPart.LastBodyPart; part++)
+                mask.SetHumanoidBodyPartActive(part,
+                    part == AvatarMaskBodyPart.Body || part == AvatarMaskBodyPart.Head ||
+                    part == AvatarMaskBodyPart.LeftArm || part == AvatarMaskBodyPart.RightArm ||
+                    part == AvatarMaskBodyPart.LeftHandIK || part == AvatarMaskBodyPart.RightHandIK);
+            EditorUtility.SetDirty(mask);
+            return mask;
+        }
+
         private static SkinnedCharacterProfile Load(string path) =>
             AssetDatabase.LoadAssetAtPath<SkinnedCharacterProfile>(path) ?? throw new InvalidOperationException("Missing " + path);
 
-        /// <summary>The body FBX as a Humanoid on the exact bind, its material, and a prefab with it assigned
+        /// <summary>The body FBX as a Humanoid on the exact bind, its material (and a sleeve submesh's), and a prefab with them assigned
         /// (<paramref name="dir"/>/&lt;type&gt;Valve.*, default the enemy folder).</summary>
-        internal static (GameObject, Avatar) ImportBody(string type, AnimationClip rest, string dir = null)
+        /// <param name="reference">An avatar on the same skeleton whose takes the body plays unbaked; the body then takes its
+        /// reference pose (see <see cref="MatchReference"/>).</param>
+        internal static (GameObject, Avatar) ImportBody(string type, AnimationClip rest, string dir = null, (GameObject model, Avatar avatar) reference = default)
         {
             dir = dir ?? ArtDir + "/" + type; string fbx = dir + "/" + type + "Valve.fbx";
             var importer = (ModelImporter)AssetImporter.GetAtPath(fbx) ?? throw new FileNotFoundException(fbx);
@@ -129,11 +185,14 @@ namespace TienTuyen.Editor
             importer.importAnimation = false;
             importer.isReadable = true;
             importer.optimizeGameObjects = false;
-            importer.materialImportMode = ModelImporterMaterialImportMode.None;
+            // A body with a sleeve (<type>Valve_Sleeve_* textures) keeps its source materials' names to find the sleeve's submesh.
+            bool sleeved = File.Exists(Path.Combine(Path.GetDirectoryName(Application.dataPath), dir + "/" + type + "Valve_Sleeve_BaseColor.png"));
+            importer.materialImportMode = sleeved ? ModelImporterMaterialImportMode.ImportViaMaterialDescription : ModelImporterMaterialImportMode.None;
             importer.skinWeights = ModelImporterSkinWeights.Custom;
             importer.maxBonesPerVertex = 4;
             importer.SaveAndReimport();
             HumanoidRigSetup.Configure(importer, rest, Bones);
+            if (reference.avatar != null) MatchReference(importer, AssetDatabase.LoadAssetAtPath<GameObject>(fbx), reference);
             var avatar = AssetDatabase.LoadAllAssetsAtPath(fbx).OfType<Avatar>().Single();
             if (!avatar.isValid || !avatar.isHuman) throw new InvalidOperationException(type + " ValveBiped avatar is invalid");
             HumanoidRigSetup.CheckFingers(avatar, AssetDatabase.LoadAssetAtPath<GameObject>(fbx), Bones);
@@ -150,6 +209,20 @@ namespace TienTuyen.Editor
             material.SetFloat("_Smoothness", .22f);
             material.EnableKeyword("_NORMALMAP");
             EditorUtility.SetDirty(material);
+            // The sleeve's submesh (the source material named *Sleeve*) takes its own material.
+            Material sleeve = null;
+            if (sleeved)
+            {
+                string path = dir + "/" + type + "Valve_Sleeve.mat";
+                sleeve = AssetDatabase.LoadAssetAtPath<Material>(path);
+                if (sleeve == null) { sleeve = new Material(shader); AssetDatabase.CreateAsset(sleeve, path); }
+                sleeve.CopyPropertiesFromMaterial(material);
+                sleeve.shader = shader;
+                sleeve.SetTexture("_BaseMap", Texture(dir + "/" + type + "Valve_Sleeve_BaseColor.png", false));
+                sleeve.SetTexture("_BumpMap", Texture(dir + "/" + type + "Valve_Sleeve_Normal.png", true));
+                sleeve.EnableKeyword("_NORMALMAP");
+                EditorUtility.SetDirty(sleeve);
+            }
 
             var instance = (GameObject)PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>(fbx));
             PrefabUtility.UnpackPrefabInstance(instance, PrefabUnpackMode.OutermostRoot, InteractionMode.AutomatedAction);
@@ -160,13 +233,76 @@ namespace TienTuyen.Editor
             animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
             foreach (var renderer in instance.GetComponentsInChildren<SkinnedMeshRenderer>())
             {
-                renderer.sharedMaterial = material;
+                if (sleeve == null) renderer.sharedMaterial = material;
+                else
+                {
+                    var source = renderer.sharedMaterials;
+                    int at = Array.FindIndex(source, m => m != null && m.name.Contains("Sleeve"));
+                    if (at < 0 || source.Length != renderer.sharedMesh.subMeshCount)
+                        throw new InvalidOperationException(type + " body has sleeve textures but no *Sleeve* source material among " + source.Length);
+                    renderer.sharedMaterials = source.Select((m, i) => i == at ? sleeve : material).ToArray();
+                }
                 renderer.quality = SkinQuality.Bone4;
                 renderer.updateWhenOffscreen = true;
             }
             var prefab = PrefabUtility.SaveAsPrefabAsset(instance, dir + "/" + type + "Valve.prefab");
             UnityEngine.Object.DestroyImmediate(instance);
             return (prefab, avatar);
+        }
+
+        /// <summary>
+        /// Sets the body's reference pose to <paramref name="reference"/>'s: each ValveBiped bone keeps that avatar's
+        /// rotation in model space. Unity generates each file's T from its own bind and leaves the hands rolled and the
+        /// hips turned differently per file, and Humanoid retargets relative to the two references; with one reference
+        /// a take plays on the body exactly as on its own skeleton.
+        /// </summary>
+        private static void MatchReference(ModelImporter importer, GameObject model, (GameObject model, Avatar avatar) reference)
+        {
+            var wanted = ReferenceRotations(reference.model, reference.avatar.humanDescription.skeleton);
+            var description = importer.humanDescription;
+            var skeleton = description.skeleton;
+            var index = Enumerable.Range(0, skeleton.Length).GroupBy(i => skeleton[i].name).ToDictionary(g => g.Key, g => g.First());
+            var current = ReferenceRotations(model, skeleton);
+            var instance = UnityEngine.Object.Instantiate(model);
+            try
+            {
+                // Parents first, so each bone's local rotation is taken against its parent's matched one.
+                foreach (var t in instance.GetComponentsInChildren<Transform>(true))
+                {
+                    if (t == instance.transform || !t.name.StartsWith("ValveBiped.Bip01") || !wanted.TryGetValue(t.name, out var rotation) || !index.TryGetValue(t.name, out int i)) continue;
+                    skeleton[i].rotation = Quaternion.Inverse(current[t.parent.name]) * rotation;
+                    current[t.name] = rotation;
+                }
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(instance);
+            }
+            description.skeleton = skeleton;
+            importer.humanDescription = description;
+            importer.SaveAndReimport();
+        }
+
+        /// <summary>Each bone's rotation in the model's space (its root included) with the skeleton's local rotations, by name.</summary>
+        private static Dictionary<string, Quaternion> ReferenceRotations(GameObject model, SkeletonBone[] skeleton)
+        {
+            var instance = UnityEngine.Object.Instantiate(model);
+            try
+            {
+                var local = skeleton.GroupBy(s => s.name).ToDictionary(g => g.Key, g => g.First().rotation);
+                instance.transform.SetPositionAndRotation(Vector3.zero, local.TryGetValue(instance.name, out var root) ? root : Quaternion.identity);
+                var result = new Dictionary<string, Quaternion>();
+                foreach (var t in instance.GetComponentsInChildren<Transform>(true))
+                {
+                    if (t != instance.transform && local.TryGetValue(t.name, out var rotation)) t.localRotation = rotation;
+                    result[t.name] = t.rotation;
+                }
+                return result;
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(instance);
+            }
         }
 
         private static Texture2D Texture(string path, bool normal)

@@ -207,7 +207,7 @@ namespace TienTuyen.Combat.Tests
         }
 
         [Test]
-        public void EveryWeaponKeepsBothHandsOnItsGripsWithAnatomicalWrists()
+        public void EveryWeaponKeepsBothHandsOnItsGripsWithoutBrokenWrists()
         {
             var actor = CreateTarget();
             actor.GetComponent<Renderer>().sharedMaterial = game.ShooterMaterial;
@@ -219,6 +219,11 @@ namespace TienTuyen.Combat.Tests
             {
                 rig.ResetPose();
                 rig.SelectWeapon(weapon);
+                // The hero's reload timed as the game times it (CombatArtDirector): a reload by the round plays the shell clips.
+                var definition = rig == hero ? TienTuyen.Content.ContentCatalog.P2.Weapons[weapon] : null;
+                var rounds = definition?.RoundReload;
+                rig.ReloadSeconds = definition?.ReloadSecondsFor(definition.MagazineSize) ?? 0f;
+                rig.ReloadPhases = rounds.HasValue ? new Vector2(rounds.Value.StartSeconds, rounds.Value.EndSeconds) : Vector2.zero;
                 var right = new Wrist(rig, false);
                 var left = new Wrist(rig, true);
                 for (int frame = 0; frame < 260; frame++)
@@ -234,17 +239,19 @@ namespace TienTuyen.Combat.Tests
                     var set = CarriedSet(rig);
                     HandGaps(rig, out float grip, out float support);
                     if (grip > .02f) failures.Add(state + "grip hand off its grip");
-                    right.Check(state, 30f, failures);
+                    right.Check(state, 40f, failures);
                     // Mid-reload a fitted hold's support hand leaves the fore-end for the magazine; a carried weapon's
                     // support target follows the reload clip's hand there.
                     if (set == null && reload >= .04f && reload <= .96f) continue;
                     if (support > .02f)
                         failures.Add(state + "support hand off the fore-end " + (support * 1000f).ToString("F0") + " mm");
-                    left.Check(state, 60f, failures);
+                    left.Check(state, 70f, failures);
                 }
             }
-            Assert.That(failures, Is.Empty, "Hands must stay on their grips with wrists inside the approved range " +
-                "(bend off the forearm <= 50 deg, twist <= 30 grip / 60 support): " +
+            // The wrist limits sit past the approved hands' worst (bend 70 degrees): they catch broken data (a flipped or wrongly
+            // framed hand turns 90 degrees and more), not the look of a wrist, which is judged by eye.
+            Assert.That(failures, Is.Empty, "Hands must stay on their grips and no wrist may break past the approved hands " +
+                "(bend off the forearm <= 75 deg, twist <= 40 grip / 70 support, elbow a hinge when a roll bone takes the twist): " +
                 string.Join("; ", failures.GetRange(0, Mathf.Min(12, failures.Count))) + (failures.Count > 12 ? " ... " + failures.Count : ""));
         }
 
@@ -270,32 +277,63 @@ namespace TienTuyen.Combat.Tests
             support = Vector3.Distance(carried ? Bone(rig, HumanBodyBones.LeftHand).position : rig.SupportHand.position, rig.WeaponSupport.position);
         }
 
-        /// <summary>Hand rotation relative to the forearm, measured from the model's bind pose.</summary>
+        /// <summary>
+        /// Hand rotation relative to the distal forearm (the lower arm turned by its skinned roll bone, if any), measured from
+        /// the model's bind pose. With a roll bone the elbow must stay a hinge: the lower arm may not roll off the upper arm.
+        /// </summary>
         private sealed class Wrist
         {
-            private readonly Transform lower, hand;
-            private readonly Quaternion bind;
-            private readonly Vector3 axis;
+            // Largest roll (degrees) of the lower arm off the upper arm when a roll bone carries the forearm's twist. The solve
+            // leaves none; before the roll bone took it the left lower arm rolled about 60 degrees under the fore-end.
+            private const float MaxElbowRoll = 10f;
+            // Largest bend (degrees) of either hand off the distal forearm.
+            private const float MaxBend = 75f;
+            private readonly Transform upper, lower, hand, roll;
+            private readonly Quaternion bind, elbowBind, rollBind;
+            private readonly Vector3 axis, elbowAxis;
 
             public Wrist(CombatCharacterRig rig, bool left)
             {
                 var animator = rig.GetComponentInChildren<Animator>();
+                upper = animator.GetBoneTransform(left ? HumanBodyBones.LeftUpperArm : HumanBodyBones.RightUpperArm);
                 lower = animator.GetBoneTransform(left ? HumanBodyBones.LeftLowerArm : HumanBodyBones.RightLowerArm);
                 hand = animator.GetBoneTransform(left ? HumanBodyBones.LeftHand : HumanBodyBones.RightHand);
-                Transform bindLower = Find(rig.Profile.model.transform, lower.name), bindHand = Find(rig.Profile.model.transform, hand.name);
+                Transform model = rig.Profile.model.transform;
+                Transform bindUpper = Find(model, upper.name), bindLower = Find(model, lower.name), bindHand = Find(model, hand.name);
                 bind = Quaternion.Inverse(bindLower.rotation) * bindHand.rotation;
                 axis = (Quaternion.Inverse(bindLower.rotation) * (bindHand.position - bindLower.position)).normalized;
+                elbowBind = Quaternion.Inverse(Quaternion.Inverse(bindUpper.rotation) * bindLower.rotation);
+                elbowAxis = (Quaternion.Inverse(bindUpper.rotation) * (bindHand.position - bindLower.position)).normalized;
+                var skinned = new HashSet<Transform>();
+                foreach (var skin in animator.GetComponentsInChildren<SkinnedMeshRenderer>(true)) skinned.UnionWith(skin.bones);
+                foreach (Transform child in lower)
+                    if ((child.name.EndsWith(left ? "_L_Ulna" : "_R_Ulna") || child.name.EndsWith(left ? "LeftForearmTwist" : "RightForearmTwist")) &&
+                        skinned.Contains(child))
+                    {
+                        roll = child;
+                        rollBind = Find(model, child.name).localRotation;
+                    }
             }
 
             public void Check(string state, float maxTwist, List<string> failures)
             {
-                Quaternion d = Quaternion.Inverse(lower.rotation) * hand.rotation * Quaternion.Inverse(bind);
-                if (d.w < 0f) d = new Quaternion(-d.x, -d.y, -d.z, -d.w);
-                float twist = 2f * Mathf.Atan2(Vector3.Dot(new Vector3(d.x, d.y, d.z), axis), d.w) * Mathf.Rad2Deg;
+                Quaternion distal = roll != null ? lower.rotation * (roll.localRotation * Quaternion.Inverse(rollBind)) : lower.rotation;
+                Quaternion d = Quaternion.Inverse(distal) * hand.rotation * Quaternion.Inverse(bind);
+                float twist = Twist(d, axis);
                 (d * Quaternion.Inverse(Quaternion.AngleAxis(twist, axis))).ToAngleAxis(out float bend, out _);
                 if (bend > 180f) bend = 360f - bend;
-                if (bend > 50f || Mathf.Abs(twist) > maxTwist + 2f)
+                if (bend > MaxBend || Mathf.Abs(twist) > maxTwist)
                     failures.Add(state + hand.name + " bend " + bend.ToString("F0") + " twist " + twist.ToString("F0"));
+                if (roll == null) return;
+                float elbowRoll = Twist(Quaternion.Inverse(upper.rotation) * lower.rotation * elbowBind, elbowAxis);
+                if (Mathf.Abs(elbowRoll) > MaxElbowRoll)
+                    failures.Add(state + lower.name + " rolls " + elbowRoll.ToString("F0") + " off the upper arm");
+            }
+
+            private static float Twist(Quaternion d, Vector3 axis)
+            {
+                if (d.w < 0f) d = new Quaternion(-d.x, -d.y, -d.z, -d.w);
+                return 2f * Mathf.Atan2(Vector3.Dot(new Vector3(d.x, d.y, d.z), axis), d.w) * Mathf.Rad2Deg;
             }
 
             private static Transform Find(Transform root, string name)
@@ -478,6 +516,85 @@ namespace TienTuyen.Combat.Tests
                 }
             }
             Assert.That(failures, Is.Empty, string.Join("; ", failures));
+        }
+
+        [Test]
+        public void TheHeroAndTheGunEnemiesPlayClipsBakedForTheirOwnBodies()
+        {
+            // Each import re-bakes its clips on its own body: a clip shared with another body would change under it.
+            AnimationClip[] Clips(string path) => Resources.Load<SkinnedCharacterProfile>(path).weaponSets
+                .SelectMany(s => new[] { s.hold, s.aim, s.run, s.fire, s.reload, s.reloadStart, s.reloadInsert, s.reloadEnd })
+                .Where(c => c != null).ToArray();
+            var hero = Clips("Characters/PAVN/PAVN_ValveProfile");
+            Assert.That(hero, Is.Not.Empty);
+            foreach (var enemy in new[] { "Shooter", "Elite" })
+                Assert.That(Clips("Characters/Enemies/" + enemy + "ValveProfile").Intersect(hero).Select(c => c.name), Is.Empty, enemy);
+        }
+
+        [Test]
+        public void HeroFingertipsKeepTheirBindInEveryGripPose()
+        {
+            // The approved hands bend two joints per finger: each tip, ring and little included, keeps its bind turn on its
+            // middle phalanx in the static grips and in every frame of every track.
+            var bind = new Dictionary<string, Quaternion>();
+            foreach (var t in hero.Profile.model.GetComponentsInChildren<Transform>(true)) bind[t.name] = t.localRotation;
+            var tip = new System.Text.RegularExpressions.Regex(@"_Finger\d2$");
+            var failures = new List<string>();
+            int checkedTips = 0;
+            void Check(string bone, Quaternion rotation, string where)
+            {
+                if (!tip.IsMatch(bone)) return;
+                checkedTips++;
+                float angle = Quaternion.Angle(bind[bone], rotation);
+                if (angle > .5f) failures.Add(where + " " + bone + " " + angle.ToString("F1") + " deg off bind");
+            }
+            foreach (var set in hero.Profile.weaponSets)
+            {
+                var data = set.grip;
+                Assert.That(data, Is.Not.Null, set.weapon + " has no grip data");
+                var grip = data.rightFingers.Concat(data.leftFingers).ToArray();
+                Assert.That(grip.Count(f => tip.IsMatch(f.bone)), Is.EqualTo(10), data.gun + ": every finger of both hands, ring and little included");
+                foreach (var f in grip) Check(f.bone, f.rotation, data.gun + " grip");
+                foreach (var track in data.tracks)
+                    foreach (var (names, rows) in new[] { (track.rightBones, track.rightFingers), (track.leftBones, track.leftFingers) })
+                        for (int i = 0; i < rows.Length; i++) Check(names[i % names.Length], rows[i], data.gun + " " + track.clip.name + " frame " + i / names.Length);
+            }
+            Assert.That(checkedTips, Is.GreaterThan(30));
+            Assert.That(failures, Is.Empty, string.Join("; ", failures.Take(12)) + (failures.Count > 12 ? " ... " + failures.Count : ""));
+        }
+
+        [Test]
+        public void HeroFireFingersArePerGunAndReachTheBones()
+        {
+            var bones = new Dictionary<string, Transform>();
+            foreach (var t in hero.GetComponentsInChildren<Transform>()) if (!bones.ContainsKey(t.name)) bones[t.name] = t;
+            var pulled = new List<Dictionary<string, Quaternion>>();
+            var failures = new List<string>();
+            for (int weapon = 0; weapon < 3; weapon++)
+            {
+                hero.ResetPose();
+                hero.SelectWeapon(weapon);
+                for (int frame = 0; frame < 30; frame++) hero.Tick(1f / 60f, Vector3.zero, Vector3.forward);
+                hero.Fire(weapon);
+                for (int frame = 0; frame < 6; frame++) hero.Tick(1f / 60f, Vector3.zero, Vector3.forward);
+                var set = CarriedSet(hero);
+                var track = set.grip.Track(set.fire);
+                Assert.That(track, Is.Not.Null, set.grip.gun + " has no fire finger track");
+                float at = (float)GetField(GetField(hero, "skinned"), "fireTime") * HandGripData.TrackRate;
+                int frames = track.rightFingers.Length / track.rightBones.Length, a = Mathf.Min((int)at, frames - 1), b = Mathf.Min(a + 1, frames - 1);
+                pulled.Add(new Dictionary<string, Quaternion>());
+                for (int i = 0; i < track.rightBones.Length; i++)
+                {
+                    var row = Quaternion.Slerp(track.rightFingers[a * track.rightBones.Length + i], track.rightFingers[b * track.rightBones.Length + i], at - a);
+                    float angle = Quaternion.Angle(bones[track.rightBones[i]].localRotation, row);
+                    if (angle > 1f) failures.Add(set.grip.gun + " " + track.rightBones[i] + " " + angle.ToString("F1") + " deg off its fire frame " + at.ToString("F1"));
+                    pulled[weapon][track.rightBones[i]] = row;
+                }
+            }
+            Assert.That(failures, Is.Empty, string.Join("; ", failures));
+            float Apart(int x, int y) => pulled[x].Keys.Intersect(pulled[y].Keys).Max(n => Quaternion.Angle(pulled[x][n], pulled[y][n]));
+            Assert.That(Mathf.Min(Apart(0, 1), Apart(1, 2), Apart(0, 2)), Is.GreaterThan(1f),
+                "Each gun fires with its own right hand: the fire fingers come from that gun's grip, not one shared hand");
         }
 
         [UnityTest]

@@ -30,8 +30,6 @@ namespace TienTuyen.Presentation
         // Largest turn of the shouldered bore from the shoulder aim line onto the crosshair point.
         private const float MaxBoreTurn = 8f;
         private const float RecoilKick = .03f, RecoilRise = 5f, RecoilChest = 2.5f;
-        // Share of the hand's twist off the lower arm that a forearm roll bone carries.
-        private const float TwistShare = .5f;
         // A draw: the weapon dips this far (degrees, about the right shoulder) by DrawDipIn of the draw, stays low until
         // DrawDipOut, then rises to the ready by the end. Both hands stay on it.
         private const float DrawDip = 40f, DrawDipIn = .15f, DrawDipOut = .4f;
@@ -57,10 +55,16 @@ namespace TienTuyen.Presentation
             public Vector3 twistAxis, flexAxis, devAxis;
             public float handScale, keep;
             public Digit[] digits;
-            /// <summary>Forearm roll bone (child of the lower arm, not a Humanoid slot), its bind and its long axis; null without one.</summary>
+            /// <summary>
+            /// Forearm roll bone (child of the lower arm, not a Humanoid slot, e.g. Valve's Ulna) that a skin is bound to, its bind
+            /// and its long axis; null without one. With one the lower arm stays a hinge and this bone takes the forearm's roll.
+            /// </summary>
             public Transform twist;
             public Quaternion twistBind;
             public Vector3 twistLong;
+            /// <summary>Valve's wrist helper (child of the lower arm on the hand joint) and its and the hand's local binds; null without one.</summary>
+            public Transform wrist;
+            public Quaternion wristBind, handLocalBind;
         }
 
         private struct Digit
@@ -95,6 +99,9 @@ namespace TienTuyen.Presentation
         private readonly Transform leftUpperLeg, leftLowerLeg, leftFoot, leftToes, rightUpperLeg, rightLowerLeg, rightFoot, rightToes;
         private readonly Transform gripSocket, supportSocket;
         private struct FistJoint { public Transform bone; public Quaternion bind, curl; }
+        // Ring and little finger bones no clip drives, with their middle-finger leader (HandGripData.Leader), read at bind.
+        private struct Follower { public Transform bone, leader; public Quaternion bind, leaderUnbind; }
+        private readonly Follower[] followers;
         private readonly FistJoint[] fist = new FistJoint[0];
         private readonly Transform[] spineChain, headChain;
         private readonly float[] weights = new float[5];
@@ -133,6 +140,8 @@ namespace TienTuyen.Presentation
         private System.Collections.Generic.Dictionary<string, Transform> bonesByName;
         private readonly System.Collections.Generic.Dictionary<object, Transform[]> fingerBones = new System.Collections.Generic.Dictionary<object, Transform[]>();
         private readonly System.Collections.Generic.Dictionary<Transform, Transform> magazineMounts = new System.Collections.Generic.Dictionary<Transform, Transform>();
+        // The shell the left hand carries to a tube-fed gun's loading port (made on first use).
+        private MeshFilter heldShell;
 
         public Transform LeftFoot => leftFoot;
         public Transform RightFoot => rightFoot;
@@ -220,10 +229,14 @@ namespace TienTuyen.Presentation
                 FistSocket(supportSocket, leftHand, HumanBodyBones.LeftIndexProximal, HumanBodyBones.LeftRingProximal, HumanBodyBones.LeftThumbProximal);
             }
             if (profile.guardHold) fist = BindFist();
+            followers = Followers(model);
             chestBindInverse = Quaternion.Inverse(Chest.rotation) * pose.rotation;
             shoulderWidth = Vector3.Distance(pose.InverseTransformPoint(leftUpperArm.position), pose.InverseTransformPoint(rightUpperArm.position));
-            rightArm = BindArm(false, rightUpperArm, rightLowerArm, rightHand, gripSocket);
-            leftArm = BindArm(true, leftUpperArm, leftLowerArm, leftHand, supportSocket);
+            // A forearm roll bone only counts when a skin is bound to it; otherwise the lower arm itself must roll.
+            var skinned = new System.Collections.Generic.HashSet<Transform>();
+            foreach (var skin in model.GetComponentsInChildren<SkinnedMeshRenderer>(true)) skinned.UnionWith(skin.bones);
+            rightArm = BindArm(false, rightUpperArm, rightLowerArm, rightHand, gripSocket, skinned);
+            leftArm = BindArm(true, leftUpperArm, leftLowerArm, leftHand, supportSocket, skinned);
 
             hasDeath = profile.death != null;
             hasAim = profile.aim != null; hasReload = profile.reload != null; hasHit = profile.hit != null;
@@ -315,6 +328,24 @@ namespace TienTuyen.Presentation
 
         private Transform Bone(HumanBodyBones bone) => animator.GetBoneTransform(bone);
 
+        private static Follower[] Followers(Transform model)
+        {
+            var byName = new System.Collections.Generic.Dictionary<string, Transform>();
+            foreach (var t in model.GetComponentsInChildren<Transform>(true)) byName[t.name] = t;
+            var list = new System.Collections.Generic.List<Follower>();
+            foreach (var t in byName.Values)
+                if (HandGripData.Leader(t.name) is string name && byName.TryGetValue(name, out var leader))
+                    list.Add(new Follower { bone = t, leader = leader, bind = t.localRotation, leaderUnbind = Quaternion.Inverse(leader.localRotation) });
+            return list.ToArray();
+        }
+
+        /// <summary>Each ring and little finger bone takes its leader's turn from bind, as the clip posed the leader (before
+        /// any grip data replaces both).</summary>
+        private void FollowFingers()
+        {
+            foreach (var f in followers) f.bone.localRotation = f.bind * f.leaderUnbind * f.leader.localRotation;
+        }
+
         private static Transform Named(Transform parent, string name)
         {
             if (parent == null) return null;
@@ -356,7 +387,8 @@ namespace TienTuyen.Presentation
         }
 
         /// <summary>Reads an arm and its fingers at bind (the constructor runs before any clip is applied).</summary>
-        private Arm BindArm(bool left, Transform upper, Transform lower, Transform hand, Transform socket)
+        private Arm BindArm(bool left, Transform upper, Transform lower, Transform hand, Transform socket,
+            System.Collections.Generic.HashSet<Transform> skinned)
         {
             var arm = new Arm
             {
@@ -405,11 +437,18 @@ namespace TienTuyen.Presentation
             }
             arm.digits = digits.ToArray();
             foreach (Transform child in lower)
-                if (child.name.EndsWith((left ? "Left" : "Right") + "ForearmTwist", System.StringComparison.Ordinal))
+                if ((child.name.EndsWith((left ? "Left" : "Right") + "ForearmTwist", System.StringComparison.Ordinal) ||
+                     child.name.EndsWith((left ? "_L" : "_R") + "_Ulna", System.StringComparison.Ordinal)) && skinned.Contains(child))
                 {
                     arm.twist = child;
                     arm.twistBind = child.localRotation;
                     arm.twistLong = (Quaternion.Inverse(child.rotation) * (hand.position - lower.position)).normalized;
+                }
+                else if (hand.parent == lower && child.name.EndsWith((left ? "_L" : "_R") + "_Wrist", System.StringComparison.Ordinal))
+                {
+                    arm.wrist = child;
+                    arm.wristBind = child.localRotation;
+                    arm.handLocalBind = hand.localRotation;
                 }
             return arm;
         }
@@ -712,8 +751,16 @@ namespace TienTuyen.Presentation
                 var lift = profile.deathFloorLift;
                 if (lift != null && lift.length > 0)
                     hips.position += pose.up * (lift.Evaluate(deathTime) * deathWeight * pose.lossyScale.y);
+                DriveTwist(leftArm);
+                DriveTwist(rightArm);
+                DriveWrist(leftArm);
+                DriveWrist(rightArm);
+                FollowFingers();
+                PlaceShell(null);
                 return;
             }
+            CarryThroughHit();
+            FollowFingers();
 
             Vector3 up = pose.up;
             float action = ActionWeight;
@@ -749,16 +796,55 @@ namespace TienTuyen.Presentation
             }
             DriveTwist(leftArm);
             DriveTwist(rightArm);
+            DriveWrist(leftArm);
+            DriveWrist(rightArm);
             GroundFoot(leftUpperLeg, leftLowerLeg, leftFoot, leftToes, leftSole);
             GroundFoot(rightUpperLeg, rightLowerLeg, rightFoot, rightToes, rightSole);
+            PlaceShell(armed && weaponRoot != null && carrySet >= 0 && weaponBone != null ? sets[carrySet].grip : null);
         }
 
-        /// <summary>The forearm roll bone takes half of the hand's twist off the lower arm, whatever posed the hand.</summary>
+        /// <summary>
+        /// The carried hit flinch leaves the weapon bone out (the generic clip has no weapon track) and the weapon bone hangs
+        /// below the chest, so the flinch would turn the shoulders away from a still weapon and drag the hands off their wrists.
+        /// The weapon takes the chest's flinch instead: the pose is evaluated once without the flinch to read where the
+        /// chest and weapon were, and the weapon keeps that place on the flinching chest.
+        /// </summary>
+        private void CarryThroughHit()
+        {
+            if (carrySet < 0 || weaponBone == null || layers.GetInputCount() < 3) return;
+            float weight = layers.GetInputWeight(2);
+            Transform torso = upperChest != null ? upperChest : chest;
+            if (weight <= 0f || torso == null) return;
+            Vector3 hitPosition = torso.position;
+            Quaternion hitRotation = torso.rotation;
+            layers.SetInputWeight(2, 0f);
+            graph.Evaluate(0f);
+            Vector3 position = torso.position, weaponPosition = weaponBone.position;
+            Quaternion rotation = torso.rotation, weaponRotation = weaponBone.rotation;
+            layers.SetInputWeight(2, weight);
+            graph.Evaluate(0f);
+            Quaternion turn = hitRotation * Quaternion.Inverse(rotation);
+            weaponBone.SetPositionAndRotation(hitPosition + turn * (weaponPosition - position), turn * weaponRotation);
+        }
+
+        /// <summary>The forearm roll bone takes the hand's twist off the lower arm beyond the wrist's share, whatever posed the hand.</summary>
         private static void DriveTwist(Arm arm)
         {
             if (arm.twist == null) return;
-            float twist = WristAngles(arm, arm.hand.rotation, out _).z;
-            arm.twist.localRotation = arm.twistBind * Quaternion.AngleAxis(twist * TwistShare, arm.twistLong);
+            Quaternion d = Quaternion.Inverse(arm.lower.rotation) * arm.hand.rotation * Quaternion.Inverse(arm.handBind);
+            arm.twist.localRotation = arm.twistBind * Quaternion.AngleAxis(Roll(arm, Twist(d, arm.twistAxis)), arm.twistLong);
+        }
+
+        /// <summary>
+        /// Valve's procedural wrist helper turns halfway from the distal forearm (the lower arm and its roll bone) to the hand,
+        /// so a wrist band skinned to it keeps its volume when the hand bends or twists instead of pinching between two bones.
+        /// </summary>
+        private static void DriveWrist(Arm arm)
+        {
+            if (arm.wrist == null) return;
+            Quaternion bend = arm.hand.localRotation * Quaternion.Inverse(arm.handLocalBind);
+            Quaternion roll = arm.twist != null ? arm.twist.localRotation * Quaternion.Inverse(arm.twistBind) : Quaternion.identity;
+            arm.wrist.localRotation = roll * Quaternion.Slerp(Quaternion.identity, Quaternion.Inverse(roll) * bend, .5f) * arm.wristBind;
         }
 
         private void TwistSpine(float degrees, Vector3 up)
@@ -898,24 +984,38 @@ namespace TienTuyen.Presentation
             if (still > 0f)
                 for (int i = 0; i < fingers.Length; i++)
                     if (bones[i] != null) bones[i].localRotation = Quaternion.Slerp(bones[i].localRotation, fingers[i].rotation, still);
+            // The fire clip's fingers (the gun's trigger pull) on the static grip, by the fire clip's share of it.
+            var firing = carryClips[c + FireSlot];
+            float fire = still > 0f && firing.IsValid() ? carryMixer.GetInputWeight(c + FireSlot) : 0f;
+            if (fire > 0f && data.Track(firing.GetAnimationClip()) is GripTrack fireTrack)
+                BlendFingers(fireTrack, left, (float)firing.GetTime() * HandGripData.TrackRate, Mathf.Min(1f, fire / still));
             float blended = still;
             for (int part = 0; part < reloadParts.Length; part++)
             {
                 if (!(ReloadTrack(data, c, part, out var track, out float frame) is float w)) continue;
                 var names = left ? track.leftBones : track.rightBones;
-                var rows = left ? track.leftFingers : track.rightFingers;
-                if (names.Length == 0 || rows.Length < names.Length) continue;
-                var trackBones = FingerBones(names);
-                int frames = rows.Length / names.Length;
-                float f = Mathf.Clamp(frame, 0f, frames - 1);
-                int a = (int)f, b = Mathf.Min(a + 1, frames - 1);
+                if (names.Length == 0 || (left ? track.leftFingers : track.rightFingers).Length < names.Length) continue;
                 blended += w;
-                for (int i = 0; i < names.Length; i++)
-                {
-                    if (trackBones[i] == null) continue;
-                    Quaternion held = Quaternion.Slerp(rows[a * names.Length + i], rows[b * names.Length + i], f - a);
-                    trackBones[i].localRotation = Quaternion.Slerp(trackBones[i].localRotation, held, w / blended);
-                }
+                BlendFingers(track, left, frame, w / blended);
+            }
+        }
+
+        /// <summary>One side's finger rotations of <paramref name="track"/> at <paramref name="frame"/> (interpolated, clamped),
+        /// blended over the current ones by <paramref name="weight"/>.</summary>
+        private void BlendFingers(GripTrack track, bool left, float frame, float weight)
+        {
+            var names = left ? track.leftBones : track.rightBones;
+            var rows = left ? track.leftFingers : track.rightFingers;
+            if (names.Length == 0 || rows.Length < names.Length) return;
+            var bones = FingerBones(names);
+            int frames = rows.Length / names.Length;
+            float f = Mathf.Clamp(frame, 0f, frames - 1);
+            int a = (int)f, b = Mathf.Min(a + 1, frames - 1);
+            for (int i = 0; i < names.Length; i++)
+            {
+                if (bones[i] == null) continue;
+                Quaternion held = Quaternion.Slerp(rows[a * names.Length + i], rows[b * names.Length + i], f - a);
+                bones[i].localRotation = Quaternion.Slerp(bones[i].localRotation, held, weight);
             }
         }
 
@@ -966,6 +1066,46 @@ namespace TienTuyen.Presentation
             }
             mount.SetLocalPositionAndRotation(position, rotation);
             if (mount.gameObject.activeSelf != shown) mount.gameObject.SetActive(shown);
+        }
+
+        /// <summary>
+        /// The carried shell (<see cref="HandGripData.HasShell"/>) on the left Hand bone at the data's frame while every playing
+        /// reload part's track holds one (<see cref="GripTrack.HoldsShell"/>): a crossfade into a part without it (the loop into
+        /// the end) hides it at once rather than carrying it off the port. Hidden otherwise, and for any other gun or state.
+        /// </summary>
+        private void PlaceShell(HandGripData data)
+        {
+            bool held = false;
+            if (data != null && data.HasShell)
+            {
+                int c = carrySet * CarrySlots;
+                for (int part = 0; part < reloadParts.Length; part++)
+                {
+                    if (!(ReloadTrack(data, c, part, out var track, out float frame) is float)) continue;
+                    held = track.HoldsShell(frame);
+                    if (!held) break;
+                }
+            }
+            if (!held)
+            {
+                if (heldShell != null && heldShell.gameObject.activeSelf) heldShell.gameObject.SetActive(false);
+                return;
+            }
+            if (heldShell == null)
+            {
+                var go = new GameObject("HeldShell");
+                go.layer = leftArm.hand.gameObject.layer;
+                go.transform.SetParent(leftArm.hand, false);
+                heldShell = go.AddComponent<MeshFilter>();
+                go.AddComponent<MeshRenderer>();
+            }
+            heldShell.sharedMesh = data.shellMesh;
+            heldShell.GetComponent<MeshRenderer>().sharedMaterial = data.shellMaterial;
+            // Data metres to the hand's local units: the weapon bone's scale is the body's.
+            float scale = weaponBone.lossyScale.x / leftArm.hand.lossyScale.x;
+            heldShell.transform.localScale = Vector3.one * scale;
+            heldShell.transform.SetLocalPositionAndRotation(data.shell.position * scale, data.shell.rotation);
+            if (!heldShell.gameObject.activeSelf) heldShell.gameObject.SetActive(true);
         }
 
         private static void Sample(GripPose[] poses, float frame, out Vector3 position, out Quaternion rotation)
@@ -1258,22 +1398,17 @@ namespace TienTuyen.Presentation
             for (int pass = 0; pass < 2; pass++)
             {
                 SolveArm(arm, wrist, rotation, bend);
-                Vector3 angles = WristAngles(arm, rotation, out Quaternion twist);
+                Vector3 angles = WristAngles(arm, rotation, out Quaternion twist, out Quaternion distal);
                 if (Mathf.Abs(angles.x) <= MaxFlexion + .5f && Mathf.Abs(angles.y) <= MaxDeviation + .5f) return;
                 Vector3 swing = arm.flexAxis * Mathf.Clamp(angles.x, -MaxFlexion, MaxFlexion) +
                                 arm.devAxis * Mathf.Clamp(angles.y, -MaxDeviation, MaxDeviation);
                 Quaternion limited = swing.sqrMagnitude > 1e-8f ? Quaternion.AngleAxis(swing.magnitude, swing.normalized) : Quaternion.identity;
-                rotation = arm.lower.rotation * (limited * twist) * arm.handBind;
+                rotation = distal * (limited * twist) * arm.handBind;
                 wrist = socket - rotation * offset;
             }
             SolveArm(arm, wrist, rotation, bend);
         }
 
-        /// <summary>
-        /// Two-bone solve from the bind pose (no inherited upper-arm twist): the elbow toward
-        /// <paramref name="bend"/>, the forearm rolled to carry the hand's twist (half of it, all but the
-        /// wrist's share when large), then the hand set.
-        /// </summary>
         /// <summary>
         /// Turns the clavicle toward a wrist target beyond the arm's reach, up to <see cref="MaxShoulderReach"/> degrees,
         /// until the arm reaches it. Humanoid playback can leave the shoulder a few centimetres farther from a reload
@@ -1299,6 +1434,11 @@ namespace TienTuyen.Presentation
             clavicle.rotation = Quaternion.AngleAxis(high, axis) * start;
         }
 
+        /// <summary>
+        /// Two-bone solve from the bind pose (no inherited upper-arm twist): the elbow toward <paramref name="bend"/>, then
+        /// the hand set. The forearm's roll (the hand's twist beyond the wrist's share, see <see cref="Roll"/>) goes to the
+        /// roll bone when the arm has one (<see cref="DriveTwist"/>), keeping the elbow a hinge; otherwise the lower arm rolls.
+        /// </summary>
         private static void SolveArm(Arm arm, Vector3 wrist, Quaternion rotation, Vector3 bend)
         {
             Transform upper = arm.upper, lower = arm.lower;
@@ -1321,18 +1461,36 @@ namespace TienTuyen.Presentation
                 e = lower.position;
                 lower.rotation = Quaternion.FromToRotation(arm.hand.position - e, wrist - e) * lower.rotation;
             }
-            float twist = WristAngles(arm, rotation, out _).z;
-            float roll = twist - Mathf.Clamp(twist * .5f, -arm.keep, arm.keep);
-            lower.rotation = Quaternion.AngleAxis(roll, lower.rotation * arm.twistAxis) * lower.rotation;
+            if (arm.twist == null)
+                lower.rotation = Quaternion.AngleAxis(Roll(arm, WristAngles(arm, rotation, out _).z), lower.rotation * arm.twistAxis) * lower.rotation;
             arm.hand.rotation = rotation;
         }
 
-        /// <summary>(flexion, deviation, twist) of a hand rotation relative to the forearm, degrees from bind.</summary>
-        private static Vector3 WristAngles(Arm arm, Quaternion rotation, out Quaternion twistRotation)
+        /// <summary>Forearm roll for a hand twisted <paramref name="twist"/> degrees off the lower arm: half of it, all but the wrist's share when large.</summary>
+        private static float Roll(Arm arm, float twist) => twist - Mathf.Clamp(twist * .5f, -arm.keep, arm.keep);
+
+        /// <summary>Twist (degrees) of rotation <paramref name="d"/> about <paramref name="axis"/>.</summary>
+        private static float Twist(Quaternion d, Vector3 axis)
+        {
+            if (d.w < 0f) d = new Quaternion(-d.x, -d.y, -d.z, -d.w);
+            return 2f * Mathf.Atan2(Vector3.Dot(new Vector3(d.x, d.y, d.z), axis), d.w) * Mathf.Rad2Deg;
+        }
+
+        private static Vector3 WristAngles(Arm arm, Quaternion rotation, out Quaternion twistRotation) =>
+            WristAngles(arm, rotation, out twistRotation, out _);
+
+        /// <summary>
+        /// (flexion, deviation, twist) of a hand rotation relative to the distal forearm, degrees from bind. The distal forearm
+        /// (<paramref name="distal"/>) is the lower arm, turned by the roll bone's share of the twist when the arm has one.
+        /// </summary>
+        private static Vector3 WristAngles(Arm arm, Quaternion rotation, out Quaternion twistRotation, out Quaternion distal)
         {
             Quaternion d = Quaternion.Inverse(arm.lower.rotation) * rotation * Quaternion.Inverse(arm.handBind);
+            Quaternion roll = arm.twist != null ? Quaternion.AngleAxis(Roll(arm, Twist(d, arm.twistAxis)), arm.twistAxis) : Quaternion.identity;
+            distal = arm.lower.rotation * roll;
+            d = Quaternion.Inverse(roll) * d;
             if (d.w < 0f) d = new Quaternion(-d.x, -d.y, -d.z, -d.w);
-            float twist = 2f * Mathf.Atan2(Vector3.Dot(new Vector3(d.x, d.y, d.z), arm.twistAxis), d.w) * Mathf.Rad2Deg;
+            float twist = Twist(d, arm.twistAxis);
             twistRotation = Quaternion.AngleAxis(twist, arm.twistAxis);
             (d * Quaternion.Inverse(twistRotation)).ToAngleAxis(out float angle, out Vector3 axis);
             if (angle > 180f) angle -= 360f;

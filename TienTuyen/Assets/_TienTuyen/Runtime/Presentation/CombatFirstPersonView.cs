@@ -272,6 +272,8 @@ namespace TienTuyen.Presentation
             {
                 renderer.gameObject.layer = ViewmodelLayer;
                 renderer.shadowCastingMode = ShadowCastingMode.Off;
+                // The takes pose arms and gun far from their import bounds, which then cull them on screen; always in view anyway.
+                if (renderer is SkinnedMeshRenderer skin) skin.updateWhenOffscreen = true;
             }
             var model = new Viewmodel { root = root, muzzle = Find(root, "Muzzle"), flash = Find(root, "MuzzleFlash")?.gameObject };
             if (model.flash == null && model.muzzle != null)

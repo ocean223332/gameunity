@@ -29,6 +29,11 @@ namespace TienTuyen.Editor
         private const string RestPath = AnimationDir + "/xdr_ak@TPose.fbx";
         // Further takes on the same skeleton, optional: the per-weapon reloads.
         private const string ReloadsPath = AnimationDir + "/xdr_ak@Reloads.fbx";
+        // The knife takes (output/clip-source/_scripts/xdr_knife.py), played as they are by the bodies on the xdR bind.
+        private const string KnifePath = AnimationDir + "/xdr_ak@Knife.fbx";
+        // The knife takes play whole on the ValveBiped bodies, which face a quarter turn right of the takes' original
+        // orientation; the rifle bakes square the hips onto the aim instead.
+        private const float KnifeTurn = -90f;
         private const string BakedDir = AnimationDir + "/Baked";
 
         // Source bones the bake reads besides the Humanoid ones.
@@ -53,7 +58,7 @@ namespace TienTuyen.Editor
         private static readonly (string slot, string take)[] Slots =
             { ("hold", "stand_idle"), ("aim", "stand_aim"), ("run", "run_N"), ("fire", "fire") };
 
-        private static readonly string[] Loops = { "stand_idle", "run_N", "reload_xm_loop" };
+        private static readonly string[] Loops = { "stand_idle", "run_N", "run_S", "run_E", "run_W", "reload_xm_loop" };
 
         private static readonly Dictionary<HumanBodyBones, string> ValveBiped = new Dictionary<HumanBodyBones, string>
         {
@@ -145,6 +150,22 @@ namespace TienTuyen.Editor
             }).ToArray();
         }
 
+        /// <summary>
+        /// The knife takes (stand_idle, stand_aim, run_N/S/E/W, attack, death) as Humanoid clips on the xdR avatar, by take
+        /// name, with the xdR model and avatar. A body on the xdR bind plays them as they are, with nothing baked.
+        /// </summary>
+        public static (Dictionary<string, AnimationClip> clips, GameObject model, Avatar avatar) ImportKnifeTakes()
+        {
+            CopySources();
+            string repo = Path.GetFullPath(Path.Combine(Application.dataPath, "..", ".."));
+            Copy(Path.Combine(repo, TakesSource, "xdr_ak@Knife.fbx"), KnifePath);
+            AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+            var avatar = ImportHumanoid(new[] { TakesPath }, HumanoidRigSetup.ImportRestPose(RestPath));
+            var clips = AssetDatabase.LoadAllAssetsAtPath(KnifePath).OfType<AnimationClip>()
+                .Where(c => !c.name.StartsWith("__preview__")).ToDictionary(c => c.name);
+            return (clips, AssetDatabase.LoadAssetAtPath<GameObject>(TakesPath), avatar);
+        }
+
         private static void CopySources()
         {
             string repo = Path.GetFullPath(Path.Combine(Application.dataPath, "..", ".."));
@@ -210,6 +231,7 @@ namespace TienTuyen.Editor
                 // Root motion stays in the pose; only the upper body is used.
                 clip.lockRootRotation = clip.lockRootHeightY = clip.lockRootPositionXZ = true;
                 clip.keepOriginalOrientation = clip.keepOriginalPositionY = clip.keepOriginalPositionXZ = true;
+                clip.rotationOffset = path == KnifePath ? KnifeTurn : 0f;
             }
             importer.clipAnimations = clips;
             return importer;
@@ -267,7 +289,9 @@ namespace TienTuyen.Editor
             var avatar = AssetDatabase.LoadAllAssetsAtPath(TakesPath).OfType<Avatar>().Single();
             if (!avatar.isValid || !avatar.isHuman) throw new InvalidOperationException("xdR Humanoid avatar is invalid");
             HumanoidRigSetup.CheckFingers(avatar, AssetDatabase.LoadAssetAtPath<GameObject>(TakesPath), ValveBiped);
-            foreach (string file in files.Where(f => f != TakesPath)) TakesImporter(file, ModelImporterAnimationType.Human, avatar).SaveAndReimport();
+            // The knife file, once imported, follows the avatar too.
+            var others = files.Where(f => f != TakesPath).Concat(AssetImporter.GetAtPath(KnifePath) is ModelImporter ? new[] { KnifePath } : new string[0]);
+            foreach (string file in others.Distinct()) TakesImporter(file, ModelImporterAnimationType.Human, avatar).SaveAndReimport();
             return avatar;
         }
 

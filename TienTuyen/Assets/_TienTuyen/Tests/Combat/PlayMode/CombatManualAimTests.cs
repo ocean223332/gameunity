@@ -311,6 +311,33 @@ namespace TienTuyen.Combat.Tests
         }
 
         [UnityTest]
+        public IEnumerator EveryViewmodelsArmsLieInsideTheirCullingBounds()
+        {
+            // Bounds in the wrong space let the camera cull arms that are on screen (the smg's first-person arms vanished).
+            var view = Camera.main.GetComponent<CombatThirdPersonCamera>();
+            var fps = view.GetComponent<CombatFirstPersonView>();
+            foreach (var kind in new[] { WeaponKind.Rifle, WeaponKind.Smg, WeaponKind.Shotgun })
+            {
+                typeof(CombatGame).GetProperty("SelectedWeapon").SetValue(game, kind);
+                game.BeginRun();
+                view.SetFirstPerson(true);
+                for (float waited = 0; waited < 5f && !fps.Active; waited += Time.unscaledDeltaTime) yield return null;
+                yield return null;
+                var model = view.transform.Find("ViewmodelCamera/Viewmodel/Viewmodel_" + game.ActiveWeapon.Id);
+                foreach (var skin in model.GetComponentsInChildren<SkinnedMeshRenderer>())
+                {
+                    var posed = new Mesh();
+                    skin.BakeMesh(posed, true);
+                    int outside = 0;
+                    foreach (var v in posed.vertices)
+                        if (!skin.bounds.Contains(skin.transform.TransformPoint(v))) outside++;
+                    Object.Destroy(posed);
+                    Assert.That(outside, Is.Zero, kind + " " + skin.name + " has vertices outside its culling bounds");
+                }
+            }
+        }
+
+        [UnityTest]
         public IEnumerator TheRiflesImportedViewmodelHoldsItsMuzzleInViewAndItsSightsOnTheCentre()
         {
             Assume.That(game.ActiveWeapon.Id, Is.EqualTo(ContentIds.Rifle));
