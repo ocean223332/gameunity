@@ -30,6 +30,11 @@ namespace TienTuyen.Combat
         public bool ManualAim => manualAim;
         /// <summary>Manual aim only: the crosshair ray currently rests on a reachable enemy.</summary>
         public bool AimOnTarget { get; private set; }
+        /// <summary>The crouch input is held (player only).</summary>
+        public bool Crouching => crouchHeld;
+        /// <summary>How far down the player is, 0 standing to 1 crouched, eased over <see cref="CombatRules.CrouchSeconds"/>.</summary>
+        public float Crouch { get; private set; }
+        public float PlayerHeight => Mathf.Lerp(CombatRules.PlayerStandHeight, CombatRules.PlayerCrouchHeight, Crouch);
         public Vector3 PlayerAimDirection
         {
             get
@@ -226,7 +231,7 @@ namespace TienTuyen.Combat
         // The weapon in hand by identity, so a wave after the shop keeps it when slots shift.
         private OwnedWeapon heldWeapon;
         private long nextPickupId;
-        private bool manualAim, triggerHeld;
+        private bool manualAim, triggerHeld, crouchHeld;
         private Vector3 aimDirection = Vector3.forward;
         private bool hasViewRay;
         private Vector3 viewRayOrigin, viewRayDirection;
@@ -269,6 +274,8 @@ namespace TienTuyen.Combat
                 if (keyboard.digit4Key.wasPressedThisFrame) SwitchWeapon(3);
                 if (keyboard.qKey.wasPressedThisFrame) LastWeapon();
             }
+            crouchHeld = (keyboard != null && (keyboard.leftCtrlKey.isPressed || keyboard.cKey.isPressed)) ||
+                (Gamepad.current != null && Gamepad.current.rightStickButton.isPressed);
             if (Mouse.current != null)
             {
                 float wheel = Mouse.current.scroll.ReadValue().y;
@@ -382,6 +389,8 @@ namespace TienTuyen.Combat
             SupplyProgress = 0;
             player.position = new Vector3(0, 0.8f, 0);
             player.gameObject.SetActive(true);
+            crouchHeld = false;
+            Crouch = 0;
             ResetWave();
             State = CombatState.Playing;
         }
@@ -621,10 +630,15 @@ namespace TienTuyen.Combat
             State = CombatState.Shop;
         }
 
+        /// <summary>Hold-to-crouch, as the keyboard and gamepad set it each frame; also used by PlayMode tests.</summary>
+        public void SetCrouchInput(bool held) => crouchHeld = held;
+
         private void MovePlayer(float dt, Vector2 movement)
         {
             if (movement.sqrMagnitude > 1) movement.Normalize();
-            var displacement = new Vector3(movement.x, 0, movement.y) * (CombatRules.PlayerSpeed * Stats.SpeedFactor * dt);
+            Crouch = Mathf.MoveTowards(Crouch, crouchHeld ? 1f : 0f, dt / CombatRules.CrouchSeconds);
+            float speed = CombatRules.PlayerSpeed * Stats.SpeedFactor * Mathf.Lerp(1f, CombatRules.CrouchSpeedFactor, Crouch);
+            var displacement = new Vector3(movement.x, 0, movement.y) * (speed * dt);
             MoveWithCover(player, displacement, PlayerRadius);
             var p = player.position;
             player.position = new Vector3(Mathf.Clamp(p.x, -HalfWidth, HalfWidth), 0.8f, Mathf.Clamp(p.z, -HalfHeight, HalfHeight));

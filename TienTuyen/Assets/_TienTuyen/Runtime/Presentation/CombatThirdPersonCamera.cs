@@ -26,6 +26,8 @@ namespace TienTuyen.Presentation
 
         // First person: the eye sits above the gameplay actor (capsule centre, Y=.8) at the hero's own eye, 1.65 m off the ground.
         public float EyeHeight = .85f;
+        /// <summary>How far the pivot and eye drop at a full crouch: CS:GO's head drop from stand to crouch idle.</summary>
+        public float CrouchDrop = .37f;
         public float FirstPersonFieldOfView = 70f, FirstPersonAimFieldOfView = 52f;
         public const float FirstPersonMinPitch = -60f, FirstPersonMaxPitch = 70f;
 
@@ -173,7 +175,7 @@ namespace TienTuyen.Presentation
             if (!paused) orbitYaw = Mathf.Repeat(orbitYaw + dt * 5f, 360f);
             if (!paused) firstPersonBlend = Mathf.MoveTowards(firstPersonBlend, firstPerson ? 1f : 0f, dt * 6f);
 
-            Vector3 target = player.position + Vector3.up * PivotHeight;
+            Vector3 target = player.position + Vector3.up * (PivotHeight - CrouchDrop * game.Crouch);
             pivot = hasPivot ? Vector3.Lerp(pivot, target, 1f - Mathf.Exp(-22f * dt)) : target;
             hasPivot = true;
 
@@ -273,10 +275,10 @@ namespace TienTuyen.Presentation
         {
             rotation = Quaternion.Euler(pitch - recoilKick, yaw, 0);
             // First person looks from the actor itself, unsmoothed, so the eye never trails the body.
-            Vector3 eye = player.position + Vector3.up * EyeHeight;
+            Vector3 eye = player.position + Vector3.up * (EyeHeight - CrouchDrop * game.Crouch);
             if (firstPersonBlend >= 1f) return eye;
             float distance = Mathf.Lerp(Distance, AimDistance, aimBlend);
-            Vector3 origin = (hasPivot ? pivot : player.position + Vector3.up * PivotHeight) +
+            Vector3 origin = (hasPivot ? pivot : player.position + Vector3.up * (PivotHeight - CrouchDrop * game.Crouch)) +
                 rotation * (ShoulderOffset * Mathf.Lerp(1f, .85f, aimBlend));
             Vector3 back = rotation * Vector3.back;
             // Sandbag covers keep their gameplay box colliders; never look through them.

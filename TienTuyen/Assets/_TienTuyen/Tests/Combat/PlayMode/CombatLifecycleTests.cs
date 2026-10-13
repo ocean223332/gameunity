@@ -370,6 +370,31 @@ namespace TienTuyen.Combat.Tests
             Assert.That(game.SellWeapon(0, out _), Is.False);
         }
 
+        [Test]
+        public void HoldingCrouchLowersAndSlowsThePlayerUntilReleased()
+        {
+            var player = game.transform.Find("Player");
+            float Walk()
+            {
+                float start = player.position.x;
+                Simulate(0.5f, Vector2.right);
+                return player.position.x - start;
+            }
+            float standing = Walk();
+
+            game.SetCrouchInput(true);
+            Simulate(CombatRules.CrouchSeconds, Vector2.zero);
+            Assert.That(game.Crouch, Is.EqualTo(1f).Within(1e-4f));
+            Assert.That(game.PlayerHeight, Is.EqualTo(CombatRules.PlayerCrouchHeight).Within(1e-4f));
+            Assert.That(Walk(), Is.EqualTo(standing * CombatRules.CrouchSpeedFactor).Within(1e-3f));
+
+            game.SetCrouchInput(false);
+            Simulate(CombatRules.CrouchSeconds, Vector2.zero);
+            Assert.That(game.Crouch, Is.EqualTo(0f).Within(1e-4f));
+            Assert.That(game.PlayerHeight, Is.EqualTo(CombatRules.PlayerStandHeight).Within(1e-4f));
+            Assert.That(Walk(), Is.EqualTo(standing).Within(1e-3f));
+        }
+
         private void FinishWave()
         {
             typeof(CombatGame).GetMethod("FinishWave", BindingFlags.Instance | BindingFlags.NonPublic)

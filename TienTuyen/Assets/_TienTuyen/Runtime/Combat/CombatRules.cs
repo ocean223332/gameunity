@@ -11,6 +11,12 @@ namespace TienTuyen.Combat
         public const int EnemyCap = 25;
         public const float PlayerMaxHealth = 200f;
         public const float PlayerSpeed = 4.75f;
+        /// <summary>Crouch-walk speed over run speed: CS:GO's crouch-walk cycle against its run cycle (67.8 / 145.7 in).</summary>
+        public const float CrouchSpeedFactor = 0.47f;
+        /// <summary>Player height standing and crouched; the crouch keeps CS:GO's head-height ratio (1.16 / 1.53 m).</summary>
+        public const float PlayerStandHeight = 1.6f, PlayerCrouchHeight = 1.2f;
+        /// <summary>Seconds to go fully down or back up.</summary>
+        public const float CrouchSeconds = 0.15f;
         public const int MaxWaves = 6;
         public const int SupplyWave = 3;
         public const float WaveSeconds = 40f;
