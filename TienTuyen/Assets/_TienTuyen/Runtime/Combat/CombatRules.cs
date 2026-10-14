@@ -8,7 +8,8 @@ namespace TienTuyen.Combat
     // P1 constants: the two enemy profiles are intentionally provisional graybox tuning.
     public static class CombatRules
     {
-        public const int EnemyCap = 25;
+        // decreased from 20 to 15 to reduce lag and make the game more playable on lower-end devices
+        public const int EnemyCap = 15;
         public const float PlayerMaxHealth = 200f;
         public const float PlayerSpeed = 4.75f;
         public const int MaxWaves = 6;
