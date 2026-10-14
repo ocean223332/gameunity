@@ -113,10 +113,15 @@ namespace TienTuyen.Presentation
             volume.sharedProfile = profile;
             profile.Add<Tonemapping>(true).mode.Override(TonemappingMode.ACES);
             var color = profile.Add<ColorAdjustments>(true);
-            color.postExposure.Override(.35f);
-            color.contrast.Override(6f);
-            color.saturation.Override(0f);
-            color.colorFilter.Override(new Color(1f, .975f, .94f));
+            //color.postExposure.Override(.35f);
+            //color.contrast.Override(6f);
+            //color.saturation.Override(0f);
+            //color.colorFilter.Override(new Color(1f, .975f, .94f));
+            color.postExposure.Override(.5f);
+            color.contrast.Override(10f);
+            color.saturation.Override(10f);
+            color.colorFilter.Override(Color.white);
+
             var bloom = profile.Add<Bloom>(true);
             bloom.threshold.Override(1f);
             bloom.intensity.Override(.8f);
@@ -124,10 +129,10 @@ namespace TienTuyen.Presentation
             bloom.tint.Override(ProceduralArt.Hex("#FFD7A6"));
             var vignette = profile.Add<Vignette>(true);
             vignette.intensity.Override(.28f);
-            vignette.smoothness.Override(.45f);
             var balance = profile.Add<WhiteBalance>(true);
             balance.temperature.Override(6f);
             balance.tint.Override(2f);
+            vignette.smoothness.Override(.45f);
             // Teal shadows, warm highlights.
             var toning = profile.Add<ShadowsMidtonesHighlights>(true);
             toning.shadows.Override(new Vector4(.92f, 1f, 1.07f, 0f));

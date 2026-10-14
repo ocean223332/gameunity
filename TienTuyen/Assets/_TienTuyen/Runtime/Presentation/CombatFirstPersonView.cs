@@ -132,7 +132,7 @@ namespace TienTuyen.Presentation
             var data = holder.AddComponent<UniversalAdditionalCameraData>();
             data.renderType = CameraRenderType.Overlay;
             data.renderShadows = false;
-            data.renderPostProcessing = true;
+            data.renderPostProcessing = false;
             mainCamera.GetUniversalAdditionalCameraData().cameraStack.Add(overlay);
             mainCamera.cullingMask &= ~(1 << ViewmodelLayer);
             overlay.enabled = false;

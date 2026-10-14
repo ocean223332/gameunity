@@ -132,7 +132,6 @@ namespace TienTuyen.Editor
         public static void QueueBuildWindows()
         {
             RequireReady();
-            ValidateScene();
             if (buildQueued || BuildPipeline.isBuildingPlayer)
                 throw new InvalidOperationException("A Windows build is already queued or running.");
             buildQueued = true;
@@ -148,6 +147,10 @@ namespace TienTuyen.Editor
         public static string BuildWindows()
         {
             RequireReady();
+            // Tests and other editor workflows can leave a different scene active.
+            // RequireReady rejects unsaved changes before opening the build scene.
+            if (SceneManager.GetActiveScene().path != ScenePath)
+                EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
             ValidateScene();
             string project = Directory.GetParent(Application.dataPath).FullName;
             string output = Path.GetFullPath(Path.Combine(project, "../Builds/Windows/TienTuyen.exe"));

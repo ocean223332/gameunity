@@ -10,6 +10,12 @@ namespace TienTuyen.Combat
     /// <summary>Self-contained graybox combat loop for the three-wave P1 milestone.</summary>
     public sealed class CombatGame : MonoBehaviour
     {
+        private const float GroundY = 0.8f;
+        private const float JumpHeight = 1.2f;
+        private const float Gravity = -20f;
+
+        private float verticalVelocity;
+
         public Material GroundMaterial, CoverMaterial, PlayerMaterial, EnemyMaterial;
         public Material ShooterMaterial, ProjectileMaterial, PickupMaterial, WarningMaterial;
 
@@ -284,6 +290,13 @@ namespace TienTuyen.Combat
             var keyboard = Keyboard.current;
             if (keyboard != null)
             {
+                if (keyboard.spaceKey.wasPressedThisFrame &&
+                    player.position.y <= GroundY + 0.001f &&
+                    verticalVelocity <= 0f)
+                {
+                    verticalVelocity = Mathf.Sqrt(JumpHeight * -2f * Gravity);
+                }
+
                 if (keyboard.aKey.isPressed || keyboard.leftArrowKey.isPressed) movement.x -= 1;
                 if (keyboard.dKey.isPressed || keyboard.rightArrowKey.isPressed) movement.x += 1;
                 if (keyboard.sKey.isPressed || keyboard.downArrowKey.isPressed) movement.y -= 1;
@@ -411,6 +424,7 @@ namespace TienTuyen.Combat
             SupplyVisible = false;
             SupplyProgress = 0;
             player.position = new Vector3(0, 0.8f, 0);
+            verticalVelocity = 0f;
             player.gameObject.SetActive(true);
             crouchHeld = false;
             Crouch = 0;
@@ -435,6 +449,7 @@ namespace TienTuyen.Combat
             State = CombatState.Menu;
             player.gameObject.SetActive(true);
             player.position = new Vector3(0, 0.8f, 0);
+            verticalVelocity = 0f;
         }
 
         public void TogglePause()
@@ -671,7 +686,20 @@ namespace TienTuyen.Combat
             var displacement = new Vector3(movement.x, 0, movement.y) * (speed * dt);
             MoveWithCover(player, displacement, PlayerRadius);
             var p = player.position;
-            player.position = new Vector3(Mathf.Clamp(p.x, -HalfWidth, HalfWidth), 0.8f, Mathf.Clamp(p.z, -HalfHeight, HalfHeight));
+            //player.position = new Vector3(Mathf.Clamp(p.x, -HalfWidth, HalfWidth), 0.8f, Mathf.Clamp(p.z, -HalfHeight, HalfHeight));
+            verticalVelocity += Gravity * dt;
+            float nextY = p.y + verticalVelocity * dt;
+
+            if (nextY <= GroundY)
+            {
+                nextY = GroundY;
+                verticalVelocity = 0f;
+            }
+
+            player.position = new Vector3(
+                Mathf.Clamp(p.x, -HalfWidth, HalfWidth),
+                nextY,
+                Mathf.Clamp(p.z, -HalfHeight, HalfHeight));
             playerRenderer.material.color = invulnerability > 0 && Mathf.FloorToInt(invulnerability * 20) % 2 == 0
                 ? Color.white : (PlayerMaterial != null ? PlayerMaterial.color : new Color(.55f, .65f, .4f));
         }
