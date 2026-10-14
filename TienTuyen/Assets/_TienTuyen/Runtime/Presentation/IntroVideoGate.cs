@@ -18,6 +18,10 @@ namespace TienTuyen.Presentation
         public const string VideoFileName = "TienTuyenIntro.mp4";
         public const float HandoffMenuOffsetSeconds = 51.57f;
         private const float HandoffFadeSeconds = .25f;
+        // The title card's Adagio is brought down to the menu's live music level before the join.
+        private const float LevelRampSeconds = 4f;
+        // The menu score is armed this early so its stream is buffered when the film's sound ends.
+        private const float HandoffLeadSeconds = .5f;
 
         private CombatAudio combatAudio;
         private CombatPresentation presentation;
@@ -29,6 +33,8 @@ namespace TienTuyen.Presentation
         private bool shouldPlay;
         private bool playing;
         private bool skipRequested;
+        private double videoEndDsp = double.MaxValue;
+        private bool scoreScheduled;
         private IDisposable inputListener;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -57,11 +63,6 @@ namespace TienTuyen.Presentation
             {
                 combatAudio.AutoStartMusic = false;
                 combatAudio.SetIntroPlaying(true);
-            }
-
-            if (presentation != null)
-            {
-                presentation.enabled = false;
             }
         }
 
@@ -98,6 +99,39 @@ namespace TienTuyen.Presentation
             {
                 skipRequested = false;
                 FinishIntro(false);
+                return;
+            }
+
+            if (playing && video != null && video.isPlaying && combatAudio != null)
+            {
+                float remaining = (float)(video.length - video.time);
+                float menuLevel = combatAudio.MuteMusic ? 0f : combatAudio.MasterVolume * combatAudio.MusicVolume;
+                videoAudio.volume = Mathf.Lerp(menuLevel, 1f, remaining / LevelRampSeconds);
+                // The film's end on the DSP clock. The frame time trails the playhead, so the earliest
+                // estimate once playback has settled past its start-up latency is the closest.
+                if (video.time > 1d)
+                {
+                    videoEndDsp = Math.Min(videoEndDsp, AudioSettings.dspTime + video.length - video.time);
+                }
+
+                // The film's last seconds are the menu score up to the handoff offset, so the score
+                // starts on the DSP clock where the film's sound stops; ambience leads the picture.
+                if (!scoreScheduled && AudioSettings.dspTime >= videoEndDsp - HandoffLeadSeconds)
+                {
+                    scoreScheduled = true;
+                    combatAudio.SetIntroPlaying(false);
+                    combatAudio.StartMusic(HandoffMenuOffsetSeconds, 0f, videoEndDsp);
+                }
+            }
+        }
+
+        // The interface builds in its own Start on the first frame, under the black overlay while the
+        // film prepares, so the handoff only reveals it. Runs before its LateUpdate and keeps it inert.
+        private void LateUpdate()
+        {
+            if (playing && presentation != null && presentation.enabled)
+            {
+                presentation.enabled = false;
             }
         }
 
@@ -158,6 +192,11 @@ namespace TienTuyen.Presentation
 
             target = new RenderTexture(1920, 1080, 0, RenderTextureFormat.ARGB32);
             target.Create();
+            // Opaque black until the first frame decodes, so nothing behind the overlay shows through.
+            var active = RenderTexture.active;
+            RenderTexture.active = target;
+            GL.Clear(false, true, Color.black);
+            RenderTexture.active = active;
             video.targetTexture = target;
             var image = overlay.transform.Find("IntroVideo").GetComponent<UnityEngine.UI.RawImage>();
             image.texture = target;
@@ -204,7 +243,7 @@ namespace TienTuyen.Presentation
             inputListener?.Dispose();
             inputListener = null;
             ReleaseVideo();
-            if (combatAudio != null)
+            if (combatAudio != null && !(completed && scoreScheduled))
             {
                 combatAudio.StartMusic(completed ? HandoffMenuOffsetSeconds : 0f,
                     completed ? HandoffFadeSeconds : 0f);

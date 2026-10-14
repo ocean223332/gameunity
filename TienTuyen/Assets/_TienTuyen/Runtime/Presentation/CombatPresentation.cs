@@ -45,6 +45,19 @@ namespace TienTuyen.Presentation
             foreach (var screen in Screens) screen.Snap();
         }
 
+        // A disabled interface (behind the intro) takes no keyboard or pad input. Enabling it enters its
+        // state again, which keeps a focus that survived silently and restores one a click cleared.
+        private void OnEnable()
+        {
+            if (EventSystem.current != null) EventSystem.current.sendNavigationEvents = true;
+        }
+
+        private void OnDisable()
+        {
+            previousState = (CombatState)(-1);
+            if (EventSystem.current != null) EventSystem.current.sendNavigationEvents = false;
+        }
+
         private void OnDestroy()
         {
             hud?.Dispose();

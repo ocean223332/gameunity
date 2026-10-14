@@ -222,8 +222,11 @@ namespace TienTuyen.Presentation
             if (!ambience.isPlaying) ambience.Play();
         }
 
-        /// <summary>With AutoStartMusic disabled, an intro can start the menu score at its handoff offset.</summary>
-        public void StartMusic(float menuOffsetSeconds = 0f, float fadeInSeconds = 0f)
+        /// <summary>
+        /// With AutoStartMusic disabled, an intro can start the menu score at its handoff offset,
+        /// optionally at an exact DSP time so it joins the intro's soundtrack without a gap.
+        /// </summary>
+        public void StartMusic(float menuOffsetSeconds = 0f, float fadeInSeconds = 0f, double startDspTime = 0d)
         {
             menuMusic.Stop();
             playingMusic.Stop();
@@ -232,6 +235,7 @@ namespace TienTuyen.Presentation
             musicFadeDuration = Mathf.Max(.01f, fadeInSeconds);
             musicFade = fadeInSeconds > 0f ? 0f : 1f;
             musicStarted = true;
+            if (startDspTime > 0d) menuMusic.PlayScheduled(startDspTime);
             TickMusic(0f);
         }
 
