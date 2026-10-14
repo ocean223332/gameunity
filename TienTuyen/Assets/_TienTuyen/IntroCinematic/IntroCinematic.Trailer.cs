@@ -3,12 +3,13 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using TienTuyen.Combat;
+using TienTuyen.Presentation;
 using TienTuyen.Progression;
 using UnityEngine;
 
 /// <summary>
-/// The trailer's shot list (-trailer &lt;outDir&gt;). It reuses the intro's establishing and
-/// battle shots and adds staged beats: enemies arriving, each enemy type, each weapon,
+/// The trailer's shot list (-trailer &lt;outDir&gt;). It cuts its establishing and battle
+/// shots (<see cref="BuildBaseShots"/>) between staged beats: enemies arriving, each enemy type, each weapon,
 /// and a closing charger stinger. Staged enemies are placed by hand; the one the camera
 /// follows is the subject.
 /// </summary>
@@ -27,9 +28,153 @@ public sealed partial class IntroCinematic
     private Array pickupPool;
     private FieldInfo pickupActive, pickupBody, enemyCharging;
 
+    /// <summary>The establishing and battle shots the trailer cuts between its staged beats (once the 54.5 s intro's).</summary>
+    private void BuildBaseShots()
+    {
+        Vector3 right = Vector3.Cross(Vector3.up, Facing);
+        Vector3 side = Vector3.Cross(Vector3.up, Front); // the hero's right while facing the enemy line
+
+        // Over the canopy toward the clearing.
+        shots.Add(new Shot
+        {
+            Name = "aerial", Seconds = 8f,
+            Begin = () => heroRig.SnapAim(Facing),
+            Camera = (u, t) =>
+            {
+                float e = Ease(u);
+                Vector3 p = Vector3.Lerp(new Vector3(-92f, 0, -74f), new Vector3(-21f, 0, -16f), e);
+                p.y = CombatEnvironment.GroundHeight(p.x, p.z) + Mathf.Lerp(34f, 17f, e);
+                Place(p, Vector3.Lerp(new Vector3(8f, 4f, 8f), new Vector3(0, .5f, 0), e), 44f, Mathf.Lerp(-4f, 0f, e));
+                Lens(false);
+            }
+        });
+        // Inside the camp: the lone soldier, the supply truck beyond.
+        shots.Add(new Shot
+        {
+            Name = "camp", Seconds = 5.5f,
+            Camera = (u, t) =>
+            {
+                float e = Ease(u);
+                Vector3 p = Vector3.Lerp(new Vector3(9.5f, 2.0f, 1.4f), new Vector3(7.6f, 2.2f, 4.6f), e);
+                Place(p, Vector3.Lerp(new Vector3(-1.6f, 1.0f, -.9f), new Vector3(-1.0f, 1.0f, -.3f), e), 30f, 0, .25f);
+                Lens(true, Hero + Vector3.up, 5.6f);
+            }
+        });
+        // Low behind the hero, looking up at the banner against the sky.
+        shots.Add(new Shot
+        {
+            Name = "flag", Seconds = 6f,
+            Camera = (u, t) =>
+            {
+                float e = Ease(u);
+                Vector3 around = Quaternion.Euler(0, Mathf.Lerp(-38f, -12f, e), 0) * -Facing;
+                Vector3 p = Hero + around * Mathf.Lerp(2.1f, 1.6f, e) + Vector3.up * .45f;
+                Place(p, Hero + Vector3.up * 2.25f - right * .35f + Facing * .6f, 46f);
+                Lens(true, Hero + Vector3.up * 1.9f, 2.4f);
+            }
+        });
+        // Low front three-quarter push-in on the hero.
+        shots.Add(new Shot
+        {
+            Name = "hero", Seconds = 5.5f,
+            Camera = (u, t) =>
+            {
+                float e = Ease(u);
+                Vector3 around = Quaternion.Euler(0, Mathf.Lerp(28f, 16f, e), 0) * Facing;
+                Vector3 p = Hero + around * Mathf.Lerp(3.6f, 2.5f, e) + Vector3.up * .42f;
+                Place(p, Hero + Vector3.up * 1.18f, 34f);
+                Lens(true, Hero + Vector3.up * 1.4f, 2.2f);
+            }
+        });
+        // Ground level in the grass as the enemy line comes on.
+        shots.Add(new Shot
+        {
+            Name = "enemies", Seconds = 4.2f,
+            Begin = () => Teleport(-6f, 0f),
+            Camera = (u, t) =>
+            {
+                Vector3 threat = Threat();
+                Vector3 p = Hero + Front * 2.4f + side * (1.2f - .5f * u) + Vector3.up * .3f;
+                Place(p, threat + Vector3.up * 1.2f, 30f, 0, .35f);
+                ClearLine(p, threat, 1.2f);
+                Lens(true, threat + Vector3.up, 2f);
+            }
+        });
+        shots.Add(new Shot
+        {
+            Name = "shoulder", Seconds = 4.5f,
+            Begin = () => Teleport(-6f, .5f),
+            Move = t => new Vector2(0, -.25f),
+            Camera = (u, t) =>
+            {
+                Vector3 aim = Vector3.Slerp(Front, Aim(), .35f);
+                Vector3 across = Vector3.Cross(Vector3.up, aim);
+                Vector3 p = Hero - aim * Mathf.Lerp(2.6f, 2.0f, u) + across * .78f + Vector3.up * 1.75f;
+                Place(p, Hero + aim * 12f + Vector3.up * 1.0f, 50f, 0, 1f);
+                ClearLine(p, Hero, .6f);
+                Lens(false);
+            }
+        });
+        // Running the lane under fire, filmed from behind and to the side.
+        shots.Add(new Shot
+        {
+            Name = "track", Seconds = 4.5f,
+            Begin = () => Teleport(-6f, 6.3f),
+            Move = t => new Vector2(0, -.45f * Mathf.Clamp01(t * 3f)),
+            Camera = (u, t) =>
+            {
+                Vector3 p = Hero - Front * 3.7f - Vector3.forward * .4f + Vector3.up * 1.15f;
+                Place(p, Hero + Front * 3f - Vector3.forward * .8f + Vector3.up * 1.1f, 42f, 0, .7f);
+                ClearLine(p, Hero, .9f);
+                Lens(true, Hero + Vector3.up, 2f);
+            }
+        });
+        // In front of the muzzle, a little off the line of fire.
+        shots.Add(new Shot
+        {
+            Name = "reverse", Seconds = 3.5f,
+            Begin = () => Teleport(-6f, -1f),
+            Camera = (u, t) =>
+            {
+                Vector3 p = Hero + Front * Mathf.Lerp(5.0f, 4.3f, u) + side * 1.9f + Vector3.up * .75f;
+                Place(p, Hero + Vector3.up * 1.15f, 30f, 0, .45f);
+                ClearLine(p, Hero, 1.1f);
+                Lens(true, Hero + Vector3.up * 1.2f, 1.8f);
+            }
+        });
+        // Profile medium shot; played back at half speed in the edit.
+        shots.Add(new Shot
+        {
+            Name = "slowmo", Seconds = 3.2f,
+            Begin = () => Teleport(-6f, 0f),
+            Camera = (u, t) =>
+            {
+                Vector3 around = Quaternion.Euler(0, Mathf.Lerp(-62f, -48f, u), 0) * Front;
+                Vector3 p = Hero + around * 3.1f + Vector3.up * .95f;
+                Place(p, Hero + Vector3.up * 1.2f + Front * .6f, 34f, 0, .15f);
+                ClearLine(p, Hero, 1f);
+                Lens(true, Hero + Vector3.up * 1.3f, 1.6f);
+            }
+        });
+        // Behind the hero, craning up and back over the battle toward the low sun.
+        shots.Add(new Shot
+        {
+            Name = "finale", Seconds = 8f,
+            Begin = () => Teleport(-6f, 0f),
+            Camera = (u, t) =>
+            {
+                float e = Ease(u);
+                Vector3 p = Hero - Front * Mathf.Lerp(1.9f, 7.5f, e) + side * Mathf.Lerp(.8f, 1.6f, e) + Vector3.up * Mathf.Lerp(1.5f, 5.2f, e);
+                Place(p, Hero + Front * Mathf.Lerp(6f, 14f, e) + Vector3.up * Mathf.Lerp(1.6f, 1.2f, e), Mathf.Lerp(46f, 52f, e), 0, .2f);
+                ClearLine(p, Hero, 1f);
+                Lens(false);
+            }
+        });
+    }
+
     private void BuildTrailerShots()
     {
-        BuildIntroShots();
+        BuildBaseShots();
         var intro = new Dictionary<string, Shot>();
         foreach (var shot in shots) intro[shot.Name] = shot;
         shots.Clear();

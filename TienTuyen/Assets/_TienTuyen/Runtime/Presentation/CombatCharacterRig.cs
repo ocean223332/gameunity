@@ -76,6 +76,9 @@ namespace TienTuyen.Presentation
         public bool IsSkinned => skinned != null;
         /// <summary>Hold the weapon in the low-ready whatever the aim request (the menu pose); a shot still shoulders it.</summary>
         public bool Relaxed { get; set; }
+        /// <summary>Hold the weapon in the stand idle, neither shouldered nor aimed at a point, keeping the facing and the
+        /// banner (a film's ready stance); a shot still shoulders it.</summary>
+        public bool IdleHold { get; set; }
         /// <summary>0..1 request to shoulder the weapon (aiming down the sights); shots raise it on their own.</summary>
         public float AimWeight { get; set; }
         /// <summary>0..1 progress of drawing the weapon in hand (the game's switch timing); negative when not drawing.</summary>
@@ -307,7 +310,7 @@ namespace TienTuyen.Presentation
             float shown = view == null ? 1f : Mathf.SmoothStep(0f, 1f,
                 Mathf.InverseLerp(BannerHiddenDistance, BannerFullDistance, Vector3.Distance(view.transform.position, bannerMount.position)));
             // The relaxed menu pose folds the banner away, and unfolds it as the camera swings round.
-            bannerHidden = Mathf.MoveTowards(bannerHidden, Relaxed ? 1f : 0f, Time.unscaledDeltaTime * 3f);
+            bannerHidden = Mathf.MoveTowards(bannerHidden, Relaxed ? 1f : 0f, CombatArtDirector.FrameSeconds * 3f);
             shown *= 1f - Mathf.SmoothStep(0f, 1f, bannerHidden);
             bannerMount.localScale = new Vector3(shown, shown, shown);
         }
@@ -393,7 +396,7 @@ namespace TienTuyen.Presentation
             flashTime = Mathf.Max(0, flashTime - dt);
             shotHold = Mathf.Max(0, shotHold - dt);
             // A carried weapon is always shouldered: a shot does not bring it to the sights.
-            float aimTarget = Mathf.Max(Relaxed ? 0f : Mathf.Clamp01(AimWeight), shotHold > 0f && !Carried ? 1f : 0f);
+            float aimTarget = Mathf.Max(Relaxed || IdleHold ? 0f : Mathf.Clamp01(AimWeight), shotHold > 0f && !Carried ? 1f : 0f);
             aim = Mathf.MoveTowards(aim, aimTarget, dt / (aimTarget > aim ? .15f : .35f));
             if (CurrentWeapon != null) CurrentWeapon.flash.SetActive(flashTime > 0 && death <= 0f);
             Vector3 localVelocity = pose.InverseTransformDirection(smoothedVelocity);
@@ -430,7 +433,7 @@ namespace TienTuyen.Presentation
         {
             var weapon = CurrentWeapon;
             skinned.Apply(weapon?.root, weapon?.grip, weapon?.support, weapon?.muzzle, weapon?.hold, weapon != null ? weapon.holdScale : 1f,
-                recoil, reload, Relaxed && shotHold <= 0f ? null : AimPoint, weapon != null);
+                recoil, reload, (Relaxed || IdleHold) && shotHold <= 0f ? null : AimPoint, weapon != null);
         }
 
         private void ApplyPose(Vector3 localVelocity, float reload, float hit, float death)

@@ -85,6 +85,35 @@ namespace TienTuyen.Combat.Tests
             Assert.That(Vector3.Distance(hero.PoseRoot.InverseTransformPoint(hero.RightFoot.position), initialRight), Is.LessThan(.04f));
         }
 
+        [UnityTest]
+        public IEnumerator FilmCaptureAnimatesOnTheFilmClockNotWallTime()
+        {
+            // A film captures at a fixed 60 fps however long each frame takes to render; the body must keep to that
+            // clock, or slow frames play its clips several times too fast.
+            Time.captureFramerate = 60;
+            try
+            {
+                float fast = 0, slow = 0, previous = hero.GaitPhase;
+                for (int frame = 0; frame < 90; frame++)
+                {
+                    if (frame >= 60) System.Threading.Thread.Sleep(50);
+                    game.StepSimulation(Time.deltaTime, Vector2.right);
+                    yield return null;
+                    float step = Mathf.Repeat(hero.GaitPhase - previous, Mathf.PI * 2f);
+                    previous = hero.GaitPhase;
+                    if (frame >= 30 && frame < 60) fast += step;
+                    else if (frame >= 60) slow += step;
+                }
+                Assert.That(slow / Mathf.Max(fast, .001f), Is.InRange(.8f, 1.25f),
+                    $"Slow frames must not change the gait's pace under capture (fast {fast:F2}, slow {slow:F2} rad).");
+                Assert.That(fast, Is.GreaterThan(.5f), "The hero must be walking through his gait.");
+            }
+            finally
+            {
+                Time.captureFramerate = 0;
+            }
+        }
+
         [Test]
         public void SkinnedStrafeReversalKeepsAnklesContinuous()
         {
@@ -880,6 +909,8 @@ namespace TienTuyen.Combat.Tests
             ((int[])GetField(game, "weaponAmmo"))[0] = 0;
             game.RequestReload();
             float duration = game.ReloadDuration;
+            // The body animates on the clock the simulation steps on (1/60 a frame), not on however fast frames run.
+            Time.captureFramerate = 60;
             var start = game.transform.Find("Player").position;
             var foot = hero.PoseRoot.InverseTransformPoint(hero.LeftFoot.position);
             float motion = 0;
@@ -889,6 +920,7 @@ namespace TienTuyen.Combat.Tests
                 yield return null;
                 motion = Mathf.Max(motion, Vector3.Distance(foot, hero.PoseRoot.InverseTransformPoint(hero.LeftFoot.position)));
             }
+            Time.captureFramerate = 0;
             Assert.That(game.ReloadRemaining, Is.Zero);
             Assert.That(game.Ammo, Is.EqualTo(game.MagazineSize));
             Assert.That(Vector3.Distance(start, game.transform.Find("Player").position), Is.GreaterThan(1f));

@@ -70,7 +70,7 @@ namespace TienTuyen.Presentation
         private void LateUpdate()
         {
             if (game == null || game.State == CombatState.Paused) return;
-            float dt = Time.unscaledDeltaTime;
+            float dt = CombatArtDirector.FrameSeconds;
             ResetBloodForRun();
             blood.Tick(dt);
             if (muzzleLightTime > 0)

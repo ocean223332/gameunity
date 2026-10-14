@@ -15,6 +15,12 @@ namespace TienTuyen.Presentation
     [RequireComponent(typeof(CombatGame))]
     public sealed class CombatArtDirector : MonoBehaviour
     {
+        /// <summary>
+        /// Seconds the presentation animates this frame: real time in play, but the game's fixed step while a film
+        /// captures (Time.captureDeltaTime), so bodies keep pace with the simulation however slowly frames render.
+        /// </summary>
+        public static float FrameSeconds => Time.captureDeltaTime > 0f ? Time.deltaTime : Time.unscaledDeltaTime;
+
         private static readonly Color Olive = Hex("#728064");
         private static readonly Color OliveDark = Hex("#3F5143");
         private static readonly Color Cloth = Hex("#53634C");
@@ -128,7 +134,7 @@ namespace TienTuyen.Presentation
                 lastHealth = game.Health;
                 if (player != null) lastPlayerPosition = player.position;
             }
-            time += Time.unscaledDeltaTime;
+            time += FrameSeconds;
             if (game != null && game.State != lastState)
             {
                 if (game.State == CombatState.Victory && player != null) SpawnBurst(player.position, Gold);
@@ -140,7 +146,7 @@ namespace TienTuyen.Presentation
             if (game != null) lastChargerDash = game.ChargerDashActive;
             UpdatePlayer();
             UpdateEnemies();
-            corpses?.Tick(Time.unscaledDeltaTime);
+            corpses?.Tick(FrameSeconds);
             UpdateWarnings();
             UpdateSupply();
             UpdateTracerAndBullets();
@@ -416,7 +422,7 @@ namespace TienTuyen.Presentation
         private void UpdatePlayer()
         {
             if (player == null || playerVisual == null) return;
-            float dt = Mathf.Max(Time.unscaledDeltaTime, .0001f);
+            float dt = Mathf.Max(FrameSeconds, .0001f);
             Vector3 velocity = (player.position - lastPlayerPosition) / dt;
             lastPlayerPosition = player.position;
             if (game != null && game.Health < lastHealth - .01f) hitTimer = .18f;
@@ -497,7 +503,7 @@ namespace TienTuyen.Presentation
                 bool active = actor.gameObject.activeSelf;
                 bool wasActive = previousEnemyActive[actor];
                 previousEnemyActive[actor] = active;
-                float dt = Mathf.Max(Time.unscaledDeltaTime, .0001f);
+                float dt = Mathf.Max(FrameSeconds, .0001f);
                 Vector3 velocity = active && wasActive ? (actor.position - previousEnemyPositions[actor]) / dt : Vector3.zero;
                 previousEnemyPositions[actor] = actor.position;
                 visual.root.localScale = InverseScale(actor.localScale);

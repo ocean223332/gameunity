@@ -4,7 +4,7 @@ using UnityEditor;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
 
-/// <summary>Builds the Windows player used to film the intro (launch it with -intro &lt;outDir&gt;).</summary>
+/// <summary>Builds the Windows player used to film the intro (launch it with -story or -trailer &lt;outDir&gt;).</summary>
 public static class IntroCinematicBuild
 {
     private const string ScenePath = "Assets/_TienTuyen/Scenes/CombatSpike.unity";

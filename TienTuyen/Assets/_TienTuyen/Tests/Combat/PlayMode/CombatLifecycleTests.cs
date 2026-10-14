@@ -68,7 +68,7 @@ namespace TienTuyen.Combat.Tests
             Assert.That(ambience.isPlaying, Is.True);
             Assert.That(ambience.volume, Is.EqualTo(audio.MasterVolume * audio.AmbienceVolume).Within(.001f));
             audio.StartMusic(IntroVideoGate.HandoffMenuOffsetSeconds, .25f);
-            Assert.That(menu.time, Is.EqualTo(54.1f).Within(.05f));
+            Assert.That(menu.time, Is.EqualTo(IntroVideoGate.HandoffMenuOffsetSeconds).Within(.05f));
             Assert.That(menu.volume + playing.volume, Is.Zero);
             tick.Invoke(audio, new object[] { .125f });
             Assert.That(menu.volume, Is.EqualTo(menuLevel * .5f).Within(.001f));

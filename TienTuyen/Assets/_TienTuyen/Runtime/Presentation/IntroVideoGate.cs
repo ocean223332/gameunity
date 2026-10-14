@@ -16,7 +16,7 @@ namespace TienTuyen.Presentation
     public sealed class IntroVideoGate : MonoBehaviour
     {
         public const string VideoFileName = "TienTuyenIntro.mp4";
-        public const float HandoffMenuOffsetSeconds = 54.1f;
+        public const float HandoffMenuOffsetSeconds = 51.57f;
         private const float HandoffFadeSeconds = .25f;
 
         private CombatAudio combatAudio;
@@ -278,10 +278,10 @@ namespace TienTuyen.Presentation
 
             foreach (string arg in args)
             {
-                if (string.Equals(arg, "-intro", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(arg, "-trailer", StringComparison.OrdinalIgnoreCase)
+                if (string.Equals(arg, "-trailer", StringComparison.OrdinalIgnoreCase)
                     || string.Equals(arg, "-story", StringComparison.OrdinalIgnoreCase)
                     || string.Equals(arg, "-shelter", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(arg, "-ending", StringComparison.OrdinalIgnoreCase)
                     || string.Equals(arg, "-runTests", StringComparison.OrdinalIgnoreCase))
                 {
                     return false;

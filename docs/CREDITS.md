@@ -92,3 +92,27 @@ loaded bicycle with Hunyuan3D (decimated, normal map baked) and the crate stenci
 generator; the entrenching tool, the bunker, watchtower and cookfire timberwork, and the trellis,
 hammock and camouflage net (on the flora's materials, with cloth and net textures from
 Art/Source/gen_station_textures.py) are the project's own.
+
+## Intro film
+
+The launch film `StreamingAssets/TienTuyenIntro.mp4` (built by `output/intro-tools/animatic.py`; full source notes, file hashes and used time ranges in `output/intro/CREDITS.md`). Streaming downloads were made with yt-dlp for this non-commercial coursework; their rights stay with the owners named here.
+
+| Asset | Author / original creator | Source | Licence / note | Used for |
+|---|---|---|---|---|
+| "Maybe" (1940, Decca 3258) | The Ink Spots; words and music by Allan Flynn and Frank Madden; transfer from *America's Greatest Hits 1940* (Acrobat Licensing, 2015), provided to YouTube by The Orchard | [YouTube upload](https://www.youtube.com/watch?v=d-JtLC1iGDM), channel [The Ink Spots - Topic](https://www.youtube.com/channel/UCjwc5NbNyVoXeQ6NTfHbR9g) | Copyrighted composition and recording | The radio song in the shelter, to 0:44 |
+| *Một chặng đường Trường Sơn* (documentary, 1972) | Xưởng phim Quân Giải Phóng; cinematography Trần Anh; Quốc hội TV rebroadcast | [YouTube upload](https://www.youtube.com/watch?v=kX2XL4CrUnQ), channel [QUYẾT THẮNG 1972](https://www.youtube.com/channel/UC7tf37zLHZ1igvs6eqBIGgg) | Copyrighted studio film | Trail footage, 0:09–0:21, 0:46–0:48 and 0:54–1:30, ending on the driver's face that becomes the photo |
+| "Linebacker II, Vietnam War Combat, B52s being loaded" (home movie, U-Tapao, December 1972) | The filmer, channel a4skyraider | [YouTube upload](https://www.youtube.com/watch?v=2nHiIH3mIEY), channel [a4skyraider](https://www.youtube.com/channel/UCDk-MiGuPOx338zEwIBJyfw) | Owner's rights apply | Under the bomb bay, 0:27–0:31 |
+| *Air Strike – North Viet Nam* (1966) | US Navy; National Archives [85274](https://catalog.archives.gov/id/85274) | [Internet Archive 428-npc-37021](https://archive.org/details/428-npc-37021) | US federal government work, public domain | Above the cloud onto the target, 0:31–0:43, and the smoke at 0:48–0:50 |
+| "We believe that peace is at hand." | Henry Kissinger, White House press briefing, 26 October 1972 | Public record | Short quotation | The A6 title card |
+| "War. War never changes." | *Fallout* (Interplay / Bethesda Softworks) | — | Short quotation | Opening and closing narration line |
+| Narration | ElevenLabs text-to-speech in voice "hhh", an instant voice clone the user made in their ElevenLabs account; script our own apart from the *Fallout* line | Source recording of the voice: **pending**, to be credited here | ElevenLabs generated audio | English narration, 0:50–1:50 |
+| Radio announcer | ElevenLabs text-to-speech, library voice Joseph Ortman, through a radio filter | — | ElevenLabs generated audio; not a real broadcast | "…this is American Forces Radio…" under the tuning |
+| Sound effects | ElevenLabs sound generation, prompts in `output/intro/sfx-elevenlabs/prompts.json` | — | ElevenLabs generated audio | Radio switch, tuning sweep, Morse, radio death, flight line, bomber drone, bomb bay, close blast, Arc Light ripples, aftermath ringing, jungle night, distant thud |
+| Distant gunfire | Valve Corporation (`weapons/ak47/ak47_distant.wav`, `ak47_01.wav`) | [sourcesounds/csgo](https://github.com/sourcesounds/csgo/tree/08f1bd6835d4f510d2ccaedeab6bb9f637b388ab), commit `08f1bd6835d4f510d2ccaedeab6bb9f637b388ab` | Valve proprietary assets; the mirror states no reuse licence | Bursts under the crane, 1:42–1:52 |
+| Adagio for Strings | As in the Audio table above | | | Score from 0:52, carried into the menu |
+| Bark Brown 02 | Rob Tuytel | [Poly Haven](https://polyhaven.com/a/bark_brown_02) | CC0 | Shelter log bark |
+| Dirt Floor | eye-candy.xyz | [Poly Haven](https://polyhaven.com/a/dirt_floor) | CC0 | Shelter earth floor and mound |
+| Rough Linen | colormass (photography), Rico Cilliers (processing) | [Poly Haven](https://polyhaven.com/a/rough_linen) | CC0 | Weave under the shelter's slogan cloth |
+| Photo of the driver | Still at 19:23.2 of *Một chặng đường Trường Sơn* (above), cropped and aged into a print | [YouTube upload](https://www.youtube.com/watch?v=kX2XL4CrUnQ) | As the film above | The print on the crate and in the hero's hand |
+
+The shelter set, its radio, lamp, letter and slogan cloth, and the in-engine shots of the clearing are the project's own (`IntroCinematic`, `ShelterSet`, `ShelterFilm`); on-screen type uses the game's OFL fonts.
