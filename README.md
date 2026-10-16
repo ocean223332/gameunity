@@ -77,3 +77,10 @@ under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/):
 > http://creativecommons.org/licenses/by/4.0/
 
 The design documents describe the target experience; features are only considered available once implemented and verified. The confirmed configuration above supersedes the corresponding "undecided" notes in earlier proposal documents.
+
+## Sniper enemy and local test controls
+
+- The sniper reuses the existing shooter soldier model and animation, carrying the existing rifle model with a scope and extended barrel. It replaces the pistol enemy.
+- It spawns rarely from wave 2 (weight 1), with at most two active/announced at once. It retreats inside 8 m, approaches when beyond 10 m, and can aim/fire out to 14 m. The 8 m inner firing boundary keeps it usable along the arena's shorter edge.
+- Its red warning locks direction for 1.5 seconds before a single shot. Hold C or Left Ctrl to crouch under the shot; movement and cover also avoid it. Its first encounter each run pauses for a short Vietnamese tutorial.
+- F6 toggles invulnerability; F7 skips a wave without rewards; F8 announces a sniper from wave 2, respecting its cap. Restart resets test mode and the tutorial.

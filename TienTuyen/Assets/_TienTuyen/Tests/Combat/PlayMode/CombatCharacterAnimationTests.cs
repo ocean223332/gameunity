@@ -710,7 +710,7 @@ namespace TienTuyen.Combat.Tests
             Invoke(art, "UpdateEnemies");
             var visual = actor.Find("EnemyVisual");
             var rigs = visual.GetComponentsInChildren<CombatCharacterRig>(true);
-            Assert.That(rigs.Length, Is.EqualTo(4));
+            Assert.That(rigs.Length, Is.EqualTo(5));
             int count = visual.GetComponentsInChildren<Transform>(true).Length;
             var graphs = new List<PlayableGraph>();
             for (var reuse = 0; reuse < 20; reuse++)
@@ -725,7 +725,7 @@ namespace TienTuyen.Combat.Tests
                 Assert.That(activeRig.MovementBlend, Is.EqualTo(0f));
                 Assert.That(activeRig.RecoilAmount, Is.EqualTo(0f));
                 Assert.That(visual.GetComponentsInChildren<Transform>(true).Length, Is.EqualTo(count));
-                Assert.That(visual.GetComponentsInChildren<CombatCharacterRig>(true).Length, Is.EqualTo(4));
+                Assert.That(visual.GetComponentsInChildren<CombatCharacterRig>(true).Length, Is.EqualTo(5));
             }
 
             foreach (var rig in game.GetComponentsInChildren<CombatCharacterRig>(true))

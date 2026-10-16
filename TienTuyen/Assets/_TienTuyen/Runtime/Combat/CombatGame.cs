@@ -128,16 +128,16 @@ namespace TienTuyen.Combat
 
         /// <summary>Presentation read of one active enemy's attack state; false for inactive or unknown actors.</summary>
         // A ranged enemy's magazine change lasts its gun's reload take (AK 2.4333 s, MP5-SD 2.9333 s).
-        private static float EnemyReloadSeconds(Enemy enemy) => enemy.elite ? 2.4333f : 2.9333f;
+        private static float EnemyReloadSeconds(Enemy enemy) => enemy.sniper ? 2f : enemy.elite ? 2.4333f : 2.9333f;
         // Each aim fires a burst of EnemyBurst rounds at the gun's cyclic rate (AK ~600, MP5-SD ~750 rounds a minute);
         // a magazine holds the same 10 (Elite) and 8 (Shooter) aims as before bursts.
         private const int EnemyBurst = 3;
         private static float EnemyBurstSpacing(Enemy enemy) => enemy.elite ? .1f : .08f;
-        private static int EnemyMagazine(Enemy enemy) => enemy.elite ? 30 : 24;
+        private static int EnemyMagazine(Enemy enemy) => enemy.sniper ? 5 : enemy.elite ? 30 : 24;
 
         private void FireEnemyRound(Enemy enemy)
         {
-            FireEnemyBullet(enemy.body.transform, enemy.aimDirection, enemy.definition.AttackDamage, enemy.elite ? 3f : 4f);
+            FireEnemyBullet(enemy.body.transform, enemy.aimDirection, enemy.definition.AttackDamage, enemy.sniper ? 0f : enemy.elite ? 3f : 4f);
             enemy.ammo = Mathf.Max(0, enemy.ammo - 1);
             enemy.burstLeft--;
             enemy.burstTimer = EnemyBurstSpacing(enemy);
@@ -169,6 +169,9 @@ namespace TienTuyen.Combat
                 }
                 else if (enemy.shooter)
                 {
+                    state.Aiming = enemy.aiming;
+                    state.AimDirection = new Vector3(enemy.aimDirection.x, 0, enemy.aimDirection.y);
+                    state.ShotOrigin = SniperOrigin(enemy);
                     state.ReloadSeconds = EnemyReloadSeconds(enemy);
                     state.ReloadRemaining = enemy.reloadTimer;
                 }
@@ -206,7 +209,8 @@ namespace TienTuyen.Combat
 
         private sealed class Enemy
         {
-            public GameObject body, warning, chargerMarker;
+            public GameObject body, warning, chargerMarker, laser;
+            public bool sniper => definition != null && definition.Role == EnemyRole.Sniper;
             public bool active, pending, shooter, elite, charger, aiming, charging, chargeHit;
             public EnemyDefinition definition;
             public float hp, attackTimer, aimTimer, warningTimer, pathTimer, chargeRemaining, reloadTimer, burstTimer;
@@ -219,7 +223,7 @@ namespace TienTuyen.Combat
         {
             public GameObject body;
             public bool active;
-            public bool nearMissPlayed;
+            public bool nearMissPlayed, highShot;
             public Vector3 velocity;
             public float remaining, damage;
         }
@@ -259,6 +263,14 @@ namespace TienTuyen.Combat
         private OwnedWeapon heldWeapon;
         private long nextPickupId;
         private bool manualAim, triggerHeld, crouchHeld;
+        private bool sniperTutorialSeen;
+        private EnemyDefinition forcedEnemyDefinition;
+        private Material sniperLaserMaterial;
+        public bool SniperTutorialVisible { get; private set; }
+        public bool DebugInvulnerable { get; private set; }
+        public bool DebugCheatsUsed { get; private set; }
+        private const float SniperShotHeight = 1.45f;
+        private const int SniperCap = 2;
         private Vector3 aimDirection = Vector3.forward;
         private bool hasViewRay;
         private Vector3 viewRayOrigin, viewRayDirection;
@@ -283,6 +295,13 @@ namespace TienTuyen.Combat
 
         private void Update()
         {
+            var debugKeyboard = Keyboard.current;
+            if (debugKeyboard != null)
+            {
+                if (debugKeyboard.f6Key.wasPressedThisFrame) ExecuteCheat("god");
+                if (debugKeyboard.f7Key.wasPressedThisFrame) ExecuteCheat("nextwave");
+                if (debugKeyboard.f8Key.wasPressedThisFrame) ExecuteCheat("sniper");
+            }
             if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
                 TogglePause();
             if (State != CombatState.Playing) return;
@@ -427,6 +446,8 @@ namespace TienTuyen.Combat
             verticalVelocity = 0f;
             player.gameObject.SetActive(true);
             crouchHeld = false;
+            sniperTutorialSeen = SniperTutorialVisible = false;
+            DebugInvulnerable = DebugCheatsUsed = false;
             Crouch = 0;
             walkHeld = false;
             Walk = 0;
@@ -455,7 +476,11 @@ namespace TienTuyen.Combat
         public void TogglePause()
         {
             if (State == CombatState.Playing) State = CombatState.Paused;
-            else if (State == CombatState.Paused) State = CombatState.Playing;
+            else if (State == CombatState.Paused)
+            {
+                SniperTutorialVisible = false;
+                State = CombatState.Playing;
+            }
         }
 
         public void ContinueWave()
@@ -536,7 +561,7 @@ namespace TienTuyen.Combat
 
         private void DamagePlayer(float rawDamage, Vector3 source)
         {
-            if (State != CombatState.Playing || rawDamage <= 0 || invulnerability > 0) return;
+            if (State != CombatState.Playing || DebugInvulnerable || rawDamage <= 0 || invulnerability > 0) return;
             float reduced = rawDamage * 100f / (100f + Stats.Armor);
             Health = Mathf.Max(0, Health - Mathf.Max(1f, reduced));
             invulnerability = 0.35f;
@@ -730,7 +755,7 @@ namespace TienTuyen.Combat
                 slot.elite = slot.definition.Role == EnemyRole.Elite;
                 // Both ranged roles use the same real projectile path; Elite only differs in
                 // magazine, spread, range and damage.
-                slot.shooter = slot.definition.Role == EnemyRole.Shooter || slot.definition.Role == EnemyRole.Elite;
+                slot.shooter = slot.definition.Role == EnemyRole.Shooter || slot.definition.Role == EnemyRole.Elite || slot.sniper;
                 slot.charger = slot.definition.Role == EnemyRole.Charger;
                 return;
             }
@@ -739,6 +764,12 @@ namespace TienTuyen.Combat
         private EnemyDefinition ChooseEnemyDefinition()
         {
             var catalog = ContentCatalog.P2;
+            if (forcedEnemyDefinition != null)
+            {
+                var forced = forcedEnemyDefinition;
+                forcedEnemyDefinition = null;
+                return forced;
+            }
             if (IsEliteDue())
             {
                 elitesThisWave++;
@@ -746,11 +777,11 @@ namespace TienTuyen.Combat
             }
             int total = 0;
             foreach (var definition in catalog.Enemies)
-                if (IsEnemyRoleEligibleForWave(definition.Role, Wave)) total += definition.SpawnWeight;
+                if (IsEnemyRoleEligibleForWave(definition.Role, Wave) && (definition.Role != EnemyRole.Sniper || SnipersInPlay() < SniperCap)) total += definition.SpawnWeight;
             int choice = rng.Next(total);
             foreach (var definition in catalog.Enemies)
             {
-                if (!IsEnemyRoleEligibleForWave(definition.Role, Wave)) continue;
+                if (!IsEnemyRoleEligibleForWave(definition.Role, Wave) || (definition.Role == EnemyRole.Sniper && SnipersInPlay() >= SniperCap)) continue;
                 choice -= definition.SpawnWeight;
                 if (choice < 0) return definition;
             }
@@ -759,7 +790,7 @@ namespace TienTuyen.Combat
 
         public static bool IsEnemyRoleEligibleForWave(EnemyRole role, int wave) =>
             (role == EnemyRole.Infantry && wave >= 1) || (role == EnemyRole.Charger && wave >= 2) ||
-            (role == EnemyRole.Shooter && wave >= 3);
+            (role == EnemyRole.Shooter && wave >= 3) || (role == EnemyRole.Sniper && wave >= 2);
 
         /// <summary>The Elite is outside the weighted pool: from this wave each spawn first checks <see cref="IsEliteDue"/>.</summary>
         public static bool IsEliteEligibleForWave(int wave) => wave >= 3;
@@ -778,6 +809,38 @@ namespace TienTuyen.Combat
             if (quota == 0) return rng.NextDouble() < (Wave == 5 ? .12 : .14);
             float due = 8f + elitesThisWave * 20f / Mathf.Max(1, quota - 1);
             return elitesThisWave < quota && WaveDuration(Wave) - WaveRemaining >= due;
+        }
+
+        private int SnipersInPlay()
+        {
+            int count = 0;
+            foreach (var enemy in enemies)
+                if ((enemy.active || enemy.pending) && enemy.sniper) count++;
+            return count;
+        }
+
+        /// <summary>Local test controls: F6 god, F7 nextwave, F8 sniper. No rewards are granted by skipping.</summary>
+        public void ExecuteCheat(string command)
+        {
+            if (State != CombatState.Playing && State != CombatState.Paused) return;
+            switch (command)
+            {
+                case "god": DebugInvulnerable = !DebugInvulnerable; break;
+                case "nextwave":
+                    SniperTutorialVisible = false;
+                    if (Wave >= MaxWave) { State = CombatState.Victory; HideTransientObjects(); AliveEnemies = 0; }
+                    else { Wave++; ResetWave(); State = CombatState.Playing; }
+                    break;
+                case "sniper":
+                    if (Wave < 2 || SnipersInPlay() >= SniperCap || AliveEnemies >= CombatRules.EnemyCap) return;
+                    forcedEnemyDefinition = ContentCatalog.P2.GetEnemy(ContentIds.Sniper);
+                    spawnTimer = 0;
+                    UpdateSpawn(0);
+                    forcedEnemyDefinition = null;
+                    break;
+                default: return;
+            }
+            DebugCheatsUsed = true;
         }
 
         private int ElitesInPlay()
@@ -802,6 +865,7 @@ namespace TienTuyen.Combat
                     {
                         enemy.pending = false;
                         enemy.warning.SetActive(false);
+                        enemy.laser.SetActive(false);
                         enemy.active = true;
                         enemy.body.SetActive(true);
                         enemy.body.GetComponent<Renderer>().sharedMaterial = enemy.shooter ? ShooterMaterial : EnemyMaterial;
@@ -821,6 +885,12 @@ namespace TienTuyen.Combat
                         enemy.reloadTimer = 0;
                         enemy.pathTimer = 0;
                         AliveEnemies++;
+                        if (enemy.sniper && !sniperTutorialSeen)
+                        {
+                            sniperTutorialSeen = SniperTutorialVisible = true;
+                            State = CombatState.Paused;
+                            return;
+                        }
                     }
                 }
                 if (!enemy.active) continue;
@@ -847,29 +917,33 @@ namespace TienTuyen.Combat
                     else if (enemy.aiming)
                     {
                         enemy.aimTimer -= dt;
-                        DrawAimLine(enemy.body.transform.position, enemy.aimDirection, enemy.warning);
+                        if (enemy.sniper) DrawSniperLaser(enemy);
+                        else DrawAimLine(enemy.body.transform.position, enemy.aimDirection, enemy.warning);
                         if (enemy.aimTimer <= 0)
                         {
                             enemy.aiming = false;
                             enemy.warning.SetActive(false);
-                            enemy.burstLeft = Mathf.Min(EnemyBurst, enemy.ammo);
+                            enemy.laser.SetActive(false);
+                            enemy.burstLeft = Mathf.Min(enemy.sniper ? 1 : EnemyBurst, enemy.ammo);
                             FireEnemyRound(enemy);
                         }
                     }
                     else if (enemy.reloadTimer <= 0 && enemy.ammo > 0 &&
-                        distance <= (enemy.elite ? 12f : 10f) && distance >= (enemy.elite ? 6.5f : 4f) &&
+                        distance <= (enemy.sniper ? enemy.definition.AttackRange : enemy.elite ? 12f : 10f) &&
+                        distance >= (enemy.sniper ? 8f : enemy.elite ? 6.5f : 4f) &&
                         HasLineOfSight(enemy.body.transform.position, player.position) && enemy.attackTimer <= 0 && activeShooters < 4)
                     {
                         enemy.aiming = true;
-                        enemy.aimTimer = 0.8f;
+                        enemy.aimTimer = enemy.sniper ? enemy.definition.TelegraphSeconds : 0.8f;
                         // Combat is planar XZ; implicit Vector3 -> Vector2 would drop Z.
                         enemy.aimDirection = new Vector2(toPlayer.x, toPlayer.z).normalized;
-                        enemy.warning.SetActive(true);
+                        if (enemy.sniper) DrawSniperLaser(enemy);
+                        else enemy.warning.SetActive(true);
                         activeShooters++;
                     }
-                    else if (distance < (enemy.elite ? 6.5f : 4f))
+                    else if (distance < (enemy.sniper ? 8f : enemy.elite ? 6.5f : 4f))
                         MoveEnemyAway(enemy, dt, 2.05f, toPlayer);
-                    else if (distance > (enemy.elite ? 9f : 8f) ||
+                    else if (distance > (enemy.sniper ? 10f : enemy.elite ? 9f : 8f) ||
                         !HasLineOfSight(enemy.body.transform.position, player.position))
                         MoveEnemy(enemy, dt, 2.05f);
                 }
@@ -948,6 +1022,7 @@ namespace TienTuyen.Combat
                 {
                     enemy.aiming = false;
                     enemy.warning.SetActive(false);
+                    enemy.laser.SetActive(false);
                     enemy.charging = true;
                     EnemyChargeStarted?.Invoke(enemy.body.transform, EnemyActionKind.ChargeDash);
                     enemy.chargeRemaining = ChargerDashSeconds;
@@ -1025,7 +1100,12 @@ namespace TienTuyen.Combat
                     continue;
                 }
                 var point = ClosestPointOnSegment(player.position, start, start + delta);
-                if ((point - player.position).sqrMagnitude <= 0.47f * 0.47f)
+                var playerFeet = player.position.y - GroundY;
+                var planarPlayer = new Vector3(player.position.x, start.y, player.position.z);
+                var highPoint = ClosestPointOnSegment(planarPlayer, start, start + delta);
+                bool sniperHit = bullet.highShot && PlanarDistanceSquared(highPoint, player.position) <= .47f * .47f &&
+                    highPoint.y >= playerFeet && highPoint.y <= playerFeet + PlayerHeight;
+                if (sniperHit || (!bullet.highShot && (point - player.position).sqrMagnitude <= 0.47f * 0.47f))
                 {
                     DamagePlayer(bullet.damage, start - bullet.velocity);
                     Deactivate(bullet);
@@ -1294,6 +1374,7 @@ namespace TienTuyen.Combat
             enemy.aiming = false;
             enemy.body.SetActive(false);
             enemy.warning.SetActive(false);
+            enemy.laser.SetActive(false);
             AliveEnemies--;
             Kills++;
             if (Run.TryRewardEnemy(Kills, enemy.definition.ExperienceReward, enemy.definition.SupplyReward, out long pickupMinor))
@@ -1372,17 +1453,46 @@ namespace TienTuyen.Combat
                 Vector2 shot = new Vector2(direction.x * Mathf.Cos(spread) - direction.y * Mathf.Sin(spread),
                     direction.x * Mathf.Sin(spread) + direction.y * Mathf.Cos(spread));
                 bullet.damage = damage;
-                Vector3 origin = actor.position + Vector3.up * .35f;
+                bool sniper = TryGetEnemyAction(actor, out var action) && action.Role == EnemyRole.Sniper;
+                bullet.highShot = sniper;
+                Vector3 origin = sniper ? action.ShotOrigin :
+                    actor.position + Vector3.up * .35f;
                 Vector3 target = player.position + Vector3.up * .45f;
                 Vector3 trajectory = target - origin;
                 float horizontal = new Vector2(trajectory.x, trajectory.z).magnitude;
                 trajectory.x = shot.x * horizontal; trajectory.z = shot.y * horizontal;
-                bullet.velocity = trajectory.normalized * 18f;
+                bullet.velocity = sniper ? new Vector3(shot.x, 0, shot.y) * 18f : trajectory.normalized * 18f;
                 bullet.body.transform.position = origin;
                 bullet.body.SetActive(true);
                 EnemyFired?.Invoke(actor, new Vector3(direction.x, 0, direction.y));
                 return;
             }
+        }
+
+        private static Vector3 SniperOrigin(Enemy enemy)
+        {
+            var position = enemy.body.transform.position;
+            return new Vector3(position.x + enemy.aimDirection.x * 1f, SniperShotHeight,
+                position.z + enemy.aimDirection.y * 1f);
+        }
+
+        private void DrawSniperLaser(Enemy enemy)
+        {
+            var origin = SniperOrigin(enemy);
+            var direction = new Vector3(enemy.aimDirection.x, 0, enemy.aimDirection.y);
+            // End near the player instead of extending behind the shoulder camera and filling its near plane.
+            float range = Mathf.Min(enemy.definition.AttackRange,
+                Mathf.Sqrt(PlanarDistanceSquared(origin, player.position)) + .5f);
+            float length = RayHitsCover(origin, direction, range, out float hit) ? hit : range;
+            enemy.laser.transform.position = origin + direction * (length * .5f);
+            enemy.laser.transform.rotation = Quaternion.LookRotation(direction);
+            enemy.laser.transform.localScale = new Vector3(.035f, .035f, length);
+            enemy.laser.SetActive(true);
+        }
+
+        private void OnDestroy()
+        {
+            if (sniperLaserMaterial != null) Destroy(sniperLaserMaterial);
         }
 
         private void DrawAimLine(Vector3 origin, Vector2 direction, GameObject line)
@@ -1439,6 +1549,9 @@ namespace TienTuyen.Combat
 
         private void BuildPools()
         {
+            sniperLaserMaterial = new Material(Shader.Find("Universal Render Pipeline/Unlit"));
+            sniperLaserMaterial.name = "SniperLaserRed";
+            sniperLaserMaterial.color = new Color(1f, .03f, .02f);
             for (int i = 0; i < enemies.Length; i++)
             {
                 var body = Primitive("Enemy_" + i, PrimitiveType.Capsule, Vector3.zero, new Vector3(.7f, .75f, .7f), EnemyMaterial);
@@ -1453,7 +1566,11 @@ namespace TienTuyen.Combat
                 marker.transform.localPosition = new Vector3(0, .92f, 0);
                 Destroy(marker.GetComponent<Collider>());
                 marker.SetActive(false);
-                enemies[i] = new Enemy { body = body, warning = warning, chargerMarker = marker };
+                var laser = Primitive("SniperLaser_" + i, PrimitiveType.Cube, Vector3.zero, Vector3.one, sniperLaserMaterial);
+                laser.transform.SetParent(transform, true);
+                Destroy(laser.GetComponent<Collider>());
+                laser.SetActive(false);
+                enemies[i] = new Enemy { body = body, warning = warning, chargerMarker = marker, laser = laser };
             }
             for (int i = 0; i < bullets.Length; i++)
             {
@@ -1473,6 +1590,7 @@ namespace TienTuyen.Combat
 
         private void HideTransientObjects()
         {
+            SniperTutorialVisible = false;
             TransientsCleared?.Invoke();
             foreach (var enemy in enemies)
             {
@@ -1486,6 +1604,7 @@ namespace TienTuyen.Combat
                 enemy.aimDirection = Vector2.zero;
                 enemy.body.SetActive(false);
                 enemy.warning.SetActive(false);
+                enemy.laser.SetActive(false);
                 enemy.chargerMarker.SetActive(false);
                 enemy.body.transform.localScale = new Vector3(.7f, .75f, .7f);
             }
@@ -1639,6 +1758,8 @@ namespace TienTuyen.Combat
     public struct EnemyActionState
     {
         public EnemyRole Role;
+        public bool Aiming;
+        public Vector3 AimDirection, ShotOrigin;
         public EnemyActionKind Kind;
         /// <summary>Charger telegraph, 0 at its start to 1 when the dash begins.</summary>
         public float TelegraphProgress;

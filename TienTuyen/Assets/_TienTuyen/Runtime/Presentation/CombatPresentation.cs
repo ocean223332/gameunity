@@ -26,6 +26,7 @@ namespace TienTuyen.Presentation
         private RunDialogView dialog;
         private UpgradeView upgrade;
         private ShopView shop;
+        private TMP_Text debugLabel;
         private CombatState previousState = (CombatState)(-1);
 
         private void Start()
@@ -41,6 +42,8 @@ namespace TienTuyen.Presentation
             upgrade = new UpgradeView(root, game, ChooseUpgrade, kind => CombatText.UpgradePreview(game, kind));
             shop = new ShopView(root, game, Ui);
             dialog = new RunDialogView(root, game, OnPrimary, () => { game.ReturnToMenu(); Ui("UI_Click"); });
+            debugLabel = UiKit.Text("DebugCheats", root, "", UiTheme.Body, 15, UiTheme.Gold, TextAlignmentOptions.BottomLeft);
+            UiKit.Place(debugLabel, UiKit.BottomLeft, UiKit.BottomLeft, new Vector2(24, 92), new Vector2(540, 26));
             Refresh(0f);
             foreach (var screen in Screens) screen.Snap();
         }
@@ -121,6 +124,7 @@ namespace TienTuyen.Presentation
         private void Refresh(float deltaTime)
         {
             CombatState state = game.State;
+            debugLabel.text = game.DebugCheatsUsed ? (game.DebugInvulnerable ? "TEST · BẤT TỬ BẬT · F6 tắt" : "TEST · BẤT TỬ TẮT · F6 bật") : "";
             hud.Show(state != CombatState.Menu);
             menu.Show(state == CombatState.Menu);
             upgrade.Show(state == CombatState.Upgrade);

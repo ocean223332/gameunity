@@ -12,9 +12,10 @@ namespace TienTuyen.Content
         public const string Charger = "enemy.charger";
         public const string Shooter = "enemy.shooter";
         public const string Elite = "enemy.elite";
+        public const string Sniper = "enemy.sniper";
     }
 
-    public enum EnemyRole { Infantry, Shooter, Elite, Charger }
+    public enum EnemyRole { Infantry, Shooter, Elite, Charger, Sniper }
 
     /// <summary>
     /// A reload that loads one round at a time: a start, a time per missing round, an end. The time is
@@ -138,6 +139,8 @@ namespace TienTuyen.Content
                     35f, 2.6f, 8f, 1.4f, 1.2f, 0.25f, 8, 1, 2),
                 new EnemyDefinition(ContentIds.Charger, "Lính xung kích", EnemyRole.Charger,
                     20f, 3.7f, 11f, 2.6f, 4.5f, 0.7f, 3, 1, 2),
+                new EnemyDefinition(ContentIds.Sniper, "Lính bắn tỉa", EnemyRole.Sniper,
+                    28f, 2.1f, 10f, 2f, 14f, 1.5f, 1, 1, 2),
                 new EnemyDefinition(ContentIds.Shooter, "Xạ thủ", EnemyRole.Shooter,
                     // Damage per round of a 3-round burst; aim .8 + burst .16 + cooldown 2.64 = 3.6 s a burst, 2.5 DPS.
                     24f, 2.1f, 3f, 2.64f, 7f, 0.8f, 3, 1, 2),

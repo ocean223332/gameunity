@@ -826,7 +826,7 @@ namespace TienTuyen.Presentation
         /// <param name="holdScale">Weapon root units per native model unit.</param>
         /// <param name="aimPoint">World point the shouldered bore meets (the crosshair); null aims level.</param>
         public void Apply(Transform weaponRoot, Transform weaponGrip, Transform weaponSupport, Transform weaponMuzzle, WeaponHold hold, float holdScale,
-            float recoil, float reload, Vector3? aimPoint, bool armed)
+            float recoil, float reload, Vector3? aimPoint, bool armed, Vector3? fixedMuzzlePosition = null)
         {
             if (!graph.IsValid()) return;
             graph.Evaluate(0f);
@@ -886,7 +886,7 @@ namespace TienTuyen.Presentation
                     Pitch(headChain, pitch * (1f - ChestAimShare) * holdAim);
                     HoldWeapon(weaponRoot, hold, holdScale, weaponRoot.InverseTransformPoint(weaponMuzzle.position), recoil, reload, pitch, aimPoint, action);
                 }
-                else ClipHold(weaponRoot, weaponGrip, weaponSupport, recoil, reload, profile.guardHold ? 1f : action);
+                else ClipHold(weaponRoot, weaponGrip, weaponSupport, weaponMuzzle, recoil, reload, profile.guardHold ? 1f : action, fixedMuzzlePosition);
             }
             DriveTwist(leftArm);
             DriveTwist(rightArm);
@@ -1367,7 +1367,7 @@ namespace TienTuyen.Presentation
 
         /// <param name="carried">Action clip weight: the weapon then rides the animated right hand along the
         /// animated palm line, and the support hand is solved onto it.</param>
-        private void ClipHold(Transform root, Transform grip, Transform support, float recoil, float reload, float carried)
+        private void ClipHold(Transform root, Transform grip, Transform support, Transform muzzle, float recoil, float reload, float carried, Vector3? fixedMuzzlePosition)
         {
             if (profile.guardHold)
             {
@@ -1403,6 +1403,8 @@ namespace TienTuyen.Presentation
             }
             root.rotation = aimed;
             root.position += anchor - grip.position;
+            if (fixedMuzzlePosition.HasValue && muzzle != null)
+                root.position += fixedMuzzlePosition.Value - muzzle.position;
 
             // In the aim hold, hands keep their clip orientation relative to the rifle line they
             // held; that grip, relative to the weapon, is reused while reload/hit clips move them.

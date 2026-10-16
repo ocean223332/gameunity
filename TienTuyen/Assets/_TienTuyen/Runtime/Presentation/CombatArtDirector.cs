@@ -74,11 +74,11 @@ namespace TienTuyen.Presentation
         private sealed class EnemyVisual
         {
             public Transform root;
-            public GameObject infantry, shooter, charger, elite;
+            public GameObject infantry, shooter, charger, elite, sniper;
             public GameObject ring;
             public Renderer bodyRenderer;
             public Transform chargerMarker;
-            public CombatCharacterRig infantryRig, shooterRig, chargerRig, eliteRig;
+            public CombatCharacterRig infantryRig, shooterRig, chargerRig, eliteRig, sniperRig;
             // Swish on the knife tip of the melee bodies, emitting through the strike.
             public TrailRenderer infantrySwish, chargerSwish;
             public Vector3 shotDirection;
@@ -124,7 +124,21 @@ namespace TienTuyen.Presentation
         private void LateUpdate()
         {
             if (!arenaBuilt) return;
-            if (game != null && game.State == CombatState.Paused) return;
+            if (game != null && game.State == CombatState.Paused)
+            {
+                // A first encounter pauses on the activation tick; reveal its variant without advancing animation.
+                foreach (var pair in enemyVisuals)
+                {
+                    bool active = pair.Key.gameObject.activeSelf;
+                    if (!game.TryGetEnemyAction(pair.Key, out var state)) active = false;
+                    pair.Value.infantry.SetActive(active && state.Role == TienTuyen.Content.EnemyRole.Infantry);
+                    pair.Value.charger.SetActive(active && state.Role == TienTuyen.Content.EnemyRole.Charger);
+                    pair.Value.shooter.SetActive(active && state.Role == TienTuyen.Content.EnemyRole.Shooter);
+                    pair.Value.elite.SetActive(active && state.Role == TienTuyen.Content.EnemyRole.Elite);
+                    pair.Value.sniper.SetActive(active && state.Role == TienTuyen.Content.EnemyRole.Sniper);
+                }
+                return;
+            }
             if (!ReferenceEquals(presentedRun, game.Run))
             {
                 presentedRun = game.Run;
@@ -303,6 +317,29 @@ namespace TienTuyen.Presentation
             MakeCube("Sight", group, new Vector3(scale.x * .03f, scale.y * 1.1f, 0), new Vector3(scale.x * .08f, scale.y * .8f, scale.z * .8f), Gold, .02f);
         }
 
+        /// <summary>Reuse the existing rifle geometry, adding a scope and extended barrel for a readable sniper silhouette.</summary>
+        private void BuildSniper(Transform parent)
+        {
+            var weapon = new GameObject("Weapon").transform;
+            weapon.SetParent(parent, false);
+            weapon.localPosition = new Vector3(.28f, .65f, .13f);
+            var model = new GameObject("ScopedSniperRifle").transform;
+            model.SetParent(weapon, false);
+            if (!AttachImportedModel(model, "rifle", "ScopedRifleGeometry", Vector3.zero,
+                    Quaternion.Euler(0, -90, 0), Vector3.one * .58f))
+                BuildWeapon(model, "RifleGeometry", Vector3.zero, new Vector3(.85f, .08f, .08f), Metal, .04f);
+            var steel = Hex("#343B3F");
+            MakeCube("ScopeRearMount", model, new Vector3(-.07f, .11f, 0), new Vector3(.035f, .10f, .045f), steel, .005f);
+            MakeCube("ScopeFrontMount", model, new Vector3(.12f, .11f, 0), new Vector3(.035f, .10f, .045f), steel, .005f);
+            var scope = MakeCylinder("Scope", model, new Vector3(.03f, .19f, 0), new Vector3(.07f, .34f, .07f), steel, 12);
+            scope.transform.localRotation = Quaternion.Euler(0, 0, 90);
+            var lens = MakeCylinder("ScopeLens", model, new Vector3(.205f, .19f, 0), new Vector3(.065f, .012f, .065f), Hex("#365B5C"), 12);
+            lens.transform.localRotation = Quaternion.Euler(0, 0, 90);
+            var barrel = MakeCylinder("ExtendedBarrel", model, new Vector3(.68f, .035f, 0), new Vector3(.025f, .32f, .025f), steel, 10);
+            barrel.transform.localRotation = Quaternion.Euler(0, 0, 90);
+            MakeCube("SniperMuzzle", model, new Vector3(.85f, .035f, 0), new Vector3(.018f, .03f, .03f), Hex("#101719"), .003f);
+        }
+
         private void RegisterEnemy(Transform actor)
         {
             var old = actor.GetComponent<Renderer>();
@@ -313,6 +350,8 @@ namespace TienTuyen.Presentation
             var visual = new EnemyVisual { root = root, bodyRenderer = old };
             visual.infantry = BuildEnemyVariant(root, "Infantry", Enemy, true, false);
             visual.shooter = BuildEnemyVariant(root, "Shooter", shooterMaterial.color, true, false);
+            visual.sniper = BuildEnemyVariant(root, "Sniper", Hex("#827354"), true, false);
+            visual.sniperRig = visual.sniper.GetComponent<CombatCharacterRig>();
             visual.charger = BuildEnemyVariant(root, "Charger", Hex("#6E6350"), true, true);
             visual.elite = BuildEnemyVariant(root, "Elite", EnemyDark, true, true);
             visual.infantryRig = visual.infantry.GetComponent<CombatCharacterRig>();
@@ -332,7 +371,8 @@ namespace TienTuyen.Presentation
 
         private GameObject BuildEnemyVariant(Transform parent, string name, Color clothColor, bool weapon, bool accent)
         {
-            bool ranged = name == "Shooter" || name == "Elite";
+            bool sniper = name == "Sniper";
+            bool ranged = name == "Shooter" || name == "Elite" || sniper;
             var group = new GameObject(name);
             group.transform.SetParent(parent, false);
             MakeCapsule("Body", group.transform, new Vector3(0, .50f, 0), accent ? new Vector3(.52f, .72f, .40f) : new Vector3(.44f, .62f, .34f), clothColor);
@@ -342,7 +382,8 @@ namespace TienTuyen.Presentation
             MakeCube("LegR", group.transform, new Vector3(.13f, .12f, 0), new Vector3(.13f, .34f, .16f), EnemyDark, .04f);
             if (weapon)
             {
-                if (ranged) BuildWeapon(group.transform, "Weapon", new Vector3(.28f, .65f, .13f), new Vector3(.62f, .08f, .08f), Metal, .10f);
+                if (sniper) BuildSniper(group.transform);
+                else if (ranged) BuildWeapon(group.transform, "Weapon", new Vector3(.28f, .65f, .13f), new Vector3(.62f, .08f, .08f), Metal, .10f);
                 else BuildDagger(group.transform, "Weapon", new Vector3(.27f, .61f, .12f));
             }
             if (accent)
@@ -350,15 +391,16 @@ namespace TienTuyen.Presentation
                 MakeCube("Shoulder", group.transform, new Vector3(.34f, .66f, 0), new Vector3(.18f, .18f, .42f), Coral, .05f);
                 MakeCube("ChestPlate", group.transform, new Vector3(0, .63f, .18f), new Vector3(.42f, .24f, .08f), EnemyDark, .03f);
             }
-            string modelName = name == "Infantry" ? "enemy_infantry" : name == "Shooter" ? "enemy_shooter" : name == "Charger" ? "enemy_charger" : "enemy_elite";
+            string modelName = name == "Infantry" ? "enemy_infantry" : (name == "Shooter" || sniper) ? "enemy_shooter" : name == "Charger" ? "enemy_charger" : "enemy_elite";
             // The Shooter carries the SMG (its profile's MP5-SD clip set), the Elite the rifle (the AK).
             string gun = name == "Shooter" ? "smg" : "rifle";
-            if (weapon && ranged && AttachImportedModel(group.transform.Find("Weapon"), gun, name == "Shooter" ? "SmgWeaponBlenderModel" : "RifleWeaponBlenderModel",
+            if (weapon && ranged && !sniper && AttachImportedModel(group.transform.Find("Weapon"), gun, name == "Shooter" ? "SmgWeaponBlenderModel" : "RifleWeaponBlenderModel",
                     Vector3.zero, Quaternion.Euler(0, -90, 0), Vector3.one * .58f))
                 DisableChildren(group.transform.Find("Weapon"), "Stock", "Barrel", "Sight");
             var rig = group.AddComponent<CombatCharacterRig>();
             var weapons = weapon ? new[] { group.transform.Find("Weapon") } : Array.Empty<Transform>();
-            var profile = Resources.Load<SkinnedCharacterProfile>("Characters/Enemies/" + name + "ValveProfile");
+            // Reuse the existing shooter body and animation; the sniper keeps its own geometry and fitted hand sockets.
+            var profile = Resources.Load<SkinnedCharacterProfile>("Characters/Enemies/" + (sniper ? "Shooter" : name) + "ValveProfile");
             if (rig.InitializeSkinned(profile, weapons, new Vector3(0, -.8f, 0)))
                 DisableChildren(group.transform, "Body", "Head", "Cap", "LegL", "LegR", "Shoulder", "ChestPlate");
             else
@@ -487,9 +529,11 @@ namespace TienTuyen.Presentation
             visual.shotDirection = direction;
             visual.shotAimRemaining = .25f;
             // The event may arrive before this frame's variant selection in LateUpdate.
-            var rig = actor.localScale.x > .85f ? visual.eliteRig : visual.shooterRig;
+            var rig = game.TryGetEnemyAction(actor, out var shotAction) && shotAction.Role == TienTuyen.Content.EnemyRole.Sniper
+                ? visual.sniperRig : actor.localScale.x > .85f ? visual.eliteRig : visual.shooterRig;
             if (rig != null)
             {
+                if (shotAction.Role == TienTuyen.Content.EnemyRole.Sniper) rig.FixedMuzzlePosition = shotAction.ShotOrigin;
                 rig.SnapAim(direction);
                 rig.Fire();
             }
@@ -510,9 +554,11 @@ namespace TienTuyen.Presentation
                 bool charger = visual.chargerMarker != null && visual.chargerMarker.gameObject.activeSelf;
                 // Shooter material is assigned by CombatGame when a shooter activates.
                 bool shooter = visual.bodyRenderer != null && visual.bodyRenderer.sharedMaterial != null && visual.bodyRenderer.sharedMaterial.name.IndexOf("Shooter", StringComparison.OrdinalIgnoreCase) >= 0;
+                bool sniper = game.TryGetEnemyAction(actor, out var enemyState) && enemyState.Role == TienTuyen.Content.EnemyRole.Sniper;
                 bool elite = actor.localScale.x > .85f;
                 visual.infantry.SetActive(active && !shooter && !charger && !elite);
-                visual.shooter.SetActive(active && shooter && !elite);
+                visual.shooter.SetActive(active && shooter && !elite && !sniper);
+                visual.sniper.SetActive(active && sniper);
                 visual.charger.SetActive(active && charger && !elite);
                 visual.elite.SetActive(active && elite);
                 if (visual.ring != null)
@@ -535,8 +581,9 @@ namespace TienTuyen.Presentation
                     visual.hitRemaining = Mathf.Max(0, visual.hitRemaining - dt);
                     Vector3 aim = visual.shotAimRemaining > 0 ? visual.shotDirection :
                         shooter && player != null ? player.position - actor.position : velocity;
+                    if (shooter && enemyState.Aiming) aim = enemyState.AimDirection;
                     aim.y = 0;
-                    var rig = elite ? visual.eliteRig : charger ? visual.chargerRig : shooter ? visual.shooterRig : visual.infantryRig;
+                    var rig = sniper ? visual.sniperRig : elite ? visual.eliteRig : charger ? visual.chargerRig : shooter ? visual.shooterRig : visual.infantryRig;
                     if (rig == null) continue;
                     var action = shooter ? default : EnemyAction(actor, visual, rig.Profile, dt, velocity.magnitude, ref aim);
                     // Ranged enemies change magazines on the game's reload timer.
@@ -545,6 +592,11 @@ namespace TienTuyen.Presentation
                     {
                         rig.ReloadSeconds = ranged.ReloadSeconds;
                         reload = 1f - ranged.ReloadRemaining / Mathf.Max(.01f, ranged.ReloadSeconds);
+                    }
+                    if (sniper)
+                    {
+                        rig.AimWeight = enemyState.Aiming ? 1f : 0f;
+                        rig.FixedMuzzlePosition = enemyState.Aiming || visual.shotAimRemaining > 0 ? enemyState.ShotOrigin : (Vector3?)null;
                     }
                     rig.Tick(dt, velocity, aim, reload, visual.hitRemaining / .18f, 0f, action);
                     var swish = rig == visual.infantryRig ? visual.infantrySwish : rig == visual.chargerRig ? visual.chargerSwish : null;
@@ -632,7 +684,8 @@ namespace TienTuyen.Presentation
             // Copy presentation data, never retain the pooled actor as a corpse parent.
             bool shooter = visual.bodyRenderer != null && visual.bodyRenderer.sharedMaterial != null &&
                 visual.bodyRenderer.sharedMaterial.name.IndexOf("Shooter", StringComparison.OrdinalIgnoreCase) >= 0;
-            var rig = actor.localScale.x > .85f ? visual.eliteRig : shooter ? visual.shooterRig :
+            bool sniper = game.TryGetEnemyAction(actor, out var deadState) && deadState.Role == TienTuyen.Content.EnemyRole.Sniper;
+            var rig = sniper ? visual.sniperRig : actor.localScale.x > .85f ? visual.eliteRig : shooter ? visual.shooterRig :
                 visual.chargerMarker != null && visual.chargerMarker.gameObject.activeSelf ? visual.chargerRig : visual.infantryRig;
             if (rig == null || !rig.IsSkinned) return;
             if (corpses == null) corpses = gameObject.AddComponent<CombatCorpsePool>();

@@ -153,6 +153,8 @@ namespace TienTuyen.Combat.Tests
             for (var frame = 0; frame < 60 * 24; frame++)
             {
                 game.StepSimulation(1f / 60f, Vector2.zero);
+                // Encounter tutorials pause the real run; acknowledge them before continuing this lifecycle probe.
+                if (game.SniperTutorialVisible) game.TogglePause();
                 sawCharger |= game.ActiveChargerCount > 0 || game.PendingChargerCount > 0;
                 sawTelegraph |= game.ChargerTelegraphVisible;
                 sawDash |= game.ChargerDashActive;
@@ -193,6 +195,8 @@ namespace TienTuyen.Combat.Tests
                 while (elapsed < game.WaveLength - .1f && game.State == CombatState.Playing)
                 {
                     game.StepSimulation(1f / 60f, Vector2.zero);
+                // Encounter tutorials pause the real run; acknowledge them before continuing this lifecycle probe.
+                if (game.SniperTutorialVisible) game.TogglePause();
                     elapsed += 1f / 60f;
                     var inPlay = 0;
                     for (var i = 0; i < entries.Length; i++)

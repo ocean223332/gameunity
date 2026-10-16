@@ -93,6 +93,8 @@ namespace TienTuyen.Presentation
         public float Walk { get; set; }
         /// <summary>World point the shouldered bore meets (the crosshair); null keeps the bore level.</summary>
         public Vector3? AimPoint { get; set; }
+        /// <summary>Presentation-only muzzle socket for the sniper's fixed warning/shot plane.</summary>
+        public Vector3? FixedMuzzlePosition { get; set; }
         public SkinnedCharacterProfile Profile { get; private set; }
         /// <summary>The death clip has reached its last frame and is holding it.</summary>
         public bool DeathFinished => skinned != null && skinned.DeathFinished;
@@ -433,7 +435,7 @@ namespace TienTuyen.Presentation
         {
             var weapon = CurrentWeapon;
             skinned.Apply(weapon?.root, weapon?.grip, weapon?.support, weapon?.muzzle, weapon?.hold, weapon != null ? weapon.holdScale : 1f,
-                recoil, reload, (Relaxed || IdleHold) && shotHold <= 0f ? null : AimPoint, weapon != null);
+                recoil, reload, (Relaxed || IdleHold) && shotHold <= 0f ? null : AimPoint, weapon != null, FixedMuzzlePosition);
         }
 
         private void ApplyPose(Vector3 localVelocity, float reload, float hit, float death)
@@ -467,6 +469,8 @@ namespace TienTuyen.Presentation
                     rear = Mathf.Min(rear, (weapon.root.localRotation * Vector3.Scale(corner, weapon.root.localScale)).z);
                 weapon.root.localPosition = new Vector3(.04f, .35f - reloadArc * .08f,
                     chestFront + .035f - rear - recoil * .020f);
+                if (FixedMuzzlePosition.HasValue && death <= 0f)
+                    weapon.root.position += FixedMuzzlePosition.Value - weapon.muzzle.position;
                 Vector3 grip = pose.InverseTransformPoint(weapon.grip.position);
                 Vector3 support = pose.InverseTransformPoint(weapon.support.position);
                 if (reloadArc > 0)

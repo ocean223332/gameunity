@@ -11,7 +11,7 @@ namespace TienTuyen.Presentation.Interface
     {
         private static readonly Vector2 Size = new Vector2(620, 404);
         private readonly CombatGame game;
-        private readonly RectTransform pauseBody, resultBody;
+        private readonly RectTransform pauseBody, resultBody, tutorialBody;
         private readonly TMP_Text[] statValues = new TMP_Text[6];
         private readonly TMP_Text runLine;
 
@@ -40,9 +40,15 @@ namespace TienTuyen.Presentation.Interface
                 row.GetComponent<HorizontalLayoutGroup>().childAlignment = TextAnchor.MiddleLeft;
                 UiKit.Place(row, UiKit.TopLeft, UiKit.TopLeft, new Vector2(i % 2 * 280, -(i / 2) * 32), new Vector2(270, 26));
             }
-            var tip = UiKit.Text("Tip", pauseBody, "Bao cát chặn cả di chuyển lẫn đường đạn — hãy núp sau chúng khi nạp đạn.",
+            var tip = UiKit.Text("Tip", pauseBody, "TEST: F6 bất tử · F7 sang đợt tiếp · F8 gọi lính bắn tỉa (từ đợt 2).",
                 UiTheme.Body, 15, UiTheme.Muted, TextAlignmentOptions.TopLeft);
             UiKit.Place(tip, UiKit.TopLeft, UiKit.TopLeft, new Vector2(0, -134), new Vector2(Size.x - 68, 44));
+
+            tutorialBody = UiKit.Node("SniperTutorial", Panel, UiKit.TopLeft, UiKit.TopLeft, new Vector2(34, -126), new Vector2(Size.x - 68, 160));
+            var tutorial = UiKit.Text("SniperHint", tutorialBody,
+                "LASER ĐỎ → BẮN SAU 1,5 GIÂY\n\nGIỮ C để ngồi né đường đạn.\nHoặc di chuyển khỏi tia đỏ / núp sau vật cản.",
+                UiTheme.Body, 23, UiTheme.Paper, TextAlignmentOptions.TopLeft);
+            UiKit.Place(tutorial, UiKit.TopLeft, UiKit.TopLeft, Vector2.zero, new Vector2(Size.x - 68, 160));
 
             resultBody = UiKit.Node("Results", Panel, UiKit.TopLeft, UiKit.TopLeft, new Vector2(34, -118), new Vector2(Size.x - 68, 200));
             string[] captions = { "ĐỢT", "THỜI GIAN", "HẠ ĐỊCH", "SÁT THƯƠNG", "TIẾP TẾ", "CẤP ĐỘ" };
@@ -70,9 +76,18 @@ namespace TienTuyen.Presentation.Interface
         public void Present(string weaponName)
         {
             bool paused = game.State == CombatState.Paused;
-            pauseBody.gameObject.SetActive(paused);
+            bool teaching = paused && game.SniperTutorialVisible;
+            tutorialBody.gameObject.SetActive(teaching);
+            pauseBody.gameObject.SetActive(paused && !teaching);
             resultBody.gameObject.SetActive(!paused);
-            Primary.Label.text = paused ? "TIẾP TỤC" : "CHƠI LẠI";
+            Primary.Label.text = teaching ? "ĐÃ HIỂU" : paused ? "TIẾP TỤC" : "CHƠI LẠI";
+            if (teaching)
+            {
+                Accent(UiTheme.Danger);
+                Eyebrow.text = "KẺ ĐỊCH MỚI  ·  TRẬN ĐẤU ĐÃ TẠM DỪNG";
+                Title.text = "LÍNH BẮN TỈA";
+                return;
+            }
             if (paused)
             {
                 Accent(UiTheme.Gold);

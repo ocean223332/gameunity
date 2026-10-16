@@ -18,19 +18,19 @@ namespace TienTuyen.Combat.Tests
                 35f, 2.6f, 8f, 1.4f, 1.2f, 0.25f, spawnWeight, 1, 2);
 
         [Test]
-        public void P2HasThreeWeaponsAndThreeRegularPlusEliteEnemyRolesWithStableUniqueIds()
+        public void P2HasThreeWeaponsAndFourRegularPlusEliteEnemyRolesWithStableUniqueIds()
         {
             var catalog = ContentCatalog.P2;
             Assert.That(catalog.Weapons.Count, Is.EqualTo(3));
-            Assert.That(catalog.Enemies.Count, Is.EqualTo(4));
+            Assert.That(catalog.Enemies.Count, Is.EqualTo(5));
             Assert.That(catalog.Weapons.Select(w => w.Id),
                 Is.EquivalentTo(new[] { ContentIds.Rifle, ContentIds.Smg, ContentIds.Shotgun }));
             Assert.That(catalog.Enemies.Select(e => e.Id),
-                Is.EquivalentTo(new[] { ContentIds.Infantry, ContentIds.Charger, ContentIds.Shooter, ContentIds.Elite }));
+                Is.EquivalentTo(new[] { ContentIds.Infantry, ContentIds.Charger, ContentIds.Shooter, ContentIds.Elite, ContentIds.Sniper }));
             Assert.That(catalog.Enemies.Select(e => e.Role),
-                Is.EquivalentTo(new[] { EnemyRole.Infantry, EnemyRole.Charger, EnemyRole.Shooter, EnemyRole.Elite }));
+                Is.EquivalentTo(new[] { EnemyRole.Infantry, EnemyRole.Charger, EnemyRole.Shooter, EnemyRole.Elite, EnemyRole.Sniper }));
             Assert.That(catalog.Weapons.Select(w => w.Id).Concat(catalog.Enemies.Select(e => e.Id)).Distinct().Count(),
-                Is.EqualTo(7));
+                Is.EqualTo(8));
         }
 
         [Test]
