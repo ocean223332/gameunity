@@ -1,0 +1,25 @@
+{
+ "name": "WreckM113",
+ "materials": [
+  {
+   "name": "WreckM113_M0",
+   "leaf": false,
+   "cutout": false,
+   "normal": true
+  },
+  {
+   "name": "WreckM113_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "height": 2.18,
+ "radius": 3.044,
+ "tris": [
+  32867,
+  7888,
+  4
+ ]
+}

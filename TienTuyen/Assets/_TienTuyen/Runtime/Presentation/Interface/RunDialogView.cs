@@ -40,7 +40,7 @@ namespace TienTuyen.Presentation.Interface
                 row.GetComponent<HorizontalLayoutGroup>().childAlignment = TextAnchor.MiddleLeft;
                 UiKit.Place(row, UiKit.TopLeft, UiKit.TopLeft, new Vector2(i % 2 * 280, -(i / 2) * 32), new Vector2(270, 26));
             }
-            var tip = UiKit.Text("Tip", pauseBody, "TEST: F6 bất tử · F7 sang đợt tiếp · F8 gọi lính bắn tỉa (từ đợt 2).",
+            var tip = UiKit.Text("Tip", pauseBody, "Bao cát chặn cả di chuyển lẫn đường đạn — hãy núp sau chúng khi nạp đạn.",
                 UiTheme.Body, 15, UiTheme.Muted, TextAlignmentOptions.TopLeft);
             UiKit.Place(tip, UiKit.TopLeft, UiKit.TopLeft, new Vector2(0, -134), new Vector2(Size.x - 68, 44));
 

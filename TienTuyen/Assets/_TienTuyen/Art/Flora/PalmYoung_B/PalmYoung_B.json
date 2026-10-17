@@ -1,0 +1,29 @@
+{
+ "name": "PalmYoung_B",
+ "materials": [
+  {
+   "name": "PalmYoung_B_M0",
+   "leaf": true,
+   "cutout": true,
+   "normal": true
+  },
+  {
+   "name": "PalmYoung_B_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "height": 1.4,
+ "radius": 1.43,
+ "tris": [
+  716,
+  226,
+  4
+ ],
+ "cutoff": 0.3,
+ "smoothness": 0.4,
+ "translucency": 0.95,
+ "tintVariation": 0.12
+}

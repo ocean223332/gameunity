@@ -63,6 +63,9 @@ namespace TienTuyen.Presentation
         private Transform player, body;
         private CombatThirdPersonCamera view;
         private Camera mainCamera, overlay;
+        // Set while first person swaps STP for SMAA: the upscaling and camera anti-aliasing to put back.
+        private UpscalingFilterSelection? shippedUpscaling;
+        private AntialiasingMode shippedAntialiasing;
         private Transform rig;
         private readonly Dictionary<string, Viewmodel> viewmodels = new Dictionary<string, Viewmodel>();
         private readonly Dictionary<Renderer, ShadowCastingMode> hiddenBody = new Dictionary<Renderer, ShadowCastingMode>();
@@ -133,11 +136,45 @@ namespace TienTuyen.Presentation
             data.renderType = CameraRenderType.Overlay;
             data.renderShadows = false;
             data.renderPostProcessing = false;
-            mainCamera.GetUniversalAdditionalCameraData().cameraStack.Add(overlay);
             mainCamera.cullingMask &= ~(1 << ViewmodelLayer);
             overlay.enabled = false;
             rig = new GameObject("Viewmodel").transform;
             rig.SetParent(holder.transform, false);
+        }
+
+        // The overlay joins the main camera's stack only in first person: URP turns temporal anti-aliasing (STP) off
+        // for any camera with a stack, even when the overlay in it is disabled.
+        private void Stack(bool on)
+        {
+            overlay.enabled = on;
+            var stack = mainCamera.GetUniversalAdditionalCameraData().cameraStack;
+            if (!on) stack.Remove(overlay);
+            else if (!stack.Contains(overlay)) stack.Add(overlay);
+            Antialias(on);
+        }
+
+        /// <summary>
+        /// A stacked camera gets no anti-aliasing at all under STP (URP forces TAA, then drops it for the stack),
+        /// so first person runs SMAA without the upscaler and third person gets STP back.
+        /// </summary>
+        private void Antialias(bool stacked)
+        {
+            var urp = GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset;
+            if (urp == null || mainCamera == null) return;
+            var data = mainCamera.GetUniversalAdditionalCameraData();
+            if (stacked && shippedUpscaling == null && urp.upscalingFilter == UpscalingFilterSelection.STP)
+            {
+                shippedUpscaling = urp.upscalingFilter;
+                shippedAntialiasing = data.antialiasing;
+                urp.upscalingFilter = UpscalingFilterSelection.Auto;
+                data.antialiasing = AntialiasingMode.SubpixelMorphologicalAntiAliasing;
+            }
+            else if (!stacked && shippedUpscaling != null)
+            {
+                urp.upscalingFilter = shippedUpscaling.Value;
+                data.antialiasing = shippedAntialiasing;
+                shippedUpscaling = null;
+            }
         }
 
         private void LateUpdate()
@@ -146,7 +183,7 @@ namespace TienTuyen.Presentation
             bool active = view.FirstPersonWeight > .5f && game.State != CombatState.Menu && game.ActiveWeapon != null;
             HideBody(active);
             Active = active;
-            overlay.enabled = active;
+            if (overlay.enabled != active) Stack(active);
             if (!active)
             {
                 if (shown != null) shown.root.gameObject.SetActive(false);
@@ -557,7 +594,8 @@ namespace TienTuyen.Presentation
         /// <summary>Body renderers cast shadows only; ones that never cast (flash, casings) are switched off.</summary>
         private void HideBody(bool hide)
         {
-            if (body == null) body = player.Find("HeroVisual");
+            // The player may already be gone when this runs from OnDestroy at shutdown.
+            if (body == null && player != null) body = player.Find("HeroVisual");
             if (hide && body != null)
             {
                 // Rescanned every frame: the rig may add renderers (casings, a new weapon) while hidden.
@@ -585,6 +623,8 @@ namespace TienTuyen.Presentation
         private void OnDestroy()
         {
             HideBody(false);
+            // The URP asset is shared: never leave it switched off STP.
+            Antialias(false);
             foreach (var model in viewmodels.Values)
             {
                 model.takes?.Dispose();

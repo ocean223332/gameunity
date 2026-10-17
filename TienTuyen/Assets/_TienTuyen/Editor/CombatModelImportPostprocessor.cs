@@ -24,8 +24,8 @@ namespace TienTuyen.Editor
             model.useFileScale = false;
             model.globalScale = 1f;
             model.bakeAxisConversion = false;
-            // CombatBanner merges each character's flag cloth into one waving
-            // mesh at runtime, which needs CPU-readable vertices in the player.
+            // The hero and enemy catalogs stay CPU-readable as first imported (for the faction flag, since
+            // removed); switching it off would reimport them.
             string file = System.IO.Path.GetFileNameWithoutExtension(assetPath);
             // PropBatch merges station props into combined meshes, which also needs readable vertices.
             model.isReadable = file == "hero" || file.StartsWith("enemy_", StringComparison.Ordinal) ||

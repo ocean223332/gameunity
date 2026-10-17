@@ -30,6 +30,12 @@ namespace TienTuyen.Editor
             public MaterialJson[] materials;
             public float height, radius;
             public int[] tris;
+            // Leaf look from the source pack's own materials (flora_build EXT look); 0 keeps the house default.
+            public float cutoff, smoothness, translucency, tintVariation;
+            // The impostor render came out empty (flora_build): keep LOD1 out to the card's distance instead.
+            public bool noCard;
+            // With noCard: a species whose card stands in past StandInDistance, scaled to this one's height.
+            public string cardFrom;
         }
 
         [Serializable]
@@ -126,10 +132,14 @@ namespace TienTuyen.Editor
                 }
                 // The cross-card is two quads; its shadow would be a flat smear.
                 renderers[2][0].shadowCastingMode = ShadowCastingMode.Off;
+                bool standIn = json.noCard && !string.IsNullOrEmpty(json.cardFrom) && BorrowCard(folder, json, renderers[2][0]);
+                if (json.noCard && !standIn) UnityEngine.Object.DestroyImmediate(renderers[2][0].gameObject);
                 group.RecalculateBounds();
                 var distances = LodDistances(json.height);
-                var lods = new LOD[3];
-                for (int l = 0; l < 3; l++) lods[l] = new LOD(ScreenHeight(group.size, distances[l]), renderers[l]);
+                if (standIn) distances[1] = StandInDistance;
+                var lods = new LOD[json.noCard && !standIn ? 2 : 3];
+                for (int l = 0; l < lods.Length; l++)
+                    lods[l] = new LOD(ScreenHeight(group.size, distances[lods.Length == 2 && l == 1 ? 2 : l]), renderers[l]);
                 group.SetLODs(lods);
                 group.fadeMode = LODFadeMode.None;
 
@@ -140,6 +150,31 @@ namespace TienTuyen.Editor
             {
                 UnityEngine.Object.DestroyImmediate(instance);
             }
+        }
+
+        // A borrowed card is another tree's silhouette, so it starts where the haze hides the difference; full LOD1s
+        // out to 1200 m cost the forest segment over 1 ms GPU.
+        private const float StandInDistance = 350f;
+
+        /// <summary>Gives <paramref name="card"/> the card mesh and material of json.cardFrom, scaled to json's height.</summary>
+        private static bool BorrowCard(string folder, SpeciesJson json, Renderer card)
+        {
+            string other = folder.Substring(0, folder.LastIndexOf('/') + 1) + json.cardFrom;
+            var text = AssetDatabase.LoadAssetAtPath<TextAsset>(other + "/" + json.cardFrom + ".json");
+            var model = AssetDatabase.LoadAssetAtPath<GameObject>(other + "/" + json.cardFrom + ".fbx");
+            var source = model != null ? model.transform.Find(json.cardFrom + "_LOD2") : null;
+            if (text == null || source == null)
+            {
+                Debug.LogError($"[FloraPrefabBuilder] {json.name}: no card to borrow from {other}");
+                return false;
+            }
+            var donor = JsonUtility.FromJson<SpeciesJson>(text.text);
+            var cardJson = Array.Find(donor.materials, m => m.card);
+            card.GetComponent<MeshFilter>().sharedMesh = source.GetComponent<MeshFilter>().sharedMesh;
+            card.sharedMaterial = BuildMaterial(other, donor, cardJson);
+            card.transform.localRotation = source.localRotation;
+            card.transform.localScale = source.localScale * (json.height / donor.height);
+            return true;
         }
 
         /// <summary>Blender suffixes copied materials ".001"; the LODs share one material per name.</summary>
@@ -153,7 +188,8 @@ namespace TienTuyen.Editor
         {
             if (height < FloraBiome.TallHeight) return new[] { 14f, 35f, 75f };
             if (height < 7f) return new[] { 16f, 50f, 220f };
-            return new[] { 28f, 140f, 1200f };
+            // Trees turn to cards from 60 m: the forest is dense, and full fir LOD1s cost up to 4.5k triangles each.
+            return new[] { 28f, 60f, 1200f };
         }
 
         private static float ScreenHeight(float size, float distance) =>
@@ -176,16 +212,20 @@ namespace TienTuyen.Editor
             material.SetTexture("_BumpMap", normal);
             SetToggle(material, "_UseNormalMap", "_NORMALMAP", normal != null);
             SetToggle(material, "_AlphaClip", "_ALPHATEST_ON", m.cutout);
-            material.SetFloat("_Cutoff", m.card ? .5f : .45f);
+            bool own = m.leaf && !m.card;
+            material.SetFloat("_Cutoff", m.card ? .5f : own && species.cutoff > 0f ? species.cutoff : .45f);
             material.SetFloat("_Cull", (float)(m.leaf ? CullMode.Off : CullMode.Back));
 
             material.SetFloat("_Flutter", m.leaf && !m.card ? .04f : 0f);
-            material.SetFloat("_Smoothness", m.leaf ? .25f : .12f);
-            material.SetFloat("_TintVariation", m.leaf ? .18f : .06f);
-            // The canopy twig atlas is a light lime next to the scanned plants and glows when backlit.
-            bool canopy = species.name.StartsWith("CanopyTree", StringComparison.Ordinal) && m.leaf;
-            material.SetColor("_BaseColor", canopy ? new Color(.42f, .5f, .36f) : Color.white);
-            material.SetFloat("_Translucency", !m.leaf ? 0f : canopy || m.card ? .45f : .8f);
+            material.SetFloat("_Smoothness", own && species.smoothness > 0f ? species.smoothness : m.leaf ? .25f : .12f);
+            material.SetFloat("_TintVariation", own && species.tintVariation > 0f ? species.tintVariation : m.leaf ? .18f : .06f);
+            material.SetColor("_BaseColor", Color.white);
+            material.SetFloat("_Translucency", !m.leaf ? 0f : m.card ? .45f : species.translucency > 0f ? species.translucency : .8f);
+            // Rocks belong to the ground: moss over their upward faces, their foot fading into it (EnvLeaf _ROCK_TOPBLEND).
+            // The sink matches the depth EnvironmentFlora plants them at: stones .18, outcrops .35 of their scale.
+            bool rock = species.name.StartsWith("Rock_") || species.name.StartsWith("Outcrop_") || species.name == "RockFace";
+            SetToggle(material, "_RockTopBlend", "_ROCK_TOPBLEND", rock && !m.card);
+            material.SetFloat("_RockSink", species.name.StartsWith("Rock_") ? .18f : .35f);
             EditorUtility.SetDirty(material);
             return material;
         }

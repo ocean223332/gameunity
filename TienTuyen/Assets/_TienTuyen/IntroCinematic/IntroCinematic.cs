@@ -672,12 +672,9 @@ public sealed partial class IntroCinematic : MonoBehaviour
         if (actor == subject) trauma = 1f;
     }
 
-    /// <summary>Gameplay markers (the hero's foot ring, enemy spawn warnings) stay out of the film; so does his back banner in the ending.</summary>
+    /// <summary>Gameplay markers (the hero's foot ring, enemy spawn warnings) stay out of the film.</summary>
     private void HideMarkers()
     {
-        if (film == "ending" && heroRig.Banner != null)
-            foreach (var r in heroRig.Banner.Pivot.GetComponentsInChildren<Renderer>(true))
-                if (r.enabled) { r.enabled = false; hidden.Add(r); }
         foreach (var r in player.GetComponentsInChildren<Renderer>())
             if (r.enabled && r.gameObject.name == "HeroFootMarker") { r.enabled = false; hidden.Add(r); }
         foreach (object enemy in enemyPool)

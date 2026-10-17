@@ -54,7 +54,6 @@ namespace TienTuyen.Editor
             ValveBipedCharacterImporter.WalkLocomotion(profile, k);
             profile.deathFloorLift = SkinnedCharacterProfileBaker.MeasureDeathFloorLift(profile);
             SkinnedCharacterProfileBaker.MeasureSoles(profile);
-            SkinnedCharacterProfileBaker.MeasureBack(profile);
             string json = Path.Combine(Repo, Correction);
             profile.weaponSets = Guns.Select(g =>
             {
@@ -88,20 +87,22 @@ namespace TienTuyen.Editor
         }
 
         /// <summary>
-        /// The body's material (ImportBody's) made matte: the base colour at its full 4K, metallic 0 and the smoothness the
+        /// The body's material (ImportBody's) made matte: the base colour at 2048 (4K looked the same at the closest film camera), metallic 0 and the smoothness the
         /// MetalSmooth map's alpha holds (output/hero-valve: the helmet about .15, cloth and skin about .1).
         /// </summary>
         private static void Matte(GameObject model)
         {
             var material = model.GetComponentInChildren<SkinnedMeshRenderer>().sharedMaterial;
             var color = (TextureImporter)AssetImporter.GetAtPath(ArtDir + "/" + Type + "Valve_BaseColor.png");
-            if (color.maxTextureSize != 4096) { color.maxTextureSize = 4096; color.SaveAndReimport(); }
+            if (color.maxTextureSize != 2048) { color.maxTextureSize = 2048; color.SaveAndReimport(); }
             string mapPath = ArtDir + "/" + Type + "Valve_MetalSmooth.png";
             var map = (TextureImporter)AssetImporter.GetAtPath(mapPath);
-            if (map.sRGBTexture || map.textureCompression != TextureImporterCompression.Uncompressed)
+            // Two smoothness values over flat areas: compressed at 1024 it reads the same at a sixteenth of the memory.
+            if (map.sRGBTexture || map.textureCompression != TextureImporterCompression.Compressed || map.maxTextureSize != 1024)
             {
                 map.sRGBTexture = false;
-                map.textureCompression = TextureImporterCompression.Uncompressed;
+                map.textureCompression = TextureImporterCompression.Compressed;
+                map.maxTextureSize = 1024;
                 map.SaveAndReimport();
             }
             material.SetTexture("_MetallicGlossMap", AssetDatabase.LoadAssetAtPath<Texture2D>(mapPath));

@@ -278,7 +278,7 @@ public sealed class ShelterFilm : MonoBehaviour
         });
     }
 
-    /// <summary>Copies the rifle in his hands onto the logs behind the crate, and hides the held one and his banner.</summary>
+    /// <summary>Copies the rifle in his hands onto the logs behind the crate, and hides the held one.</summary>
     private void LeanRifle()
     {
         Transform held = heroRig.CurrentWeaponRoot;
@@ -304,8 +304,6 @@ public sealed class ShelterFilm : MonoBehaviour
         if (any) prop.transform.position += new Vector3(middle.x - b.center.x, set.Root.position.y + .005f - b.min.y, middle.z - b.center.z);
         prop.transform.SetParent(set.Root, true);
         hiddenOnHero.AddRange(held.GetComponentsInChildren<Renderer>(true));
-        // The game's back banner has no place in the shelter (the art director drives Relaxed, so hide it outright).
-        if (heroRig.Banner != null) hiddenOnHero.AddRange(heroRig.Banner.Pivot.GetComponentsInChildren<Renderer>(true));
         heroBody = heroRig.GetComponentInChildren<Animator>();
     }
 

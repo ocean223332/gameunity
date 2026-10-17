@@ -292,9 +292,8 @@ namespace TienTuyen.Presentation
             {
                 root.Find("RifleVisual"), root.Find("SmgVisual"), root.Find("ShotgunVisual")
             };
-            // The hero on the ValveBiped bind (HeroValveImporter); the older hand-rig hero until it is imported.
-            var profile = Resources.Load<SkinnedCharacterProfile>("Characters/PAVN/PAVN_ValveProfile")
-                ?? Resources.Load<SkinnedCharacterProfile>("Characters/PAVN/PAVN_HeroProfile");
+            // The hero on the ValveBiped bind (HeroValveImporter); the plain hero model until it is imported.
+            var profile = Resources.Load<SkinnedCharacterProfile>("Characters/PAVN/PAVN_ValveProfile");
             if (playerRig.InitializeSkinned(profile, weapons, new Vector3(0, -.8f, 0)))
                 DisableChildren(root, "Torso", "Backpack", "Head", "Helmet", "LegL", "LegR");
             else
@@ -372,7 +371,7 @@ namespace TienTuyen.Presentation
         private GameObject BuildEnemyVariant(Transform parent, string name, Color clothColor, bool weapon, bool accent)
         {
             bool sniper = name == "Sniper";
-            bool ranged = name == "Shooter" || name == "Elite" || sniper;
+            bool ranged = name != "Infantry" && name != "Charger";
             var group = new GameObject(name);
             group.transform.SetParent(parent, false);
             MakeCapsule("Body", group.transform, new Vector3(0, .50f, 0), accent ? new Vector3(.52f, .72f, .40f) : new Vector3(.44f, .62f, .34f), clothColor);
@@ -728,8 +727,8 @@ namespace TienTuyen.Presentation
             if (bulletTrailMaterial == null) bulletTrailMaterial = ProceduralArt.Particle("Art_BulletTrail", true, new Color(4f, 1.6f, .5f, 1f));
             var trail = bullet.gameObject.AddComponent<TrailRenderer>();
             trail.sharedMaterial = bulletTrailMaterial;
-            trail.time = .14f;
-            trail.startWidth = .09f;
+            trail.time = .16f;
+            trail.startWidth = .06f;
             trail.endWidth = 0f;
             trail.minVertexDistance = .05f;
             trail.shadowCastingMode = ShadowCastingMode.Off;
@@ -791,7 +790,8 @@ namespace TienTuyen.Presentation
                 Vector3 delta = child.position - previous;
                 if (!hadPrevious || delta.sqrMagnitude < .000001f) delta = child.forward;
                 if (delta.sqrMagnitude > .000001f) child.rotation = Quaternion.LookRotation(delta.normalized, Vector3.up);
-                child.localScale = new Vector3(.105f, .105f, .42f);
+                // A thin hot needle along the flight, not a ball: bloom swells a round head into a white blob.
+                child.localScale = new Vector3(.05f, .05f, .7f);
                 previousBulletPositions[child] = child.position;
             }
         }
@@ -807,7 +807,7 @@ namespace TienTuyen.Presentation
             tracerBeam.alignment = LineAlignment.View;
             tracerBeam.textureMode = LineTextureMode.Stretch;
             tracerBeam.numCapVertices = 2;
-            tracerMaterial = ProceduralArt.Particle("Art_TracerBeam", true, new Color(4.5f, 3.2f, 1.4f, 1f));
+            tracerMaterial = ProceduralArt.Particle("Art_TracerBeam", true, new Color(1.6f, 1.1f, .5f, 1f));   // near bloom threshold: a hot thread, not a glowing bar
             tracerBeam.sharedMaterial = tracerMaterial;
             tracerBeam.shadowCastingMode = ShadowCastingMode.Off;
             tracerBeam.startWidth = .06f;
@@ -823,7 +823,10 @@ namespace TienTuyen.Presentation
             var main = ps.main; main.playOnAwake = false; main.duration = .38f; main.startLifetime = .32f; main.startSpeed = 2.2f; main.startSize = .09f; main.maxParticles = 16; main.simulationSpace = ParticleSystemSimulationSpace.World;
             var emission = ps.emission; emission.SetBursts(new[] { new ParticleSystem.Burst(0, 10) });
             var shape = ps.shape; shape.shapeType = ParticleSystemShapeType.Sphere; shape.radius = .12f;
-            var renderer = ps.GetComponent<ParticleSystemRenderer>(); renderer.material = RuntimeMaterial("Art_Burst", color, true);
+            // Soft glowing dots: an opaque Lit material drew every particle as a flat square.
+            string key = "Art_Burst|" + color;
+            if (!MaterialCache.TryGetValue(key, out var burst) || burst == null) MaterialCache[key] = burst = ProceduralArt.Particle("Art_Burst", true, color * 2f);
+            var renderer = ps.GetComponent<ParticleSystemRenderer>(); renderer.sharedMaterial = burst;
             ps.Play();
             Destroy(go, 1.1f);
         }

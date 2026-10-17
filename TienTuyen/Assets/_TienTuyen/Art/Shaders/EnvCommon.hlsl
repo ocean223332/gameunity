@@ -49,9 +49,10 @@ half3 EnvApplyHaze(half3 color, float3 positionWS)
 
 // Wind sway for batched world-space foliage. Weight grows with height above the
 // plant's base (baked into vertex colour), phase decorrelates neighbours.
-float3 EnvWindOffset(float3 positionWS, float weight, float phase)
+// The ...At form takes the time, so motion vectors can rebuild last frame's pose.
+float3 EnvWindOffsetAt(float3 positionWS, float weight, float phase, float time)
 {
-    float t = _Time.y * _EnvWind.w;
+    float t = time * _EnvWind.w;
     float p = dot(positionWS.xz, float2(0.13, 0.09)) + phase * 6.2831;
     float gust = sin(t * 0.31 + positionWS.x * 0.021 + positionWS.z * 0.013) * 0.5 + 0.5;
     float sway = sin(t + p) * 0.55 + sin(t * 2.27 + p * 1.7) * 0.22;
@@ -59,6 +60,11 @@ float3 EnvWindOffset(float3 positionWS, float weight, float phase)
     // Flutter: small fast vertical motion on leaf tips.
     offset.y = sin(t * 5.3 + p * 3.1) * 0.035 * weight * _EnvWind.z * 4.0;
     return offset;
+}
+
+float3 EnvWindOffset(float3 positionWS, float weight, float phase)
+{
+    return EnvWindOffsetAt(positionWS, weight, phase, _Time.y);
 }
 
 float EnvHash21(float2 p)

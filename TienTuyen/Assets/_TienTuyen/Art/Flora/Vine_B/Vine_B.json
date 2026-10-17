@@ -1,0 +1,30 @@
+{
+ "name": "Vine_B",
+ "materials": [
+  {
+   "name": "Vine_B_M0",
+   "leaf": true,
+   "cutout": true,
+   "normal": true
+  },
+  {
+   "name": "Vine_B_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "noCard": false,
+ "height": 4.5,
+ "radius": 0.584,
+ "tris": [
+  36,
+  12,
+  4
+ ],
+ "cutoff": 0.3,
+ "smoothness": 0.4,
+ "translucency": 0.95,
+ "tintVariation": 0.12
+}

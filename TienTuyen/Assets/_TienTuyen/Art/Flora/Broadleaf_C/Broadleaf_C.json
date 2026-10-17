@@ -1,0 +1,34 @@
+{
+ "name": "Broadleaf_C",
+ "materials": [
+  {
+   "name": "Broadleaf_C_rest",
+   "leaf": false,
+   "cutout": true,
+   "normal": true
+  },
+  {
+   "name": "Broadleaf_C_M1",
+   "leaf": true,
+   "cutout": true,
+   "normal": false
+  },
+  {
+   "name": "Broadleaf_C_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "noCard": false,
+ "height": 12.8,
+ "radius": 4.258,
+ "tris": [
+  6086,
+  1760,
+  4
+ ],
+ "cutoff": 0.32,
+ "smoothness": 0.3
+}

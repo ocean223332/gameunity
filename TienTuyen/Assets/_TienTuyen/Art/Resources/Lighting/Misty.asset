@@ -1,0 +1,47 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 964830820c5c4511b41e882c00971e95, type: 3}
+  m_Name: Misty
+  m_EditorClassIdentifier: TienTuyen.Presentation::TienTuyen.Presentation.LightingPreset
+  SunForward: {x: 0.586, y: -0.225, z: 0.778}
+  SunColor: {r: 1.0000, g: 0.7059, b: 0.4314, a: 1}
+  SunIntensity: 1.9
+  ShadowStrength: 0.7
+  ShaftIntensity: 0.4
+  SkyZenith: {r: 0.4941, g: 0.5490, b: 0.6196, a: 1}
+  SkyHorizon: {r: 0.7882, g: 0.7569, b: 0.6902, a: 1}
+  SkyGlow: {r: 1.0000, g: 0.6353, b: 0.3529, a: 1}
+  CloudColor: {r: 0.9098, g: 0.8627, b: 0.7961, a: 1}
+  CloudShade: {r: 0.5412, g: 0.5608, b: 0.5961, a: 1}
+  CloudCover: 0.7
+  SunDisk: 3
+  SkyPanorama: {fileID: 2800000, guid: 80631a4212a841d3830c3b76dea07a51, type: 3}
+  SkyPanoramaSunU: 0.6179
+  SkyPanoramaExposure: 0.34
+  AmbientIntensity: 1.25
+  GroundAlbedo: {r: 0.3333, g: 0.2863, b: 0.2275, a: 1}
+  FogColor: {r: 0.7255, g: 0.7137, b: 0.6745, a: 1}
+  FogDensity: 0.016
+  Haze: {x: 0.6, y: 100, z: 6000, w: 40}
+  Wind: {x: 0.6, y: 0.8, z: 0.08, w: 0.8}
+  PostExposure: 0.45
+  Contrast: 6
+  Saturation: -2
+  ColorFilter: {r: 1.0000, g: 1.0000, b: 1.0000, a: 1}
+  Temperature: 3
+  Tint: 0
+  ShadowsToning: {x: 0.9, y: 0.97, z: 1.1, w: 0}
+  HighlightsToning: {x: 1.08, y: 1, z: 0.88, w: 0}
+  BloomThreshold: 0.9
+  BloomIntensity: 0.9
+  BloomTint: {r: 1.0000, g: 0.8235, b: 0.6275, a: 1}
+  Vignette: 0.3

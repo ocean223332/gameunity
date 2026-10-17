@@ -147,6 +147,8 @@ namespace TienTuyen.Combat.Tests
             // The run seed is random; keep the idle, unarmed player alive so melee
             // hits cannot end the run before a charger is rolled.
             SetPrivateField("invulnerability", 999f);
+            // Squads are small; make the first spawn the charger rather than wait on the roll.
+            SetPrivateField("forcedEnemyDefinition", ContentCatalog.P2.GetEnemy(ContentIds.Charger));
             var sawCharger = false;
             var sawTelegraph = false;
             var sawDash = false;
@@ -217,6 +219,56 @@ namespace TienTuyen.Combat.Tests
                 Assert.That(fielded, Is.EqualTo(CombatGame.EliteQuota(wave)), "Elites fielded in wave " + wave);
                 Assert.That(first, Is.GreaterThanOrEqualTo(8f), "First Elite of wave " + wave);
                 Assert.That(peak, Is.LessThanOrEqualTo(CombatGame.MaxElitesInPlay(wave)), "Elites in play at once in wave " + wave);
+            }
+        }
+
+        [Test]
+        public void WavesSendSquadsWithLullsAndNeverPassTheAliveCap()
+        {
+            // Nobody dies here, so wave 2 shows the bare squad schedule and wave 6 fills up to the cap.
+            var flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+            var entries = ((System.Array)typeof(CombatGame).GetField("enemies", flags).GetValue(game)).Cast<object>().ToArray();
+            var fireTimers = new float[TienTuyen.Progression.ProgressionRun.MaxWeaponSlots];
+            for (var wave = 2; wave <= 6; wave += 4)
+            {
+                SetAutoPropertyBackingField("<Wave>k__BackingField", wave);
+                InvokePrivate("ResetWave");
+                for (var i = 0; i < fireTimers.Length; i++) fireTimers[i] = 999f;
+                SetPrivateField("weaponFireTimer", fireTimers);
+                SetPrivateField("invulnerability", 999f);
+                var announced = new bool[entries.Length];
+                var spawns = new System.Collections.Generic.List<float>();
+                int peak = 0;
+                float elapsed = 0f;
+                while (elapsed < game.WaveLength - .1f && game.State == CombatState.Playing)
+                {
+                    SimulatePastTutorials(1f / 60f);
+                    elapsed += 1f / 60f;
+                    for (var i = 0; i < entries.Length; i++)
+                    {
+                        bool pending = (bool)entries[i].GetType().GetField("pending", flags).GetValue(entries[i]);
+                        if (pending && !announced[i]) spawns.Add(elapsed);
+                        announced[i] = pending;
+                    }
+                    Assert.That(game.AliveEnemies, Is.LessThanOrEqualTo(CombatRules.EnemyCap), "Alive in wave " + wave);
+                    peak = Mathf.Max(peak, game.AliveEnemies);
+                }
+                if (wave == 6)
+                {
+                    Assert.That(peak, Is.EqualTo(CombatRules.EnemyCap), "Wave 6 sends more than the cap and must fill it");
+                    continue;
+                }
+                int size = CombatRules.SquadSize(wave);
+                float lull = CombatRules.SquadIntervalSeconds(wave) - (size - 1) * CombatRules.SquadSpacingSeconds;
+                int squads = Mathf.CeilToInt((game.WaveLength - .1f - CombatRules.FirstSquadSeconds) / CombatRules.SquadIntervalSeconds(wave));
+                Assert.That(spawns.Count, Is.EqualTo(squads * size), "Spawns in wave " + wave + ": " + string.Join(", ", spawns));
+                Assert.That(spawns[0], Is.EqualTo(CombatRules.FirstSquadSeconds).Within(.05f));
+                for (var i = 1; i < spawns.Count; i++)
+                {
+                    float gap = spawns[i] - spawns[i - 1];
+                    if (i % size == 0) Assert.That(gap, Is.EqualTo(lull).Within(.05f), "Lull before spawn " + i);
+                    else Assert.That(gap, Is.EqualTo(CombatRules.SquadSpacingSeconds).Within(.05f), "Squad spacing at spawn " + i);
+                }
             }
         }
 
@@ -404,13 +456,18 @@ namespace TienTuyen.Combat.Tests
                 Assert.That(game.State, Is.EqualTo(CombatState.Playing));
                 Assert.That(game.Wave, Is.EqualTo(completedWave));
 
-                FinishWave();
-
                 if (completedWave == game.MaxWave)
                 {
+                    // There is no boss: the last wave ends the run on its own clock, surviving it wins.
+                    SetPrivateField("invulnerability", 999f);
+                    SimulatePastTutorials(game.WaveRemaining - .1f);
+                    Assert.That(game.State, Is.EqualTo(CombatState.Playing));
+                    SimulatePastTutorials(.2f);
                     Assert.That(game.State, Is.EqualTo(CombatState.Victory));
                     break;
                 }
+
+                FinishWave();
 
                 // A wave can expose more than one level-up choice. Consume all
                 // pending choices before asserting that the shop is available.
@@ -497,6 +554,17 @@ namespace TienTuyen.Combat.Tests
         {
             typeof(CombatGame).GetMethod("FinishWave", BindingFlags.Instance | BindingFlags.NonPublic)
                 .Invoke(game, null);
+        }
+
+        /// <summary>Steps the run, acknowledging the sniper's first-encounter tutorial pause as a player would.</summary>
+        private void SimulatePastTutorials(float seconds)
+        {
+            var frames = Mathf.Max(1, Mathf.RoundToInt(seconds * 60f));
+            for (var frame = 0; frame < frames; frame++)
+            {
+                game.StepSimulation(1f / 60f, Vector2.zero);
+                if (game.SniperTutorialVisible) game.TogglePause();
+            }
         }
 
         private void Simulate(float seconds, Vector2 movement)

@@ -5,7 +5,7 @@
    "name": "Fern_B_M0",
    "leaf": true,
    "cutout": true,
-   "normal": false
+   "normal": true
   },
   {
    "name": "Fern_B_Card",
@@ -15,11 +15,11 @@
    "card": true
   }
  ],
- "height": 1.1,
- "radius": 1.58,
+ "height": 0.431,
+ "radius": 0.677,
  "tris": [
-  1152,
-  460,
+  392,
+  132,
   4
  ]
 }

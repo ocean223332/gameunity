@@ -131,48 +131,6 @@ namespace TienTuyen.Editor
             }
         }
 
-        /// <summary>
-        /// Finds the back surface behind the chest bone on the bind pose (model faces +Z) and stores
-        /// it in chest-bone space, so the runtime can stand the faction flag pole against the back.
-        /// </summary>
-        public static void MeasureBack(SkinnedCharacterProfile profile)
-        {
-            profile.chestBack = Vector3.zero;
-            if (profile.model == null || profile.avatar == null || !profile.avatar.isHuman) return;
-            var instance = Object.Instantiate(profile.model);
-            instance.hideFlags = HideFlags.HideAndDontSave;
-            instance.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
-            var baked = new Mesh();
-            try
-            {
-                var animator = instance.GetComponent<Animator>() ?? instance.AddComponent<Animator>();
-                animator.runtimeAnimatorController = null;
-                animator.avatar = profile.avatar;
-                animator.Rebind();
-                var chest = animator.GetBoneTransform(HumanBodyBones.UpperChest)
-                    ?? animator.GetBoneTransform(HumanBodyBones.Chest) ?? animator.GetBoneTransform(HumanBodyBones.Spine);
-                if (chest == null) return;
-                Vector3 c = chest.position;
-                float back = float.PositiveInfinity;
-                foreach (var skin in instance.GetComponentsInChildren<SkinnedMeshRenderer>(true))
-                {
-                    skin.BakeMesh(baked, true);
-                    var t = skin.transform;
-                    foreach (var v in baked.vertices)
-                    {
-                        Vector3 w = t.position + t.rotation * v;
-                        if (Mathf.Abs(w.y - c.y) < .08f && Mathf.Abs(w.x - c.x) < .12f) back = Mathf.Min(back, w.z);
-                    }
-                }
-                if (!float.IsInfinity(back)) profile.chestBack = chest.InverseTransformPoint(new Vector3(c.x, c.y, back));
-            }
-            finally
-            {
-                Object.DestroyImmediate(baked);
-                Object.DestroyImmediate(instance);
-            }
-        }
-
         private static SolePoint[] Outline(List<(Vector3 world, Transform bone)> vertices, Transform toes)
         {
             if (vertices.Count == 0) return new SolePoint[0];

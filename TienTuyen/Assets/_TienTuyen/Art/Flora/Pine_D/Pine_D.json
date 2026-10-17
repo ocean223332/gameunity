@@ -1,0 +1,31 @@
+{
+ "name": "Pine_D",
+ "materials": [
+  {
+   "name": "Pine_D_M0",
+   "leaf": false,
+   "cutout": false,
+   "normal": true
+  },
+  {
+   "name": "Pine_D_M1",
+   "leaf": true,
+   "cutout": true,
+   "normal": true
+  },
+  {
+   "name": "Pine_D_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "height": 21.8,
+ "radius": 4.828,
+ "tris": [
+  5627,
+  2480,
+  4
+ ]
+}

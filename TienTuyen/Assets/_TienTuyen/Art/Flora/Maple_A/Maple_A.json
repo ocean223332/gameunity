@@ -1,0 +1,32 @@
+{
+ "name": "Maple_A",
+ "materials": [
+  {
+   "name": "Maple_A_M0",
+   "leaf": true,
+   "cutout": true,
+   "normal": true
+  },
+  {
+   "name": "Maple_A_rest",
+   "leaf": false,
+   "cutout": false,
+   "normal": true
+  },
+  {
+   "name": "Maple_A_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "height": 14.8,
+ "radius": 5.75,
+ "tris": [
+  6545,
+  2657,
+  4
+ ],
+ "cutoff": 0.4
+}

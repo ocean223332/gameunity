@@ -58,9 +58,14 @@ namespace TienTuyen.Combat.Tests
             // Shots, line of sight and the camera's sphere cast must never hit a plant.
             Assert.That(flora.GetComponentsInChildren<Collider>(true), Is.Empty);
             foreach (var plant in flora.Instances)
-                if (flora.HeightOf(plant) > FloraBiome.TallHeight)
-                    Assert.That(CombatEnvironment.OutsideDistance(plant.Position.x, plant.Position.z), Is.GreaterThanOrEqualTo(5.5f),
-                        flora.Biome.Plants[plant.Species].Name + " at " + plant.Position);
+            {
+                string name = flora.Biome.Plants[plant.Species].Name;
+                bool inBand = CombatEnvironment.OutsideDistance(plant.Position.x, plant.Position.z) < 5.5f;
+                Assert.That(inBand && flora.HeightOf(plant) > FloraBiome.TallHeight, Is.False, name + " at " + plant.Position);
+                // A boulder looks like cover but stops nothing, so inside the band it stays low.
+                if (name.StartsWith("Rock_"))
+                    Assert.That(inBand && flora.HeightOf(plant) > .6f, Is.False, name + " at " + plant.Position);
+            }
         }
 
         [UnityTest]

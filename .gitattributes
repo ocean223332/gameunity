@@ -33,6 +33,7 @@
 *.jpeg binary
 *.tga binary
 *.exr binary
+*.hdr binary
 *.psd binary
 *.gif binary
 *.bmp binary

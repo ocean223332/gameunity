@@ -1,0 +1,25 @@
+{
+ "name": "Sorrel",
+ "materials": [
+  {
+   "name": "Sorrel_M0",
+   "leaf": true,
+   "cutout": false,
+   "normal": true
+  },
+  {
+   "name": "Sorrel_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "height": 0.3,
+ "radius": 0.184,
+ "tris": [
+  990,
+  396,
+  4
+ ]
+}

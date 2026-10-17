@@ -1,0 +1,30 @@
+{
+ "name": "Fern_E",
+ "materials": [
+  {
+   "name": "Fern_E_M0",
+   "leaf": true,
+   "cutout": true,
+   "normal": true
+  },
+  {
+   "name": "Fern_E_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "noCard": false,
+ "height": 1.0,
+ "radius": 0.625,
+ "tris": [
+  282,
+  100,
+  4
+ ],
+ "cutoff": 0.3,
+ "smoothness": 0.4,
+ "translucency": 0.95,
+ "tintVariation": 0.12
+}

@@ -10,7 +10,7 @@ namespace TienTuyen.Presentation
     /// (<see cref="SkinnedCharacterAnimator"/>); <see cref="Initialize"/> is the procedural
     /// fallback for the unskinned low-poly catalog, whose feet are driven by travelled
     /// distance and whose two-bone limbs meet planted boots and actual gun sockets.
-    /// Weapons, recoil, muzzle flash, brass and the faction flag are shared by both.
+    /// Weapons, recoil, muzzle flash and brass are shared by both.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class CombatCharacterRig : MonoBehaviour
@@ -56,16 +56,7 @@ namespace TienTuyen.Presentation
         private float chestFront = .19f;
         private int shotSequence;
         private readonly Shell[] shells = new Shell[3];
-        private CombatBanner banner;
         private SkinnedCharacterAnimator skinned;
-        private Transform bannerMount;
-        private float bannerHidden;
-        private Vector3 bannerAnchor, bannerForward;
-        private const float ShoulderBladeOffset = .07f;
-        // Screen size grows as 1/distance: inside these camera distances (the bodies between the
-        // over-the-shoulder camera and the hero, and the hero's own flag while aiming) a full flag
-        // would cover the crosshair, so it lowers into the back and is gone at the near one.
-        private const float BannerHiddenDistance = 2f, BannerFullDistance = 4f;
         private static Mesh limbMesh;
         private static Material flashMaterial;
         private static Material brassMaterial;
@@ -76,8 +67,8 @@ namespace TienTuyen.Presentation
         public bool IsSkinned => skinned != null;
         /// <summary>Hold the weapon in the low-ready whatever the aim request (the menu pose); a shot still shoulders it.</summary>
         public bool Relaxed { get; set; }
-        /// <summary>Hold the weapon in the stand idle, neither shouldered nor aimed at a point, keeping the facing and the
-        /// banner (a film's ready stance); a shot still shoulders it.</summary>
+        /// <summary>Hold the weapon in the stand idle, neither shouldered nor aimed at a point, keeping the facing (a film's
+        /// ready stance); a shot still shoulders it.</summary>
         public bool IdleHold { get; set; }
         /// <summary>0..1 request to shoulder the weapon (aiming down the sights); shots raise it on their own.</summary>
         public float AimWeight { get; set; }
@@ -113,7 +104,6 @@ namespace TienTuyen.Presentation
         public Transform PoseRoot => pose;
         public Transform ChestPivot => skinned != null ? skinned.Chest : torso;
         public Transform CurrentWeaponRoot => CurrentWeapon?.root;
-        public CombatBanner Banner => banner;
         private HeldWeapon CurrentWeapon => weapons.Length > 0 ? weapons[selectedWeapon] : null;
         private bool Carried => skinned != null && CurrentWeapon != null && CurrentWeapon.carry >= 0;
 
@@ -154,6 +144,9 @@ namespace TienTuyen.Presentation
                 Transform mesh = renderer.transform;
                 Vector3 center = pose.InverseTransformPoint(MeshCenter(renderer));
                 bool left = center.x < 0;
+                // The catalog's faction flag (banner pole and cloth) is not worn.
+                if (part.StartsWith("banner", StringComparison.Ordinal))
+                { renderer.enabled = false; continue; }
                 if (part.Contains("shooter rifle") || part.Contains("shooter muzzle") || part.Contains("slung tool"))
                 { renderer.enabled = false; continue; }
                 if (part.EndsWith(" arm", StringComparison.Ordinal) || part.EndsWith(" shin", StringComparison.Ordinal) || part.EndsWith(" cuff", StringComparison.Ordinal))
@@ -182,8 +175,6 @@ namespace TienTuyen.Presentation
                             chestFront = Mathf.Max(chestFront, torso.InverseTransformPoint(mesh.TransformPoint(corner)).z);
                 }
             }
-            // The faction flag rides on the chest pivot so it leans with the body.
-            banner = CombatBanner.Create(torso, renderers, (GetInstanceID() & 1023) * .37f);
             if (!leftBoot) AddShape("Boot", leftLeg.end, new Vector3(0, .1f, .045f), new Vector3(.20f, .20f, .32f), dark);
             if (!rightBoot) AddShape("Boot", rightLeg.end, new Vector3(0, .1f, .045f), new Vector3(.20f, .20f, .32f), dark);
             if (!leftHand) AddShape("Glove", leftArm.end, Vector3.zero, Vector3.one * .16f, skin);
@@ -232,7 +223,6 @@ namespace TienTuyen.Presentation
                 renderer.receiveShadows = true;
             }
             skinned = new SkinnedCharacterAnimator(profile, pose, model);
-            AttachBanner(profile, skinned.Chest);
 
             int count = weaponTransforms == null ? 0 : weaponTransforms.Length;
             weapons = new HeldWeapon[count];
@@ -259,62 +249,6 @@ namespace TienTuyen.Presentation
             ResetMotion();
             if (skinned != null) ApplySkinned(0f, Vector3.zero, -1f, 0f, 0f);
             else ApplyPose(Vector3.zero, -1, 0, 0);
-        }
-
-        private void AttachBanner(SkinnedCharacterProfile profile, Transform chest)
-        {
-            if (profile.bannerSource == null || chest == null) return;
-            // Fitted on the bind pose (nothing is animated yet), so the fit never depends on the
-            // playing clip or on whether the character is active. The mount then rides the back
-            // point every frame and turns with the chest while the pole stays upright.
-            bannerAnchor = profile.chestBack;
-            bannerForward = Quaternion.Inverse(chest.rotation) * pose.forward;
-            bannerMount = Node("BannerMount", pose, Vector3.zero);
-            bannerMount.SetPositionAndRotation(chest.TransformPoint(bannerAnchor), pose.rotation);
-            // The catalog figure carries the faction flag at its authored height.
-            var source = Instantiate(profile.bannerSource, pose, false).transform;
-            source.localPosition = Vector3.zero;
-            source.localRotation = Quaternion.Euler(0, 180, 0) * Quaternion.Euler(-90, 0, 0);
-            source.localScale = Vector3.one;
-            var renderers = source.GetComponentsInChildren<MeshRenderer>(true);
-            banner = CombatBanner.Create(bannerMount, renderers, (GetInstanceID() & 1023) * .37f);
-            if (banner != null)
-            {
-                MeshRenderer pole = null;
-                foreach (var part in renderers)
-                    if (part.name == "banner pole") { pole = part; part.transform.SetParent(banner.Pivot, true); break; }
-                Vector3 shift = profile.bannerOffset;
-                if (pole != null && bannerAnchor != Vector3.zero)
-                {
-                    // The catalog figure is bulkier than this body: stand the pole against the
-                    // measured back, over the shoulder blade on the catalog's side.
-                    var bounds = pole.bounds;
-                    Vector3 axis = bannerMount.InverseTransformPoint(bounds.center);
-                    float radius = Mathf.Min(bounds.extents.x, bounds.extents.z);
-                    shift.x += Mathf.Sign(axis.x) * ShoulderBladeOffset - axis.x;
-                    shift.z += -(radius + .02f) - axis.z;
-                }
-                banner.Pivot.localPosition += shift;
-            }
-            source.gameObject.SetActive(false);
-            Destroy(source.gameObject);
-        }
-
-        private void FollowBanner()
-        {
-            if (bannerMount == null) return;
-            Transform chest = skinned.Chest;
-            Vector3 up = pose.up;
-            Vector3 forward = Vector3.ProjectOnPlane(chest.rotation * bannerForward, up);
-            bannerMount.position = chest.TransformPoint(bannerAnchor);
-            if (forward.sqrMagnitude > 1e-4f) bannerMount.rotation = Quaternion.LookRotation(forward, up);
-            var view = Camera.main;
-            float shown = view == null ? 1f : Mathf.SmoothStep(0f, 1f,
-                Mathf.InverseLerp(BannerHiddenDistance, BannerFullDistance, Vector3.Distance(view.transform.position, bannerMount.position)));
-            // The relaxed menu pose folds the banner away, and unfolds it as the camera swings round.
-            bannerHidden = Mathf.MoveTowards(bannerHidden, Relaxed ? 1f : 0f, CombatArtDirector.FrameSeconds * 3f);
-            shown *= 1f - Mathf.SmoothStep(0f, 1f, bannerHidden);
-            bannerMount.localScale = new Vector3(shown, shown, shown);
         }
 
         public void SelectWeapon(int index)
@@ -362,10 +296,7 @@ namespace TienTuyen.Presentation
             freshPose = false;
             // Re-seat weapon and hands on the new facing without advancing any clip.
             if (skinned != null)
-            {
                 ApplySkinnedHold(lastReload);
-                FollowBanner();
-            }
         }
 
         /// <param name="action">Enemy action clip and time derived from gameplay this tick; skinned rigs only.</param>
@@ -404,7 +335,6 @@ namespace TienTuyen.Presentation
             Vector3 localVelocity = pose.InverseTransformDirection(smoothedVelocity);
             if (skinned != null) ApplySkinned(dt, localVelocity, reloadProgress, Mathf.Clamp01(hit), Mathf.Clamp01(death), action);
             else ApplyPose(localVelocity, reloadProgress, Mathf.Clamp01(hit), Mathf.Clamp01(death));
-            banner?.Tick(dt, localVelocity);
             UpdateShells(dt);
         }
 
@@ -419,16 +349,13 @@ namespace TienTuyen.Presentation
             skinned.Crouch(Crouch);
             skinned.Walk(Walk);
             skinned.Advance(dt, localVelocity, movementBlend, reload, hit, death, weapon != null, aim, action);
-            // A falling body drops its weapon and flag from view (a rigid pole would spear the
-            // floor in a backward fall); respawn/reset shows them again.
+            // A falling body drops its weapon from view; respawn/reset shows it again.
             if (skinned.Dying != weaponsHidden)
             {
                 weaponsHidden = skinned.Dying;
                 SelectWeapon(selectedWeapon);
-                if (bannerMount != null) bannerMount.gameObject.SetActive(!weaponsHidden);
             }
             ApplySkinnedHold(reload);
-            if (!weaponsHidden) FollowBanner();
         }
 
         private void ApplySkinnedHold(float reload)
@@ -762,8 +689,6 @@ namespace TienTuyen.Presentation
 
         private void OnDestroy()
         {
-            banner?.Dispose();
-            banner = null;
             skinned?.Dispose();
             skinned = null;
             if (!ownsResources) return;

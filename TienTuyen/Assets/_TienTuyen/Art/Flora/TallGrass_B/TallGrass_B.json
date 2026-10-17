@@ -1,0 +1,25 @@
+{
+ "name": "TallGrass_B",
+ "materials": [
+  {
+   "name": "TallGrass_B_M0",
+   "leaf": true,
+   "cutout": true,
+   "normal": false
+  },
+  {
+   "name": "TallGrass_B_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "height": 0.5,
+ "radius": 1.019,
+ "tris": [
+  652,
+  260,
+  4
+ ]
+}

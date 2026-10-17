@@ -105,8 +105,11 @@ namespace TienTuyen.Presentation
         /// <summary>URP particle material; additive for light, alpha blended for dust and smoke.</summary>
         public static Material Particle(string name, bool additive, Color tint)
         {
-            var shader = Shader.Find("Universal Render Pipeline/Particles/Unlit") ?? Shader.Find("Universal Render Pipeline/Unlit");
-            var material = new Material(shader) { name = name };
+            // From the transparent material asset where it exists: a material made only in code leaves the
+            // transparent shader variant out of the Player build.
+            var template = Resources.Load<Material>("Blood/BloodParticleUnlit");
+            var material = template != null ? new Material(template) { name = name }
+                : new Material(Shader.Find("Universal Render Pipeline/Particles/Unlit") ?? Shader.Find("Universal Render Pipeline/Unlit")) { name = name };
             material.SetTexture("_BaseMap", SoftDot());
             material.mainTexture = SoftDot();
             material.SetColor("_BaseColor", tint);

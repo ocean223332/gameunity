@@ -1,0 +1,41 @@
+{
+ "name": "Fir_Tall",
+ "materials": [
+  {
+   "name": "Fir_Tall_M0",
+   "leaf": false,
+   "cutout": false,
+   "normal": true
+  },
+  {
+   "name": "Fir_Tall_M1",
+   "leaf": false,
+   "cutout": false,
+   "normal": true
+  },
+  {
+   "name": "Fir_Tall_M2",
+   "leaf": true,
+   "cutout": true,
+   "normal": true
+  },
+  {
+   "name": "Fir_Tall_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "height": 25.7,
+ "radius": 4.899,
+ "tris": [
+  15640,
+  4450,
+  4
+ ],
+ "cutoff": 0.4,
+ "smoothness": 0.2,
+ "noCard": true,
+ "cardFrom": "Spruce"
+}

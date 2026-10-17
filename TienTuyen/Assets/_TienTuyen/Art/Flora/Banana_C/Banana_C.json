@@ -1,0 +1,35 @@
+{
+ "name": "Banana_C",
+ "materials": [
+  {
+   "name": "Banana_C_rest",
+   "leaf": false,
+   "cutout": false,
+   "normal": true
+  },
+  {
+   "name": "Banana_C_M1",
+   "leaf": true,
+   "cutout": true,
+   "normal": true
+  },
+  {
+   "name": "Banana_C_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "height": 4.1,
+ "radius": 2.454,
+ "tris": [
+  4606,
+  678,
+  4
+ ],
+ "cutoff": 0.3,
+ "smoothness": 0.4,
+ "translucency": 0.95,
+ "tintVariation": 0.12
+}

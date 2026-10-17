@@ -251,6 +251,7 @@ namespace TienTuyen.Combat
         private GameObject tracer;
         private Vector3 tracerStart, tracerEnd;
         private float tracerRemaining, spawnTimer, invulnerability;
+        private int squadLeft;
         private int targetIndex = -1;
         private int elitesThisWave;
         private readonly int[] weaponAmmo = new int[ProgressionRun.MaxWeaponSlots];
@@ -629,7 +630,8 @@ namespace TienTuyen.Combat
             HideTransientObjects();
             AliveEnemies = 0;
             WaveRemaining = WaveDuration(Wave);
-            spawnTimer = 1.1f;
+            spawnTimer = CombatRules.FirstSquadSeconds;
+            squadLeft = 0;
             elitesThisWave = 0;
             KeepHeldWeaponInHand();
             lastWeaponSlot = -1;
@@ -733,7 +735,11 @@ namespace TienTuyen.Combat
         {
             spawnTimer -= dt;
             if (spawnTimer > 0 || AliveEnemies >= CombatRules.EnemyCap) return;
-            spawnTimer = Mathf.Max(0.58f, 1.35f - (Wave - 1) * 0.18f);
+            if (squadLeft <= 0) squadLeft = CombatRules.SquadSize(Wave);
+            squadLeft--;
+            // The next member follows closely; after the last one the lull runs to the next squad's start.
+            spawnTimer = squadLeft > 0 ? CombatRules.SquadSpacingSeconds :
+                CombatRules.SquadIntervalSeconds(Wave) - (CombatRules.SquadSize(Wave) - 1) * CombatRules.SquadSpacingSeconds;
             Enemy slot = null;
             foreach (var enemy in enemies) if (!enemy.active && !enemy.pending) { slot = enemy; break; }
             if (slot == null) return;
@@ -834,8 +840,14 @@ namespace TienTuyen.Combat
                 case "sniper":
                     if (Wave < 2 || SnipersInPlay() >= SniperCap || AliveEnemies >= CombatRules.EnemyCap) return;
                     forcedEnemyDefinition = ContentCatalog.P2.GetEnemy(ContentIds.Sniper);
+                    // An extra enemy: the squad schedule carries on as it was.
+                    float timer = spawnTimer;
+                    int left = squadLeft;
                     spawnTimer = 0;
+                    squadLeft = 1;
                     UpdateSpawn(0);
+                    spawnTimer = timer;
+                    squadLeft = left;
                     forcedEnemyDefinition = null;
                     break;
                 default: return;

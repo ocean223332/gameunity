@@ -1,0 +1,25 @@
+{
+ "name": "Outcrop_B",
+ "materials": [
+  {
+   "name": "Outcrop_B_M0",
+   "leaf": false,
+   "cutout": false,
+   "normal": true
+  },
+  {
+   "name": "Outcrop_B_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "height": 2.042,
+ "radius": 3.463,
+ "tris": [
+  1236,
+  299,
+  4
+ ]
+}

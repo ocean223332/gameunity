@@ -53,6 +53,10 @@ namespace TienTuyen.Presentation
         /// <summary>How fast the aim weight moves, per second; anything following it should use the same rate.</summary>
         public const float AimBlendSpeed = 6.5f;
         public Vector3 AimPoint => aimPoint;
+        /// <summary>Weight (0..1) of the launch title's drift over the karst valley, set by the intro; 0 in play.</summary>
+        public float TitleVista { get; set; }
+        /// <summary>Seconds along the title drift.</summary>
+        public float TitleVistaTime { get; set; }
         /// <summary>1 on the main-menu shot, 0 on every other view; eases between them.</summary>
         public float MenuBlend => menuBlend;
         /// <summary>The player's chosen combat view (V); the menu, shop and end shots stay third person.</summary>
@@ -197,6 +201,7 @@ namespace TienTuyen.Presentation
             };
             Shot shot = Blend(gameplay, orbit, Smooth(cinematic), pivot);
             if (menuBlend > 0f) shot = Blend(shot, MenuShot(), Smooth(menuBlend), pivot);
+            if (TitleVista > 0f) shot = Blend(shot, VistaShot(TitleVistaTime), Smooth(Mathf.Clamp01(TitleVista)), pivot);
 
             Quaternion rotation = Quaternion.Euler(shot.Pitch, shot.Yaw, 0);
             if (!paused)
@@ -246,6 +251,18 @@ namespace TienTuyen.Presentation
                 Fov = MenuFieldOfView + breathe * .12f
             };
         }
+
+        /// <summary>Under the launch title: a slow crane up and in over the yard's edge, down the valley to the karst
+        /// ridges (the graphics "valley" view), easing out so the hand-off to the menu starts from rest.</summary>
+        private static Shot VistaShot(float time)
+        {
+            float u = Smooth(Mathf.Clamp01(time / TitleDriftSeconds));
+            Vector3 position = Vector3.Lerp(new Vector3(2.6f, 2.2f, -3.2f), new Vector3(.2f, 3.0f, -6.2f), u);
+            position.y = Mathf.Max(position.y, CombatEnvironment.GroundHeight(position.x, position.z) + 1.6f);
+            return new Shot { Position = position, Yaw = Mathf.Lerp(-165f, -175f, u), Pitch = Mathf.Lerp(1.5f, 3.5f, u), Fov = 48f };
+        }
+
+        public const float TitleDriftSeconds = 9f;
 
         /// <summary>
         /// Swings the camera round <paramref name="center"/> instead of through it: azimuth, distance and

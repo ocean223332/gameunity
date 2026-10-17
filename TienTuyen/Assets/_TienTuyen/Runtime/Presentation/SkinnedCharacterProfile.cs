@@ -71,14 +71,6 @@ namespace TienTuyen.Presentation
         [Tooltip("Planted-foot speed of each walking locomotion clip at 1x (m/s).")]
         public float walkForwardSpeed, walkBackwardSpeed, walkLeftSpeed, walkRightSpeed;
 
-        [Header("Faction flag")]
-        [Tooltip("Catalog model whose 'banner pole' / 'banner cloth*' meshes become the back flag.")]
-        public GameObject bannerSource;
-        [Tooltip("Body-space offset (metres, +Z forward) applied to the flag after it is fitted to the back.")]
-        public Vector3 bannerOffset;
-        [Tooltip("Point on the back surface in chest-bone space (measured by the importer); zero keeps the catalog placement.")]
-        public Vector3 chestBack;
-
         public float modelScale = 1f;
 
         [Header("Hand-carried weapons (optional)")]

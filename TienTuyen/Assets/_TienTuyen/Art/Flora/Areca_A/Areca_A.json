@@ -1,0 +1,35 @@
+{
+ "name": "Areca_A",
+ "materials": [
+  {
+   "name": "Areca_A_rest",
+   "leaf": false,
+   "cutout": false,
+   "normal": true
+  },
+  {
+   "name": "Areca_A_M1",
+   "leaf": true,
+   "cutout": true,
+   "normal": true
+  },
+  {
+   "name": "Areca_A_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "height": 10.9,
+ "radius": 4.146,
+ "tris": [
+  2399,
+  452,
+  4
+ ],
+ "cutoff": 0.3,
+ "smoothness": 0.4,
+ "translucency": 0.95,
+ "tintVariation": 0.12
+}

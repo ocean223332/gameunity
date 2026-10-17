@@ -8,7 +8,14 @@ namespace TienTuyen.Combat
     // P1 constants: the two enemy profiles are intentionally provisional graybox tuning.
     public static class CombatRules
     {
-        public const int EnemyCap = 25;
+        /// <summary>Enemies alive at once; a squad member that would pass it waits for a kill.</summary>
+        public const int EnemyCap = 12;
+        /// <summary>Each wave sends its enemies in squads: the first squad 1.1 s in, members 0.35 s apart, and a lull
+        /// until the next squad starts. Squads grow 2, 2, 3, 3, 4, 4 and come every 9 s, 8.5 s ... 6.5 s, about 113
+        /// enemies a run (Elites take a squad place).</summary>
+        public const float FirstSquadSeconds = 1.1f, SquadSpacingSeconds = 0.35f;
+        public static int SquadSize(int wave) => 2 + (Mathf.Max(1, wave) - 1) / 2;
+        public static float SquadIntervalSeconds(int wave) => Mathf.Max(6f, 9f - .5f * (Mathf.Max(1, wave) - 1));
         public const float PlayerMaxHealth = 200f;
         public const float PlayerSpeed = 4.75f;
         /// <summary>Crouch-walk speed over run speed: CS:GO's crouch-walk cycle against its run cycle (67.8 / 145.7 in).</summary>

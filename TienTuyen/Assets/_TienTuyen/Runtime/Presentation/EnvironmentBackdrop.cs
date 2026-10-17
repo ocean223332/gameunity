@@ -6,20 +6,27 @@ using L = TienTuyen.Presentation.EnvironmentLayout;
 namespace TienTuyen.Presentation
 {
     /// <summary>
-    /// The horizon: Truong Son ranges from real elevation data, baked by
-    /// Art/Source/build_mountains.py into Resources/Environment/Mountains.bytes,
-    /// with low cloud on the peaks and mist belts in the valleys between them.
-    /// Close in, the same polar grid becomes a canopy shell over the hills past
-    /// the far flora band, so the forest roof runs on into the ranges. The ranges
+    /// The horizon: Truong Son ranges from real elevation data and the limestone
+    /// tower karst in front of them, baked by Art/Source/build_mountains.py into
+    /// Resources/Environment/Mountains.bytes. A sea of cloud lies between the
+    /// layers: drawn on the slopes (EnvKarstCloud.hlsl) and on a skirt far behind
+    /// them, so it fills the gaps where the view opens on sky.
+    /// Close in, the same polar grid continues the terrain mesh from its edge
+    /// (EnvironmentGround.OuterExtent) on GroundHeight's hills, so the meadow runs
+    /// on into the ranges without a gap. The river leaves the terrain mesh east and
+    /// west and runs on down a gorge through the ranges: the rings sink along it and
+    /// a corridor mesh carries the riverbed and its water (EnvKarst.hlsl KarstWater)
+    /// at the spacing the rings cannot give. The ranges
     /// are kilometres out; their shader squeezes distance along each view ray so
     /// they fit inside the camera's far plane. No colliders, no shadows.
     /// </summary>
     internal static class EnvironmentBackdrop
     {
-        /// <summary>Virtual distance past which the shaders squeeze, and the squeeze scale (see EnvMountains.shader).</summary>
-        private static readonly Vector4 Squeeze = new Vector4(300f, 15f, 0f, 0f);
-        /// <summary>Canopy shell height over the bare hills, and where it starts (just inside the far flora band's edge).</summary>
-        public const float CanopyHeight = 12f, ShellStart = 96f;
+        /// <summary>
+        /// The shaders' squeeze (EnvSqueeze.hlsl): earliest start, log scale, where 30 km lands (inside the gameplay
+        /// camera's 420 m far plane), and the terrain mesh's half size, where each view ray's squeeze starts.
+        /// </summary>
+        private static readonly Vector4 Squeeze = new Vector4(300f, 15f, 414f, EnvironmentGround.OuterExtent);
         private const int SectorColumns = 110;
 
         public static void Build(Transform root)
@@ -34,56 +41,140 @@ namespace TienTuyen.Presentation
             var backdrop = new GameObject("Backdrop").transform;
             backdrop.SetParent(root, false);
 
-            float[] radii, azimuths, heights, clouds;
-            byte[] sun, sky, cavity;
-            Read(data.bytes, out radii, out azimuths, out heights, out sun, out sky, out cavity, out clouds);
+            float[] radii, azimuths, heights;
+            byte[] sun, sky, cavity, rise, river;
+            Mesh[] meshes;
+            int[] kinds;
+            Read(data.bytes, out radii, out azimuths, out heights, out sun, out sky, out cavity, out rise, out river, out meshes, out kinds);
+            Resources.UnloadAsset(data);   // 13 MB of bytes, all in the meshes now
             int rings = radii.Length, columns = azimuths.Length;
 
             var positions = new Vector3[rings * columns];
+            var inside = new bool[rings * columns];
             for (int i = 0; i < rings; i++)
             {
-                float r = radii[i], w = Smooth((r - 250f) / 2750f);
+                float r = radii[i];
                 for (int j = 0; j < columns; j++)
                 {
-                    float a = azimuths[j] * Mathf.Deg2Rad, x = Mathf.Sin(a) * r, z = Mathf.Cos(a) * r;
-                    float far = heights[i * columns + j];
-                    float near = w < 1f ? L.BaseHeight(x, z) + ShellHeight(x, z, r) : 0f;
-                    positions[i * columns + j] = new Vector3(x, near * (1f - w) + far * w, z);
+                    int k = i * columns + j;
+                    float a = azimuths[j] * Mathf.Deg2Rad, fromRiver = river[k] * 4f;
+                    var p = new Vector3(Mathf.Sin(a) * r, 0f, Mathf.Cos(a) * r);
+                    float y = Ground(ref p, heights[k], Far(fromRiver, r), out inside[k]);
+                    // Sunk under the corridor, which carries the riverbed at its own spacing.
+                    y -= (4f + .01f * r) * (1f - Smooth((fromRiver - 100f) / 50f)) * (1f - Smooth((r - 2050f) / 100f));
+                    positions[k] = new Vector3(p.x, y, p.z);
                 }
             }
 
             var material = new Material(shader) { name = "Env_Mountains" };
             material.SetVector("_Squeeze", Squeeze);
+            var rock = Resources.Load<Texture2D>("Environment/KarstRock");
+            if (rock != null) material.SetTexture("_KarstRock", rock);
             for (int start = 0; start < columns; start += SectorColumns)
             {
                 int count = Mathf.Min(SectorColumns, columns - start) + 1;   // shares its last column with the next sector
-                Spawn(backdrop, "Range_" + start / SectorColumns, Sector(positions, sun, sky, cavity, rings, columns, start, count), material);
+                Spawn(backdrop, "Range_" + start / SectorColumns, Sector(positions, inside, sun, sky, cavity, rise, rings, columns, start, count), material);
             }
+            var towerMaterial = new Material(material) { name = "Env_Towers" };
+            towerMaterial.SetFloat("_Tower", 1f);
             var cloudShader = Shader.Find("TienTuyen/Environment/MountainCloud");
-            if (cloudShader != null && cloudShader.isSupported && clouds.Length > 0)
+            Material cloudMaterial = null;
+            if (cloudShader != null && cloudShader.isSupported)
             {
-                var cloudMaterial = new Material(cloudShader) { name = "Env_MountainCloud" };
+                // The skirt's cloud must match the band on the slopes: same air, same cloud.
+                cloudMaterial = new Material(cloudShader) { name = "Env_MountainCloud" };
                 cloudMaterial.SetVector("_Squeeze", Squeeze);
-                Spawn(backdrop, "Clouds", Clouds(clouds), cloudMaterial);
+                foreach (var name in new[] { "_Aerial", "_CloudSea" }) cloudMaterial.SetVector(name, material.GetVector(name));
+                cloudMaterial.SetColor("_AerialTint", material.GetColor("_AerialTint"));
             }
+            for (int k = 0; k < meshes.Length; k++)
+            {
+                if (kinds[k] == 0) Spawn(backdrop, "Tower_" + k, meshes[k], towerMaterial);
+                else if (kinds[k] == 2) Spawn(backdrop, "River_" + k, meshes[k], material);
+                else if (cloudMaterial != null) Spawn(backdrop, "CloudSkirt_" + k, meshes[k], cloudMaterial);
+            }
+            EnvironmentSkyLife.Build(backdrop, Squeeze);
+            RenderPipelineManager.beginContextRendering -= FollowSky;
+            RenderPipelineManager.beginContextRendering += FollowSky;
         }
 
-        /// <summary>Forest roof over the bare hills: thin over the bombed valley (not its regrown west flank) and the defoliated sightline.</summary>
-        private static float ShellHeight(float x, float z, float r)
+        private static readonly int SkyId = Shader.PropertyToID("_KarstSky"), SkyParamsId = Shader.PropertyToID("_KarstSkyParams");
+        private static RenderTexture skyCopy;
+        private static Texture skyCopied;
+
+        /// <summary>
+        /// The ranges' air takes the colour of the sky behind them (EnvKarst.hlsl KarstSkyBehind): EnvSky's photo,
+        /// blurred through the mips of a small copy, re-made only when the weather swaps the photo.
+        /// </summary>
+        private static void FollowSky(ScriptableRenderContext context, System.Collections.Generic.List<Camera> cameras)
         {
-            float open = Mathf.Max(L.Bombed(x, z), EnvironmentFlora.Sightline(x, z));
-            return (2f + CanopyHeight * Smooth((r - ShellStart) / 45f)) * (1f - .8f * open);
+            var sky = RenderSettings.skybox;
+            var photo = sky != null && sky.HasProperty("_Panorama") ? sky.GetTexture("_Panorama") : null;
+            float weight = photo != null && photo != Texture2D.blackTexture ? sky.GetFloat("_PanoramaWeight") : 0f;
+            if (weight > 0f && (photo != skyCopied || skyCopy == null || !skyCopy.IsCreated()))
+            {
+                if (skyCopy == null)
+                {
+                    skyCopy = new RenderTexture(256, 128, 0, RenderTextureFormat.ARGBHalf)
+                        { name = "Env_KarstSky", useMipMap = true, autoGenerateMips = true, wrapModeU = TextureWrapMode.Repeat,
+                          wrapModeV = TextureWrapMode.Clamp, filterMode = FilterMode.Trilinear, hideFlags = HideFlags.DontSave };
+                }
+                Graphics.Blit(photo, skyCopy);
+                skyCopied = photo;
+            }
+            Shader.SetGlobalTexture(SkyId, skyCopy != null ? skyCopy : Texture2D.blackTexture);
+            Shader.SetGlobalVector(SkyParamsId, weight > 0f
+                ? new Vector4(sky.GetFloat("_PanoramaOffset"), sky.GetFloat("_PanoramaExposure"), weight, 0f) : Vector4.zero);
         }
 
         private static float Smooth(float t) { t = Mathf.Clamp01(t); return t * t * (3f - 2f * t); }
 
+        /// <summary>
+        /// How far the baked ranges replace BaseHeight's hills: from 250 m to 3 km, but on BaseHeight out to 600 m
+        /// over the open south (bearings 140-240), and fully baked along the gorge past 1.4 km (far), where the
+        /// carved river must win over the uncarved foothills.
+        /// </summary>
+        private static float Weight(Vector3 p, float far)
+        {
+            float r = new Vector2(p.x, p.z).magnitude, bearing = Mathf.Atan2(p.x, p.z) * Mathf.Rad2Deg;
+            if (bearing < 0f) bearing += 360f;
+            float w = Smooth((r - 250f) / 2750f);
+            float south = Smooth((bearing - 140f) / 10f) * (1f - Smooth((bearing - 230f) / 10f));
+            w = Mathf.Lerp(w, Smooth((r - 600f) / 2400f), south);
+            return Mathf.Max(w, far);
+        }
+
+        /// <summary>The gorge's hold on the far ground: within ~300 m of the river, past 1.4 km.</summary>
+        private static float Far(float fromRiver, float r) => Smooth((r - 1400f) / 300f) * (1f - Smooth((fromRiver - 250f) / 150f));
+
+        /// <summary>
+        /// Height of the far ground at p, blended from BaseHeight into the baked height. Inside the terrain mesh
+        /// the ground is not drawn: a vertex there that still belongs to a drawn quad is pulled out to just inside the
+        /// mesh's edge and a little below it, so the two overlap without a crack.
+        /// </summary>
+        private static float Ground(ref Vector3 p, float baked, float far, out bool inside)
+        {
+            const float edge = EnvironmentGround.OuterExtent;
+            float w = Weight(p, far), square = Mathf.Max(Mathf.Abs(p.x), Mathf.Abs(p.z)), drop = 0f;
+            inside = square < edge;
+            if (inside)
+            {
+                float pull = (edge - 1f) / Mathf.Max(square, 1e-3f);
+                p.x *= pull;
+                p.z *= pull;
+                drop = .3f;
+            }
+            float near = w < 1f ? L.BaseHeight(p.x, p.z) - drop : 0f;
+            return near * (1f - w) + baked * w;
+        }
+
         private static void Read(byte[] bytes, out float[] radii, out float[] azimuths, out float[] heights,
-            out byte[] sun, out byte[] sky, out byte[] cavity, out float[] clouds)
+            out byte[] sun, out byte[] sky, out byte[] cavity, out byte[] rise, out byte[] river, out Mesh[] meshes, out int[] kinds)
         {
             using var reader = new BinaryReader(new MemoryStream(bytes));
-            if (new string(reader.ReadChars(4)) != "TTMB" || reader.ReadInt32() != 1)
+            if (new string(reader.ReadChars(4)) != "TTMB" || reader.ReadInt32() != 4)
                 throw new InvalidDataException("Mountains.bytes: unknown format");
-            int rings = reader.ReadInt32(), columns = reader.ReadInt32(), cloudCount = reader.ReadInt32();
+            int rings = reader.ReadInt32(), columns = reader.ReadInt32(), meshCount = reader.ReadInt32();
             radii = Floats(reader, rings);
             azimuths = Floats(reader, columns);
             heights = new float[rings * columns];
@@ -91,8 +182,52 @@ namespace TienTuyen.Presentation
             sun = reader.ReadBytes(rings * columns);
             sky = reader.ReadBytes(rings * columns);
             cavity = reader.ReadBytes(rings * columns);
-            clouds = Floats(reader, cloudCount * 5);
+            rise = reader.ReadBytes(rings * columns);
+            river = reader.ReadBytes(rings * columns);
+            meshes = new Mesh[meshCount];
+            kinds = new int[meshCount];
+            for (int m = 0; m < meshCount; m++) meshes[m] = Piece(reader, m, out kinds[m]);
         }
+
+        /// <summary>
+        /// One piece, kind 0 a tower, 1 the cloud skirt, 2 a river corridor: positions, half normals, colours (sun, sky,
+        /// cavity, height up the wall), rise, 16-bit triangles. A corridor's y is the baked (carved) height, its normal
+        /// slot holds the gorge's hold (Far) in x, and its alpha the distance to the river in quarter metres;
+        /// it is set on the ground here like the rings, and its normals recomputed.
+        /// </summary>
+        private static Mesh Piece(BinaryReader reader, int index, out int kind)
+        {
+            kind = reader.ReadInt32();
+            int count = reader.ReadInt32(), indexCount = reader.ReadInt32();
+            var vertices = new Vector3[count];
+            for (int v = 0; v < count; v++) vertices[v] = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
+            var normals = new Vector3[count];
+            for (int v = 0; v < count; v++)
+                normals[v] = new Vector3(Mathf.HalfToFloat(reader.ReadUInt16()), Mathf.HalfToFloat(reader.ReadUInt16()), Mathf.HalfToFloat(reader.ReadUInt16()));
+            var colors = new Color32[count];
+            for (int v = 0; v < count; v++) colors[v] = new Color32(reader.ReadByte(), reader.ReadByte(), reader.ReadByte(), reader.ReadByte());
+            var rise = reader.ReadBytes(count);
+            var uv = new Vector2[count];
+            for (int v = 0; v < count; v++) uv[v] = Rise(rise[v]);
+            var triangles = new int[indexCount];
+            for (int t = 0; t < indexCount; t++) triangles[t] = reader.ReadUInt16();
+            if (kind == 2)
+                for (int v = 0; v < count; v++)
+                    vertices[v].y = Ground(ref vertices[v], vertices[v].y, normals[v].x, out _);
+            var mesh = new Mesh { name = (kind == 0 ? "Env_Tower_" : kind == 1 ? "Env_CloudSkirt_" : "Env_River_") + index };
+            mesh.vertices = vertices;
+            mesh.normals = normals;
+            mesh.colors32 = colors;
+            mesh.uv = uv;
+            mesh.triangles = triangles;
+            if (kind == 2) mesh.RecalculateNormals();
+            mesh.bounds = SqueezedBounds(vertices);
+            mesh.UploadMeshData(true);
+            return mesh;
+        }
+
+        /// <summary>Rise (degrees above the ridges in front, baked x16 from -3) into uv.x, which drives the valley cloud.</summary>
+        private static Vector2 Rise(byte baked) => new Vector2(baked / 16f - 3f, 0f);
 
         private static float[] Floats(BinaryReader reader, int count)
         {
@@ -101,9 +236,10 @@ namespace TienTuyen.Presentation
             return values;
         }
 
-        private static Mesh Sector(Vector3[] grid, byte[] sun, byte[] sky, byte[] cavity, int rings, int columns, int start, int count)
+        private static Mesh Sector(Vector3[] grid, bool[] inside, byte[] sun, byte[] sky, byte[] cavity, byte[] rise, int rings, int columns, int start, int count)
         {
             var vertices = new Vector3[rings * count];
+            var uv = new Vector2[vertices.Length];
             var normals = new Vector3[vertices.Length];
             var colors = new Color32[vertices.Length];
             var triangles = new int[(rings - 1) * (count - 1) * 6];
@@ -120,50 +256,20 @@ namespace TienTuyen.Presentation
                     var n = Vector3.Cross(along, across).normalized;
                     normals[v] = n.y < 0 ? -n : n;
                     colors[v] = new Color32(sun[source], sky[source], cavity[source], 255);
+                    uv[v] = Rise(rise[source]);
                     if (i == rings - 1 || c == count - 1) continue;
+                    int j1 = (j + 1) % columns, next = (i + 1) * columns;
+                    if (inside[source] && inside[i * columns + j1] && inside[next + j] && inside[next + j1]) continue;
                     triangles[t++] = v; triangles[t++] = v + count; triangles[t++] = v + 1;
                     triangles[t++] = v + 1; triangles[t++] = v + count; triangles[t++] = v + count + 1;
                 }
             }
+            System.Array.Resize(ref triangles, t);
             var mesh = new Mesh { name = "Env_Range_" + start };
             mesh.vertices = vertices;
             mesh.normals = normals;
             mesh.colors32 = colors;
-            mesh.triangles = triangles;
-            mesh.bounds = SqueezedBounds(vertices);
-            mesh.UploadMeshData(true);
-            return mesh;
-        }
-
-        private static Mesh Clouds(float[] cards)
-        {
-            int count = cards.Length / 5;
-            var vertices = new Vector3[count * 4];
-            var uv = new Vector2[vertices.Length];
-            var seed = new Vector2[vertices.Length];
-            var triangles = new int[count * 6];
-            var random = new System.Random(1972);
-            for (int k = 0; k < count; k++)
-            {
-                float a = cards[k * 5] * Mathf.Deg2Rad, r = cards[k * 5 + 1], h = cards[k * 5 + 2];
-                float halfWidth = cards[k * 5 + 3] * .5f, halfTall = cards[k * 5 + 4] * .5f;
-                var centre = new Vector3(Mathf.Sin(a) * r, h, Mathf.Cos(a) * r);
-                var side = new Vector3(Mathf.Cos(a), 0f, -Mathf.Sin(a)) * halfWidth;   // faces the station
-                var up = Vector3.up * halfTall;
-                var s = new Vector2((float)random.NextDouble(), .7f + (float)random.NextDouble() * .6f);
-                int v = k * 4;
-                vertices[v] = centre - side - up; vertices[v + 1] = centre + side - up;
-                vertices[v + 2] = centre - side + up; vertices[v + 3] = centre + side + up;
-                uv[v] = new Vector2(0, 0); uv[v + 1] = new Vector2(1, 0); uv[v + 2] = new Vector2(0, 1); uv[v + 3] = new Vector2(1, 1);
-                seed[v] = seed[v + 1] = seed[v + 2] = seed[v + 3] = s;
-                int tr = k * 6;
-                triangles[tr] = v; triangles[tr + 1] = v + 2; triangles[tr + 2] = v + 1;
-                triangles[tr + 3] = v + 1; triangles[tr + 4] = v + 2; triangles[tr + 5] = v + 3;
-            }
-            var mesh = new Mesh { name = "Env_MountainClouds" };
-            mesh.vertices = vertices;
             mesh.uv = uv;
-            mesh.uv2 = seed;
             mesh.triangles = triangles;
             mesh.bounds = SqueezedBounds(vertices);
             mesh.UploadMeshData(true);
@@ -181,12 +287,17 @@ namespace TienTuyen.Presentation
             foreach (var p in vertices)
             {
                 var view = p - eye;
-                float d = view.magnitude, s = d <= Squeeze.x ? d : Squeeze.x + Squeeze.y * Mathf.Log(1f + (d - Squeeze.x) / Squeeze.y);
-                bounds.Encapsulate(eye + view * (s / Mathf.Max(d, 1e-3f)));
+                float d = Mathf.Max(view.magnitude, 1e-3f);
+                // Both ends of where a ray's squeeze may start.
+                bounds.Encapsulate(eye + view * (Squeezed(d, Squeeze.x) / d));
+                bounds.Encapsulate(eye + view * (Squeezed(d, Squeeze.x + 100f) / d));
             }
             bounds.Expand(60f);
             return bounds;
         }
+
+        private static float Squeezed(float d, float start) => d <= start ? d
+            : start + (Squeeze.z - start) * Mathf.Log(1f + (d - start) / Squeeze.y) / Mathf.Log(1f + (30000f - start) / Squeeze.y);
 
         private static void Spawn(Transform parent, string name, Mesh mesh, Material material)
         {

@@ -293,20 +293,10 @@ namespace TienTuyen.Presentation
             size.enabled = true;
             size.size = new ParticleSystem.MinMaxCurve(1, stretch ? AnimationCurve.Linear(0, 1, 1, .45f) : AnimationCurve.Linear(0, .9f, 1, 1.35f));
             // Mist is lit like the scene so the cloud darkens in shade; tiny drops stay unlit so they always read.
-            material = new Material(Shader.Find(lit ? "Universal Render Pipeline/Particles/Simple Lit" : "Universal Render Pipeline/Particles/Unlit")) { name = name + "Material" };
+            // The alpha-blended setup lives in material assets: a material made only in code leaves its transparent
+            // shader variant out of the Player build, and the particles draw as opaque squares.
+            material = new Material(Resources.Load<Material>(lit ? "Blood/BloodParticleLit" : "Blood/BloodParticleUnlit")) { name = name + "Material" };
             material.SetTexture("_BaseMap", texture);
-            material.SetColor("_BaseColor", Color.white);
-            material.SetFloat("_Surface", 1);
-            material.SetFloat("_Blend", 0);
-            material.SetFloat("_Cull", 0);
-            material.SetFloat("_ZWrite", 0);
-            material.SetFloat("_SrcBlend", (float)BlendMode.SrcAlpha);
-            material.SetFloat("_DstBlend", (float)BlendMode.OneMinusSrcAlpha);
-            material.SetFloat("_SrcBlendAlpha", (float)BlendMode.One);
-            material.SetFloat("_DstBlendAlpha", (float)BlendMode.OneMinusSrcAlpha);
-            material.SetOverrideTag("RenderType", "Transparent");
-            material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
-            material.renderQueue = (int)RenderQueue.Transparent;
             var renderer = ps.GetComponent<ParticleSystemRenderer>();
             renderer.sharedMaterial = material;
             renderer.shadowCastingMode = ShadowCastingMode.Off;

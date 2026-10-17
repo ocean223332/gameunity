@@ -48,6 +48,18 @@ namespace TienTuyen.Presentation
             foreach (var screen in Screens) screen.Snap();
         }
 
+        /// <summary>The whole interface's opacity; the intro title holds it hidden and fades the menu in.</summary>
+        public float Opacity
+        {
+            set
+            {
+                if (canvasObject == null) return;
+                var group = canvasObject.GetComponent<CanvasGroup>();
+                if (group == null) group = canvasObject.AddComponent<CanvasGroup>();
+                group.alpha = value;
+            }
+        }
+
         // A disabled interface (behind the intro) takes no keyboard or pad input. Enabling it enters its
         // state again, which keeps a focus that survived silently and restores one a click cleared.
         private void OnEnable()

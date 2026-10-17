@@ -14,71 +14,279 @@ MonoBehaviour:
   m_EditorClassIdentifier: TienTuyen.Presentation::TienTuyen.Presentation.FloraBiome
   Seed: 1972
   Plants:
+  - Name: Areca_A
+    Prefab: {fileID: 3346823527465381219, guid: db9cf91cdd6519e4aaad6264ec36dfb7, type: 3}
+    Height: 10.9
+    Radius: 4.146
+  - Name: Areca_B
+    Prefab: {fileID: 5487710108384243873, guid: 8b1b73d9bf7012241bd17cb76257b358, type: 3}
+    Height: 9.4
+    Radius: 3.809
   - Name: Bamboo
     Prefab: {fileID: 3541367963129327942, guid: 400a32499a7f87b40b31b346b915ed51, type: 3}
     Height: 13.363
     Radius: 4.231
-  - Name: BambooYoung
-    Prefab: {fileID: 1902087543224495851, guid: e33125a4f5a9efd4d9a5faa8f9f0068c, type: 3}
-    Height: 3.2
-    Radius: 2.847
   - Name: Banana_A
     Prefab: {fileID: 7992864286876206853, guid: 03e5dc2d88ed6e944a07f681438522ae, type: 3}
     Height: 3.6
     Radius: 1.98
   - Name: Banana_B
-    Prefab: {fileID: 8208347557603863959, guid: 05b2f600ff114464f8dd8641d4ad29f8, type: 3}
-    Height: 4.2
-    Radius: 2.398
-  - Name: Calathea
-    Prefab: {fileID: 6946945450084309727, guid: 93fd09890b28fc94ea18c72f168af5e6, type: 3}
-    Height: 0.8
-    Radius: 0.727
-  - Name: CanopyTree_A
-    Prefab: {fileID: 8672583637032026704, guid: b642cecaaa568a4428f95828f9591b12, type: 3}
-    Height: 20.738
-    Radius: 10.225
-  - Name: CanopyTree_B
-    Prefab: {fileID: 638421864528570208, guid: 8eca7b1003912d44484db0a4b6dde50e, type: 3}
-    Height: 10.773
-    Radius: 6.522
+    Prefab: {fileID: 1363978873149333474, guid: c4500ebea4eca0243b62826106973ea3, type: 3}
+    Height: 4.7
+    Radius: 2.546
+  - Name: Banana_C
+    Prefab: {fileID: 6639612860797190346, guid: 219cecf5293fdfa47aa469b89baab5f4, type: 3}
+    Height: 4.1
+    Radius: 2.454
+  - Name: Beech_Gold
+    Prefab: {fileID: 6132654530723476201, guid: 058a6e2b7a6d2cd488188b151087b4d9, type: 3}
+    Height: 15.8
+    Radius: 5.78
+  - Name: Broadleaf_A
+    Prefab: {fileID: 1659971519518921880, guid: 3ceff4a2512df80418bcdbf3e9d919d5, type: 3}
+    Height: 14.8
+    Radius: 5.616
+  - Name: Broadleaf_B
+    Prefab: {fileID: 6285219113073734139, guid: 589ffe785c24c3c43a83268523f99b9b, type: 3}
+    Height: 13.8
+    Radius: 6.211
+  - Name: Broadleaf_C
+    Prefab: {fileID: 7568636414311852322, guid: 354cf82b836f4c54596eed54b7f471f9, type: 3}
+    Height: 12.8
+    Radius: 4.258
+  - Name: Bush
+    Prefab: {fileID: 5885463707897075553, guid: 2cb983120067aa14fa0a4d1ea4f332ae, type: 3}
+    Height: 1
+    Radius: 0.545
+  - Name: Climber_A
+    Prefab: {fileID: 702462464537242904, guid: 1582075840d39c24a8f0c9a4ceb225e6, type: 3}
+    Height: 1.4
+    Radius: 2.457
+  - Name: Climber_B
+    Prefab: {fileID: 7538924633591225646, guid: 37f23ec69ae4cfa40a025a5e20120216, type: 3}
+    Height: 1.2
+    Radius: 1.466
+  - Name: Curtain_A
+    Prefab: {fileID: 7734934151761526554, guid: addb24e5660f6d649a7498391fe72736, type: 3}
+    Height: 7
+    Radius: 1.906
+  - Name: Curtain_B
+    Prefab: {fileID: 5605326747909624357, guid: 4c6f231b766fad54b8818243c3a6afc3, type: 3}
+    Height: 7.5
+    Radius: 1.642
+  - Name: ElephantEar_A
+    Prefab: {fileID: 6693732929751103730, guid: bbe334e53cf016147b446cbea600ee89, type: 3}
+    Height: 1.5
+    Radius: 1.376
+  - Name: ElephantEar_B
+    Prefab: {fileID: 7494501037202522276, guid: b997a6fd1ad44ab4f9f4f615c4d5820c, type: 3}
+    Height: 1.8
+    Radius: 1.54
   - Name: Fern_A
-    Prefab: {fileID: 2112598060172108398, guid: 4a28f3d2fb55411449fd38879748632b, type: 3}
-    Height: 0.95
-    Radius: 1.368
+    Prefab: {fileID: 2670758929021258730, guid: 4a28f3d2fb55411449fd38879748632b, type: 3}
+    Height: 0.385
+    Radius: 0.601
   - Name: Fern_B
-    Prefab: {fileID: 3941099348712363826, guid: 44e45537155d0a04ab3076bd3683cda2, type: 3}
+    Prefab: {fileID: 947452145397625539, guid: 44e45537155d0a04ab3076bd3683cda2, type: 3}
+    Height: 0.431
+    Radius: 0.677
+  - Name: Fern_C
+    Prefab: {fileID: 5407290875354280403, guid: aad6e50a619e2f6428995d541996d3f1, type: 3}
+    Height: 0.57
+    Radius: 0.461
+  - Name: Fern_D
+    Prefab: {fileID: 5046800137016569113, guid: 7b4f9f145abd721408014e487286becf, type: 3}
     Height: 1.1
-    Radius: 1.58
+    Radius: 0.496
+  - Name: Fern_E
+    Prefab: {fileID: 7673769153379401616, guid: 75f79e61d2a96a047898fabe94511eb4, type: 3}
+    Height: 1
+    Radius: 0.625
   - Name: FernSmall
     Prefab: {fileID: 3080512834871173846, guid: 1ba45591b7c5db54498efa950ae256d7, type: 3}
     Height: 0.7
     Radius: 0.856
-  - Name: GrassClump
-    Prefab: {fileID: 8962991891875227022, guid: ae8c1b20a25e09a4193f5b985687b66f, type: 3}
-    Height: 0.591
-    Radius: 0.4
-  - Name: GrassTall
-    Prefab: {fileID: 4501765248028939987, guid: e909844ae62f32846987ca2aabd786c0, type: 3}
-    Height: 1.274
-    Radius: 0.909
+  - Name: Fir_Dead
+    Prefab: {fileID: 7867832655032985231, guid: 7c500b61506be9e43830b0a8a530c77e, type: 3}
+    Height: 19.7
+    Radius: 5.225
+  - Name: Fir_Forest_A
+    Prefab: {fileID: 1212852171146400987, guid: 2fac25e76a2667d4c9e4ed888bf03dc3, type: 3}
+    Height: 29.7
+    Radius: 6.735
+  - Name: Fir_Forest_B
+    Prefab: {fileID: 4695258046253531753, guid: 71e651576603da64cbe1004cfd114c9f, type: 3}
+    Height: 27.7
+    Radius: 6.777
+  - Name: Fir_Medium
+    Prefab: {fileID: 4825530388892180444, guid: 5d8f111a8910af3489fd16eb518ce1df, type: 3}
+    Height: 15.8
+    Radius: 4.039
+  - Name: Fir_Plant
+    Prefab: {fileID: 7504163485819166043, guid: e73ea3d17780f2a4c8e9292740b338c1, type: 3}
+    Height: 1.55
+    Radius: 0.691
+  - Name: Fir_Small
+    Prefab: {fileID: 8218705623703514108, guid: 76ffd357f82569f45983d8290fa8f61d, type: 3}
+    Height: 5.9
+    Radius: 2.476
+  - Name: Fir_Tall
+    Prefab: {fileID: 6515781700377863889, guid: 841978cbdb57d524e82ee7a534e21d66, type: 3}
+    Height: 25.7
+    Radius: 4.899
+  - Name: Heliconia_A
+    Prefab: {fileID: 6966583628774751577, guid: 133aa40585dff1748903120faecdb415, type: 3}
+    Height: 1.8
+    Radius: 1.403
+  - Name: Heliconia_B
+    Prefab: {fileID: 1196724358822635742, guid: 1f7b95821e259fe49bbfe9318a42cf0c, type: 3}
+    Height: 1.6
+    Radius: 0.964
+  - Name: JungleTree_A
+    Prefab: {fileID: 4539295756698650477, guid: 24e414b127b87494796df9b9540c6ed7, type: 3}
+    Height: 15.7
+    Radius: 7.087
+  - Name: JungleTree_B
+    Prefab: {fileID: 5493295632083248244, guid: 8773ba877e1c82140a0eeeef0f00df2f, type: 3}
+    Height: 13.7
+    Radius: 5.983
+  - Name: JungleTree_Tall
+    Prefab: {fileID: 2647612115440470297, guid: 8adcc80298946a94a9f56a4038ecdc69, type: 3}
+    Height: 23.7
+    Radius: 8.931
   - Name: Log
     Prefab: {fileID: 7138994060150545655, guid: 2994b1bf7f16dc74eb1bf638c50e9421, type: 3}
     Height: 0.365
     Radius: 1.906
-  - Name: Monstera_A
-    Prefab: {fileID: 3277592485391366639, guid: 366513527791d7d408b16cf3b99707a7, type: 3}
-    Height: 1.3
-    Radius: 1.222
-  - Name: Monstera_B
-    Prefab: {fileID: 1124467759289057210, guid: e620a7946c0330a44891bfc74160919d, type: 3}
-    Height: 1.7
-    Radius: 1.066
+  - Name: Maple_A
+    Prefab: {fileID: 5590991458139518844, guid: c9b169e24625a414ea14ead2c2c50f09, type: 3}
+    Height: 14.8
+    Radius: 5.75
+  - Name: Maple_B
+    Prefab: {fileID: 3605274434466435723, guid: 975a1db2080296a4b97b4883079ed7aa, type: 3}
+    Height: 12.8
+    Radius: 5.313
+  - Name: Outcrop_A
+    Prefab: {fileID: 5331511820638468743, guid: b86def80deefebc45ba94dfb18c01ab4, type: 3}
+    Height: 3.559
+    Radius: 3.167
+  - Name: Outcrop_B
+    Prefab: {fileID: 9180049175490772289, guid: 3a53420407214904880321f19571be41, type: 3}
+    Height: 2.042
+    Radius: 3.463
+  - Name: Outcrop_C
+    Prefab: {fileID: 6049960757863897436, guid: 1b862abd094acf14baabf16bf3945fcb, type: 3}
+    Height: 4.377
+    Radius: 5.33
   - Name: Palm_A
     Prefab: {fileID: 2983729672155716127, guid: be90272099e625342ba32954eeba0870, type: 3}
     Height: 9
     Radius: 3.807
-  - Name: Palm_B
-    Prefab: {fileID: 951808551716185769, guid: e774bd9245c71454ab394395b3205eeb, type: 3}
-    Height: 11
-    Radius: 3.511
+  - Name: PalmYoung_A
+    Prefab: {fileID: 2973849468425765485, guid: 5684339f15d53a844a353fa1229e1f5a, type: 3}
+    Height: 1.7
+    Radius: 1.259
+  - Name: PalmYoung_B
+    Prefab: {fileID: 2257212612644607913, guid: a149cd96107de6d4b8f007f4d5de34cd, type: 3}
+    Height: 1.4
+    Radius: 1.43
+  - Name: Periwinkle
+    Prefab: {fileID: 1669940703673936742, guid: 0c0a61f83868f6b4dba6a7da0ff41bde, type: 3}
+    Height: 0.3
+    Radius: 0.114
+  - Name: Pine_A
+    Prefab: {fileID: 4717868337108521285, guid: 8b3a168679743e0418e7fced329f285a, type: 3}
+    Height: 24.8
+    Radius: 4.775
+  - Name: Pine_B
+    Prefab: {fileID: 932143980349745373, guid: fa2d63502896c854ea565dd2e4ad8469, type: 3}
+    Height: 28.8
+    Radius: 8.763
+  - Name: Pine_C
+    Prefab: {fileID: 8731446583369507163, guid: 0814a026a1554e840ab8965507eaeacb, type: 3}
+    Height: 24.8
+    Radius: 7.882
+  - Name: Pine_D
+    Prefab: {fileID: 1756061290339728385, guid: 6d8729a911c818c4f81dde1b70eb0548, type: 3}
+    Height: 21.8
+    Radius: 4.828
+  - Name: PineLog
+    Prefab: {fileID: 5244768364810232720, guid: 5331faca11a126a4099d7d780512a150, type: 3}
+    Height: 1.222
+    Radius: 5.092
+  - Name: PineSapling
+    Prefab: {fileID: 7614176087327845225, guid: 93163065595c7c4459b35809da3957a3, type: 3}
+    Height: 1.45
+    Radius: 0.767
+  - Name: PineYoung
+    Prefab: {fileID: 6498503305962592995, guid: 6952c7b65dfd58147a344f533740d5e1, type: 3}
+    Height: 4.1
+    Radius: 1.918
+  - Name: RedGinger
+    Prefab: {fileID: 2379360609803044142, guid: 0304de331f59dcb4d845e5f8d63e9ec8, type: 3}
+    Height: 1.5
+    Radius: 0.824
+  - Name: Rock_A
+    Prefab: {fileID: 3332004382686628419, guid: ec42cbbf845db2f45aa4824c639c9a1b, type: 3}
+    Height: 0.669
+    Radius: 0.665
+  - Name: Rock_B
+    Prefab: {fileID: 8904075506047851886, guid: 512c50d824e99e44ab460fb9a2fec032, type: 3}
+    Height: 1.402
+    Radius: 1.046
+  - Name: Rock_C
+    Prefab: {fileID: 3527937353739588429, guid: 544d0b8ebc775d2499595e32d7e0aa96, type: 3}
+    Height: 2.308
+    Radius: 1.684
+  - Name: RockFace
+    Prefab: {fileID: 14610368399745448, guid: 294c314aeb8840244b53547ca62c8b24, type: 3}
+    Height: 3.385
+    Radius: 9.596
+  - Name: Snag
+    Prefab: {fileID: 4849175935004481414, guid: fa79dfa50ab934241a1015aa88eca5a3, type: 3}
+    Height: 6.713
+    Radius: 1.761
+  - Name: Sorrel
+    Prefab: {fileID: 9020386421055606030, guid: 4389043f042474a498fe1d7e8d3c57b6, type: 3}
+    Height: 0.3
+    Radius: 0.184
+  - Name: Spruce
+    Prefab: {fileID: 8175754999058089184, guid: 81638e4a54e69924ca93c48f88054401, type: 3}
+    Height: 21.8
+    Radius: 8.478
+  - Name: Stump
+    Prefab: {fileID: 5505454178353242392, guid: b94dedc03f1f2cf489c70e8ac318519c, type: 3}
+    Height: 0.85
+    Radius: 0.512
+  - Name: TallGrass_A
+    Prefab: {fileID: 421227921834877889, guid: d843c4390bf091a41b743bf90c0cf7d0, type: 3}
+    Height: 0.5
+    Radius: 1.121
+  - Name: TallGrass_B
+    Prefab: {fileID: 5071074570600546885, guid: ef8a821f63909144993102a8c62b88e0, type: 3}
+    Height: 0.5
+    Radius: 1.019
+  - Name: Vine_A
+    Prefab: {fileID: 7806165099030912752, guid: 2266d4fb8306d6248bf49687307a8c4e, type: 3}
+    Height: 3.5
+    Radius: 0.392
+  - Name: Vine_B
+    Prefab: {fileID: 76188257208516315, guid: 31ce2bce8ea1a104b9bb8e3c9cab2f71, type: 3}
+    Height: 4.5
+    Radius: 0.584
+  - Name: Vine_Monstera
+    Prefab: {fileID: 6102081553624081823, guid: 7a6dc8f7998c24d49b9ebe0ae6d1a2de, type: 3}
+    Height: 2.5
+    Radius: 0.4
+  - Name: Wildflower_Blue
+    Prefab: {fileID: 426912776805515147, guid: 0c5038f33c495f4438fbfa23b491a96c, type: 3}
+    Height: 0.5
+    Radius: 0.327
+  - Name: Wildflower_Yellow
+    Prefab: {fileID: 6605263877343831605, guid: cef9d1ac894c73e40a7cd2bce03072ed, type: 3}
+    Height: 0.5
+    Radius: 0.317
+  - Name: WreckM113
+    Prefab: {fileID: 2375550080374220778, guid: a2b1171b28cd4444899823666fc76d43, type: 3}
+    Height: 2.18
+    Radius: 3.044

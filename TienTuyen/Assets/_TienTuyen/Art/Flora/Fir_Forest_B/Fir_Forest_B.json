@@ -1,0 +1,35 @@
+{
+ "name": "Fir_Forest_B",
+ "materials": [
+  {
+   "name": "Fir_Forest_B_rest",
+   "leaf": false,
+   "cutout": false,
+   "normal": true
+  },
+  {
+   "name": "Fir_Forest_B_M2",
+   "leaf": true,
+   "cutout": true,
+   "normal": true
+  },
+  {
+   "name": "Fir_Forest_B_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "height": 27.7,
+ "radius": 6.777,
+ "tris": [
+  6015,
+  1382,
+  4
+ ],
+ "cutoff": 0.4,
+ "smoothness": 0.2,
+ "noCard": true,
+ "cardFrom": "Spruce"
+}

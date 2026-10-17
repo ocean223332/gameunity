@@ -118,7 +118,6 @@ namespace TienTuyen.Editor
                 }
                 profile.deathFloorLift = SkinnedCharacterProfileBaker.MeasureDeathFloorLift(profile);
                 SkinnedCharacterProfileBaker.MeasureSoles(profile);
-                SkinnedCharacterProfileBaker.MeasureBack(profile);
                 if (carried != null)
                 {
                     carried.grip = Grip(type, gun, carried);
