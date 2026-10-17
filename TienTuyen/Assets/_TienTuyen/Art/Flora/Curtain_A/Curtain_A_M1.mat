@@ -47,7 +47,7 @@ Material:
     - _RockTopBlend: 0
     - _Saturation: 0.85
     - _Smoothness: 0.4
-    - _TintVariation: 0.12
+    - _TintVariation: 0.3
     - _Translucency: 0.95
     - _UseNormalMap: 1
     - _WindScale: 1

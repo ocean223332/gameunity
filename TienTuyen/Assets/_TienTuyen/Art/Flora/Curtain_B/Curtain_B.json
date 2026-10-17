@@ -23,14 +23,15 @@
  ],
  "noCard": false,
  "height": 7.5,
- "radius": 1.642,
+ "radius": 1.835,
  "tris": [
-  350,
-  96,
+  282,
+  80,
   4
  ],
  "cutoff": 0.3,
  "smoothness": 0.4,
  "translucency": 0.95,
- "tintVariation": 0.12
+ "tintVariation": 0.3,
+ "farLod": true
 }

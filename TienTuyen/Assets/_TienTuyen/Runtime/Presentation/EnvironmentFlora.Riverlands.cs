@@ -16,7 +16,7 @@ namespace TienTuyen.Presentation
         private const float BankStrip = 7f, FallClear = 20f, OpenHeight = 1.2f, Cliff = 1.1f;
         private static readonly Vector2 ViewTarget = new Vector2(-80f, -215f);
         private static int bamboo, bananaA, bananaB, bananaC, arecaA, arecaB, palmYoungA, palmYoungB, vineA, vineB, vineMonstera,
-            climberA, climberB, curtainA, curtainB, fernD, fernE, earA, earB, heliconiaA, heliconiaB, ginger, jungleA, jungleB, jungleTall;
+            climberA, climberB, curtainA, curtainB, curtainC, fernD, fernE, earA, earB, heliconiaA, heliconiaB, ginger, jungleA, jungleB, jungleTall;
 
         static partial void Riverlands()
         {
@@ -26,7 +26,7 @@ namespace TienTuyen.Presentation
             palmYoungA = biome.IndexOf("PalmYoung_A"); palmYoungB = biome.IndexOf("PalmYoung_B");
             vineA = biome.IndexOf("Vine_A"); vineB = biome.IndexOf("Vine_B"); vineMonstera = biome.IndexOf("Vine_Monstera");
             climberA = biome.IndexOf("Climber_A"); climberB = biome.IndexOf("Climber_B");
-            curtainA = biome.IndexOf("Curtain_A"); curtainB = biome.IndexOf("Curtain_B");
+            curtainA = biome.IndexOf("Curtain_A"); curtainB = Or("Curtain_B", "Curtain_A"); curtainC = Or("Curtain_C", "Curtain_A");
             fernD = Or("Fern_D", "Fern_A"); fernE = Or("Fern_E", "Fern_B");
             earA = biome.IndexOf("ElephantEar_A"); earB = biome.IndexOf("ElephantEar_B");
             heliconiaA = biome.IndexOf("Heliconia_A"); heliconiaB = biome.IndexOf("Heliconia_B"); ginger = biome.IndexOf("RedGinger");
@@ -177,23 +177,36 @@ namespace TienTuyen.Presentation
                 // Runs about 25 m long; about three quarters of the wall's length carries a curtain, thick in the strong runs.
                 float run = Mathf.PerlinNoise(lip.x / 23f + 4.1f, lip.y / 9f + (outward.z > 0 ? 7.7f : 1.3f));
                 var along = new Vector3(outward.z, 0f, -outward.x);
-                // In the strong runs a curtain from every ledge (they stand 3 m apart and are about as wide), so the run
-                // reads as one green fall of leaves; strands fringe the runs and fill drops too short for a curtain.
-                int curtain = drop * .9f >= 6f ? curtainB : curtainA;
-                bool sheet = run > .4f && drop > 3f && curtain >= 0;
+                // Broad patches of the wall stay bare stone and others grow lush, so the lips' even spacing never shows.
+                float patch = Mathf.PerlinNoise(lip.x / 41f + 2.3f, lip.y / 23f + lip.z / 41f + 6.1f);
+                bool bare = patch < .45f, lush = patch > .56f;
+                // Curtains: in the lush patches a few wide drapes, each three or four curtains merged side by side (the long
+                // Curtain_B where the drop allows); outside them a lone curtain on some strong ledges. The lone lips (shelf 0)
+                // lie evenly over the smooth faces, so they grow only in the lush patches. Length, spacing and turn vary and
+                // each hangs at most to just above whatever lies below.
+                bool lone = shelf <= 0f;
+                bool sheet = !bare && drop > 3f && curtainA >= 0 && (lush ? !lone || Chance(.6) : !lone && run > .5f && Chance(.5));
                 if (sheet)
                 {
-                    var at = lip + outward * .3f + along * Range(-.4f, .4f);
-                    Hang(curtain, at.x, at.z, lip.y + .1f, Mathf.Min(Range(.85f, 1.25f), drop * .9f / Height(curtain)),
-                        Mathf.Atan2(outward.x, outward.z) * Mathf.Rad2Deg + Range(-12f, 12f));
+                    int n = lush ? 3 + random.Next(2) : 1;
+                    float spacing = Range(.9f, 1.5f), shift = Range(-1f, 1f);
+                    for (int i = 0; i < n; i++)
+                    {
+                        int curtain = drop > 5f && Chance(lush ? .7 : .4) ? curtainB : Chance(.4) ? curtainC : curtainA;
+                        float length = Mathf.Min(drop * .95f, Height(curtain) * Range(.6f, 1.35f));
+                        var at = lip + outward * Range(.2f, .45f) + along * (shift + (i - (n - 1) * .5f) * spacing);
+                        Hang(curtain, at.x, at.z, lip.y + .1f, length / Height(curtain),
+                            Mathf.Atan2(outward.x, outward.z) * Mathf.Rad2Deg + Range(-15f, 15f));
+                    }
                 }
-                if (drop > 2.5f && run > .32f)
-                    for (int i = 0, n = sheet ? random.Next(2) : run > .55f ? 4 + random.Next(3) : 2 + random.Next(2); i < n; i++)
+                // A long strand or two beside a lush drape's edge; from afar strands on every lip read as confetti.
+                else if (lush && !lone && drop > 2.5f)
+                    for (int i = 0, n = random.Next(3); i < n; i++)
                     {
                         int vine = Chance(.2) ? vineMonstera : Pick(vineA, vineB, vineB);
                         if (vine < 0) continue;
                         var at = lip + along * Range(-1.6f, 1.6f) + outward * Range(.25f, .6f);
-                        Hang(vine, at.x, at.z, lip.y + .1f, Mathf.Min(Range(1.1f, 2.2f), drop * .85f / Height(vine)));
+                        Hang(vine, at.x, at.z, lip.y + .1f, Mathf.Min(Range(1.5f, 2.6f), drop * .9f / Height(vine)));
                     }
                 if (shelf < .7f || !Chance(.35 + .6 * run)) continue;
                 for (int i = 0, n = 2 + random.Next(shelf > 2f ? 5 : 3); i < n; i++)
@@ -270,7 +283,7 @@ namespace TienTuyen.Presentation
         {
             float side = L.RiverSide(x, z), off = Mathf.Abs(side) - L.RiverHalfWidth;
             bool rock = species == rockFace || species == outcropA || species == outcropB || species == outcropC;
-            bool hangs = species == vineA || species == vineB || species == vineMonstera || species == curtainA || species == curtainB;
+            bool hangs = species == vineA || species == vineB || species == vineMonstera || species == curtainA || species == curtainB || species == curtainC;
             // The water, and the paddies past the bank strip except where the hamlet stands.
             float plain = side > 0 ? L.RiverPlain : L.FarPlain;
             bool karst = onSkin || OnKarst(x, side);

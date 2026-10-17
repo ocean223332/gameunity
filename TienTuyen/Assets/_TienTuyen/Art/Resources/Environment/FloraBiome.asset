@@ -68,12 +68,16 @@ MonoBehaviour:
     Radius: 1.466
   - Name: Curtain_A
     Prefab: {fileID: 7734934151761526554, guid: addb24e5660f6d649a7498391fe72736, type: 3}
-    Height: 7
-    Radius: 1.906
+    Height: 4.5
+    Radius: 1.328
   - Name: Curtain_B
     Prefab: {fileID: 5605326747909624357, guid: 4c6f231b766fad54b8818243c3a6afc3, type: 3}
     Height: 7.5
-    Radius: 1.642
+    Radius: 1.835
+  - Name: Curtain_C
+    Prefab: {fileID: 8804454651126836507, guid: 89a1cdf06ba33c44ba1238e01b388303, type: 3}
+    Height: 5
+    Radius: 0.954
   - Name: ElephantEar_A
     Prefab: {fileID: 6693732929751103730, guid: bbe334e53cf016147b446cbea600ee89, type: 3}
     Height: 1.5

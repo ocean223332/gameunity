@@ -1,5 +1,5 @@
-# curtain_gen.py: builds the vine curtain sources (Curtain_A, Curtain_B) for flora_build from curtain_geom's cards.
-# blender -b --factory-startup -P curtain_gen.py -- OUTDIR   (writes OUTDIR/Curtain_A.fbx, OUTDIR/Curtain_B.fbx)
+# curtain_gen.py: builds the vine curtain sources (curtain_geom.CURTAINS) for flora_build from curtain_geom's cards.
+# blender -b --factory-startup -P curtain_gen.py -- OUTDIR   (writes OUTDIR/<name>.fbx)
 # Each file holds <name>_LOD0 and <name>_LOD1 with the materials "Ivy" and "Root"; flora_build's EXT maps those names to
 # the Jungle pack's ivy and monstera atlases.
 import os
@@ -10,11 +10,10 @@ import bpy
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import curtain_geom  # noqa: E402
 
-CURTAINS = (("Curtain_A", 4.5, 2.6, 11), ("Curtain_B", 7.5, 3.2, 23))
 out = sys.argv[sys.argv.index("--") + 1]
 os.makedirs(out, exist_ok=True)
 
-for name, height, width, seed in CURTAINS:
+for name, height, width, seed in curtain_geom.CURTAINS:
     for block in (bpy.data.objects, bpy.data.meshes, bpy.data.materials):
         for item in list(block):
             block.remove(item)

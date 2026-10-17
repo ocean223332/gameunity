@@ -528,7 +528,10 @@ PLANT = dict(leaf="all", sphere=0.45, stiff=1.1, tex=1024, look=TROPICAL)
 VINE = dict(PLANT, stiff=1.0, tex=512, hang=True)
 # The jungle-tree leaf atlas crop (leaves over a pale yellow stem) and the ivy read straw-olive on a sunlit wall; pulled to green.
 WALL_GREEN = (0.6, 1.0, 0.5)
-CURTAIN = dict(PLANT, stiff=1.0, hang=True, leaf_mul=(0.75, 1.0, 0.6),
+# Wall vines and curtains darker still: from afar they sit in the rock's shade with the ledge moss instead of glowing lime.
+WALL_DEEP = (0.4, 0.66, 0.36)
+# farLod: kept to the tall trees' distances whatever their length (FloraPrefabBuilder); tint: curtains side by side differ.
+CURTAIN = dict(PLANT, stiff=1.0, hang=True, leaf_mul=WALL_DEEP, look=dict(TROPICAL, tintVariation=0.3, farLod=True),
                mats={"Ivy": jt("Ivy_herb_basecolor_4K", "Ivy_herb_Normal_4K"), "Root": JT_MONSTERA})
 
 
@@ -579,14 +582,15 @@ EXT.update({
     "PalmYoung_A": dict(src=JT_PLANTS + "Palm/Young_palm_var1.fbx", **lods("Palm_var1", 0, 2), h=1.7, maps=JT_PALM, **PLANT),
     "PalmYoung_B": dict(src=JT_PLANTS + "Palm/Young_palm_var4.fbx", **lods("Palm_var2", 0, 2), h=1.4, maps=JT_PALM, **PLANT),
     "Vine_A": dict(src=JT_PLANTS + "Vines/Hanging_vine_var1.fbx", **lods("hanging_vine_var1", 0, 1), h=3.5, maps=dict(JT_LEAVES, crop=True),
-                   leaf_mul=WALL_GREEN, **VINE),
+                   leaf_mul=WALL_DEEP, **VINE),
     "Vine_B": dict(src=JT_PLANTS + "Vines/Hanging_vine_var2.fbx", **lods("hanging_vine_var2", 0, 1), h=4.5, maps=dict(JT_LEAVES, crop=True),
-                   leaf_mul=WALL_GREEN, **VINE),
+                   leaf_mul=WALL_DEEP, **VINE),
     "Vine_Monstera": dict(src=JT_PLANTS + "Monstera_andasonii/Vine_monstera_hanging_var1.fbx", **lods("MO_var1", 0, 2), h=2.5,
                           maps=JT_MONSTERA, **dict(VINE, tex=1024)),
     # Vine curtains: dense sheets of the ivy's hanging cascade with a few monstera aerial roots, built by curtain_gen.py.
-    "Curtain_A": dict(src="flora_gen/Curtain_A.fbx", **lods("Curtain_A", 0, 1), h=7.0, **CURTAIN),
+    "Curtain_A": dict(src="flora_gen/Curtain_A.fbx", **lods("Curtain_A", 0, 1), h=4.5, **CURTAIN),
     "Curtain_B": dict(src="flora_gen/Curtain_B.fbx", **lods("Curtain_B", 0, 1), h=7.5, **CURTAIN),
+    "Curtain_C": dict(src="flora_gen/Curtain_C.fbx", **lods("Curtain_C", 0, 1), h=5.0, **CURTAIN),
     "Climber_A": dict(src=JT_PLANTS + "Climbing_leaves/Herb_climbing_var1.fbx", **lods("Herb_climbing_var1", 0, 1), h=1.4,
                       maps=jt("Ivy_herb_basecolor_4K", "Ivy_herb_Normal_4K"), leaf_mul=WALL_GREEN, **dict(PLANT, tex=512)),
     "Climber_B": dict(src=JT_PLANTS + "Climbing_leaves/Monstera_climbing_var1.fbx", **lods("Monstera_climbing_var1", 0, 1), h=1.2,

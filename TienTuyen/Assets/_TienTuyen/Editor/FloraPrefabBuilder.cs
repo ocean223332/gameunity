@@ -34,6 +34,8 @@ namespace TienTuyen.Editor
             public float cutoff, smoothness, translucency, tintVariation;
             // The impostor render came out empty (flora_build): keep LOD1 out to the card's distance instead.
             public bool noCard;
+            // Kept as far as the tall trees whatever its height (vine curtains on the karst wall, seen across the valley).
+            public bool farLod;
             // With noCard: a species whose card stands in past StandInDistance, scaled to this one's height.
             public string cardFrom;
         }
@@ -135,8 +137,14 @@ namespace TienTuyen.Editor
                 bool standIn = json.noCard && !string.IsNullOrEmpty(json.cardFrom) && BorrowCard(folder, json, renderers[2][0]);
                 if (json.noCard && !standIn) UnityEngine.Object.DestroyImmediate(renderers[2][0].gameObject);
                 group.RecalculateBounds();
-                var distances = LodDistances(json.height);
+                var distances = LodDistances(json.farLod ? Mathf.Max(json.height, 7f) : json.height);
                 if (standIn) distances[1] = StandInDistance;
+                // Rocks keep their mesh until they cull: a rock's cross-card is a pale flat slab, and the dither between the
+                // two read as a see-through stone. Big ones stay to the far wall's foot (at the outcrop class's 220 m they
+                // dithered out in the river and overview shots; there are only a few dozen of them).
+                bool rock = json.name.StartsWith("Rock_") || json.name.StartsWith("Outcrop_") || json.name == "RockFace";
+                if (json.name == "RockFace" || json.name.StartsWith("Outcrop_")) distances[2] = BigRockDistance;
+                if (rock) distances[1] = distances[2] * .98f;
                 var lods = new LOD[json.noCard && !standIn ? 2 : 3];
                 for (int l = 0; l < lods.Length; l++)
                     lods[l] = new LOD(ScreenHeight(group.size, distances[lods.Length == 2 && l == 1 ? 2 : l]), renderers[l]);
@@ -155,6 +163,7 @@ namespace TienTuyen.Editor
         // A borrowed card is another tree's silhouette, so it starts where the haze hides the difference; full LOD1s
         // out to 1200 m cost the forest segment over 1 ms GPU.
         private const float StandInDistance = 350f;
+        private const float BigRockDistance = 600f;
 
         /// <summary>Gives <paramref name="card"/> the card mesh and material of json.cardFrom, scaled to json's height.</summary>
         private static bool BorrowCard(string folder, SpeciesJson json, Renderer card)

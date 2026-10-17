@@ -360,6 +360,7 @@ namespace TienTuyen.Presentation
         {
             var table = Face();
             var found = new List<(Vector3, Vector3, float, float)>();
+            var heights = new List<float>();
             for (int i = 2; i < table.Columns - 2; i += 3)
             {
                 float x = FaceWest + i * FaceDx;
@@ -379,11 +380,49 @@ namespace TienTuyen.Presentation
                     var outward = TowardRiver(x, lip.z - 1f);
                     found.Add((lip, outward, y - lowest, depth * .85f));
                     lowest = y;
+                    heights.Add(y);
                 }
+                FaceLips(table, i, heights, found);
+                heights.Clear();
             }
             foreach (var (centre, radiusX, radiusZ, height, lean, _) in CrestBlocks())
                 found.Add((new Vector3(centre.x + lean * height, centre.y + height, centre.z + radiusZ * .6f), TowardRiver(centre.x, centre.z), height - 3f, Mathf.Min(radiusX, radiusZ)));
             return found;
+        }
+
+        /// <summary>
+        /// Lips without a ledge, so plants drape the smooth faces and hang from the top edge too: going down column i
+        /// from just under its top, every point at least 3.5 m from a ledge or another lip where the skin below bulges
+        /// out by at most 0.6 m over the next 2 m. The lip is pushed out past that bulge, so a curtain hung there clears
+        /// the rounded domes as well as the receding faces. Its drop runs down to where the skin bulges out further, or to
+        /// the next lip; no shelf.
+        /// </summary>
+        private static void FaceLips(FaceTable table, int i, List<float> ledgeHeights, List<(Vector3, Vector3, float, float)> found)
+        {
+            const float step = .5f, gap = 3.5f, clear = 2f, bulgeMax = .6f;
+            float floor = L.RiverLevel + 8f;
+            var taken = new List<float>(ledgeHeights);
+            for (float y = table.Top[i] - .5f; y > floor + 4f; y -= step)
+            {
+                bool near = false;
+                foreach (float t in taken) near |= Mathf.Abs(t - y) < gap;
+                if (near) continue;
+                var lip = FacePoint(table, i, y);
+                float bulge = 0f;
+                for (float d = step; d <= clear; d += step) bulge = Mathf.Max(bulge, FacePoint(table, i, y - d).z - lip.z);
+                if (bulge > bulgeMax) continue;
+                lip.z += bulge;
+                float bottom = y - clear;
+                while (bottom > floor && FacePoint(table, i, bottom - step).z <= lip.z + .25f)
+                {
+                    bool hit = false;
+                    foreach (float t in taken) hit |= t < y && t > bottom - step - .5f;
+                    if (hit) break;
+                    bottom -= step;
+                }
+                found.Add((lip, TowardRiver(lip.x, lip.z - 1f), y - bottom, 0f));
+                taken.Add(y);
+            }
         }
 
         // ---------- Falls ----------

@@ -151,6 +151,11 @@ Shader "TienTuyen/Environment/River"
                 normalTS = normalize(lerp(normalTS, normalTS * half3(_RippleScales.w, _RippleScales.w, 1.0), saturate(pow(cameraDistance / 20.0, 10.0))));
                 // x across (north), y downstream, z up.
                 float3 normalWS = normalize(float3(side.x * normalTS.x + along.x * normalTS.y, normalTS.z, side.y * normalTS.x + along.y * normalTS.y));
+                // At grazing angles the ripples tip the reflection below the horizon, where every probe sees ground: the far
+                // river turned into a flat brown sheet. Lean such normals back up until the reflection just clears it.
+                float3 toEye = GetWorldSpaceNormalizeViewDir(positionWS);
+                float3 mirrored = reflect(-toEye, normalWS);
+                normalWS = normalize(lerp(normalWS, float3(0, 1, 0), saturate((0.08 - mirrored.y) * 3.0)));
 
                 // The bed through the water: refracted by the ripples, less with distance; where the offset lands on
                 // something in front of the water, straight through instead.

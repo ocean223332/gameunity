@@ -253,13 +253,14 @@ namespace TienTuyen.Presentation
         }
 
         /// <summary>Under the launch title: a slow crane up and in over the yard's edge, down the valley to the karst
-        /// ridges (the graphics "valley" view), easing out so the hand-off to the menu starts from rest.</summary>
+        /// ridges, nearly level so the twin pinnacles and the falls fill the frame over the sandbag line; it eases out
+        /// so the hand-off to the menu starts from rest.</summary>
         private static Shot VistaShot(float time)
         {
             float u = Smooth(Mathf.Clamp01(time / TitleDriftSeconds));
             Vector3 position = Vector3.Lerp(new Vector3(2.6f, 2.2f, -3.2f), new Vector3(.2f, 3.0f, -6.2f), u);
             position.y = Mathf.Max(position.y, CombatEnvironment.GroundHeight(position.x, position.z) + 1.6f);
-            return new Shot { Position = position, Yaw = Mathf.Lerp(-165f, -175f, u), Pitch = Mathf.Lerp(1.5f, 3.5f, u), Fov = 48f };
+            return new Shot { Position = position, Yaw = Mathf.Lerp(-165f, -175f, u), Pitch = Mathf.Lerp(-.5f, 1f, u), Fov = 48f };
         }
 
         public const float TitleDriftSeconds = 9f;

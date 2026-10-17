@@ -22,15 +22,16 @@
   }
  ],
  "noCard": false,
- "height": 7.0,
- "radius": 1.906,
+ "height": 4.5,
+ "radius": 1.328,
  "tris": [
-  164,
+  156,
   48,
   4
  ],
  "cutoff": 0.3,
  "smoothness": 0.4,
  "translucency": 0.95,
- "tintVariation": 0.12
+ "tintVariation": 0.3,
+ "farLod": true
 }

@@ -1,0 +1,37 @@
+{
+ "name": "Curtain_C",
+ "materials": [
+  {
+   "name": "Curtain_C_M0",
+   "leaf": true,
+   "cutout": true,
+   "normal": true
+  },
+  {
+   "name": "Curtain_C_M1",
+   "leaf": true,
+   "cutout": true,
+   "normal": true
+  },
+  {
+   "name": "Curtain_C_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "noCard": false,
+ "height": 5.0,
+ "radius": 0.954,
+ "tris": [
+  108,
+  42,
+  4
+ ],
+ "cutoff": 0.3,
+ "smoothness": 0.4,
+ "translucency": 0.95,
+ "tintVariation": 0.3,
+ "farLod": true
+}
