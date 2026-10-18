@@ -21,6 +21,9 @@ namespace TienTuyen.Presentation.Interface
             return Get("rifle", 512, 160, Rifle);
         }
 
+        /// <summary>The hero's knife, the entry after the guns.</summary>
+        public static Sprite Knife => Get("knife", 512, 160, KnifeShape);
+
         public static Sprite Passive(string passiveId)
         {
             switch (passiveId)
@@ -107,6 +110,16 @@ namespace TienTuyen.Presentation.Interface
             s.Rect(32, 11.4f, 38.4f, 12.3f);
             s.Rect(37.5f, 11.4f, 38.4f, 13.8f);
             s.Cut(29, 14, 29.6f, 17.6f);
+        }
+
+        private static void KnifeShape(Shape s)
+        {
+            // Combat knife: ribbed grip, guard, clip-point blade.
+            s.RoundRect(14, 12.4f, 40, 19.6f, 2.4f);
+            for (int i = 0; i < 4; i++) s.Cut(19 + i * 5f, 12.4f, 19.8f + i * 5f, 13.6f);
+            s.Rect(39, 9.6f, 42.4f, 22.4f);
+            s.Poly(42, 12.6f, 42, 19.8f, 70, 19.8f, 78, 18.6f, 88, 16.4f, 80, 13.4f, 72, 12.6f);
+            s.Cut(46, 16.6f, 70, 17.2f);
         }
 
         private static void MedKit(Shape s)

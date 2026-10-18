@@ -33,6 +33,8 @@ namespace TienTuyen.Presentation
         public AnimationClip meleeAttack;
         [Tooltip("Seconds into meleeAttack where the blow lands (the gameplay damage tick).")]
         public float meleeContactTime;
+        [Tooltip("The hero's knife: its ready stance in the right fist, upper body, looping; meleeAttack is its slash.")]
+        public AnimationClip knifeIdle;
         [Tooltip("Melee-only enemies: the weapon is a one-handed blade in the right fist (see fistChannel), never shouldered, and aim is the guard clip.")]
         public bool guardHold;
         [Tooltip("runForward carries its own upper body (lean and weapon carry): the aim/guard layer fades out over the forward run.")]

@@ -295,6 +295,28 @@ namespace TienTuyen.Combat.Tests
                 string.Join("; ", failures.GetRange(0, Mathf.Min(12, failures.Count))) + (failures.Count > 12 ? " ... " + failures.Count : ""));
         }
 
+        [Test]
+        public void AimOrAShotAlwaysBringsTheWeaponUpFromAtEase()
+        {
+            foreach (bool shot in new[] { false, true })
+            {
+                hero.ResetPose();
+                hero.Relaxed = false;
+                hero.AimWeight = 0f;
+                hero.SelectWeapon(0);
+                for (int frame = 0; frame < 180; frame++) hero.Tick(1f / 60f, Vector3.zero, Vector3.forward);
+                Assert.That(hero.AtEaseWeight, Is.EqualTo(1f), "Standing still and unaimed lowers the hero's weapon to at-ease");
+                HandGaps(hero, out float grip, out float support);
+                Assert.That(Mathf.Max(grip, support), Is.LessThan(.02f), "Both hands stay on the weapon at ease");
+                if (shot) hero.Fire(0);
+                else hero.AimWeight = 1f;
+                // No slower than the shoulder rises to the sights (.15 s).
+                for (int frame = 0; frame < 9; frame++) hero.Tick(1f / 60f, Vector3.zero, Vector3.forward);
+                Assert.That(hero.AtEaseWeight, Is.Zero, (shot ? "A shot" : "Aim") + " must bring the weapon up from at-ease at once");
+            }
+            hero.AimWeight = 0f;
+        }
+
         private static Transform Bone(CombatCharacterRig rig, HumanBodyBones bone) => rig.GetComponentInChildren<Animator>().GetBoneTransform(bone);
 
         /// <summary>The profile's clip set of the rig's current weapon when the right hand carries it, else null.</summary>
@@ -744,6 +766,39 @@ namespace TienTuyen.Combat.Tests
             TestContext.WriteLine($"Scene unload: {graphs.Count} graphs captured, {surviving} still valid.");
             LogAssert.NoUnexpectedReceived();
             Assert.That(surviving, Is.Zero, "Every graph must be destroyed, including rigs that were never active.");
+        }
+
+        [UnityTest]
+        public IEnumerator HeroKnifeLeftHandKeepsTheCsgoWrist()
+        {
+            // The knife takes reach the hero through Humanoid retargeting from the xdR avatar, whose reference left hand is turned
+            // 67 degrees from the hero's: uncorrected, the guard hand bent back (+12 degrees) and turned palm-out. The takes' own
+            // forearm and hand rotations, given to the hero, bend its knuckles 9.1 degrees toward the palm in the stance (17.8 on
+            // the xdR body, whose knuckles sit elsewhere on the hand); mid-slash the take bends them 10 to 25 degrees that way.
+            const float SourceFlex = -9.1f, MaxOff = 5f;
+            var animator = hero.GetComponentInChildren<Animator>();
+            float Flex()
+            {
+                Vector3 forearm = animator.GetBoneTransform(HumanBodyBones.LeftLowerArm).position, wrist = animator.GetBoneTransform(HumanBodyBones.LeftHand).position;
+                Vector3 index = animator.GetBoneTransform(HumanBodyBones.LeftIndexProximal).position, middle = animator.GetBoneTransform(HumanBodyBones.LeftMiddleProximal).position;
+                Vector3 along = wrist - forearm;
+                return Vector3.SignedAngle(along, middle - wrist, Vector3.Cross(along, index - middle));
+            }
+            Assert.That(game.DrawKnife(), Is.True);
+            SetField(game, "switchRemaining", 0f);
+            yield return new WaitForSecondsRealtime(1f);
+            float stance = Flex();
+            Assert.That(game.Slash(), Is.True);
+            var swing = typeof(CombatGame).GetProperty(nameof(CombatGame.KnifeSwingTime));
+            for (int frame = 0; frame < 20; frame++)
+            {
+                swing.SetValue(game, .3f);
+                yield return null;
+            }
+            float slash = Flex();
+            swing.SetValue(game, -1f);
+            Assert.That(stance, Is.EqualTo(SourceFlex).Within(MaxOff), "stance wrist flex");
+            Assert.That(slash, Is.InRange(-25f, -5f), "slash wrist flex");
         }
 
         [Test]

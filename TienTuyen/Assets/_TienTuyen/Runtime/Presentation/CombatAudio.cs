@@ -248,6 +248,8 @@ namespace TienTuyen.Presentation
             game.PlayerDamaged += OnPlayerDamaged;
             game.EnemyMeleeSwing += OnEnemyMeleeSwing;
             game.EnemyMeleeStruck += OnEnemyMeleeStruck;
+            game.KnifeSwung += OnKnifeSwung;
+            game.KnifeStruck += OnKnifeStruck;
             game.EnemyChargeStarted += OnEnemyChargeStarted;
             game.SurfaceImpact += OnSurfaceImpact;
             game.BulletNearMiss += OnBulletNearMiss;
@@ -270,6 +272,8 @@ namespace TienTuyen.Presentation
             game.PlayerDamaged -= OnPlayerDamaged;
             game.EnemyMeleeSwing -= OnEnemyMeleeSwing;
             game.EnemyMeleeStruck -= OnEnemyMeleeStruck;
+            game.KnifeSwung -= OnKnifeSwung;
+            game.KnifeStruck -= OnKnifeStruck;
             game.EnemyChargeStarted -= OnEnemyChargeStarted;
             game.SurfaceImpact -= OnSurfaceImpact;
             game.BulletNearMiss -= OnBulletNearMiss;
@@ -324,6 +328,16 @@ namespace TienTuyen.Presentation
             PlayWorld(KnifeVariant(false), actor.position, .02f);
         }
 
+        private void OnKnifeSwung()
+        {
+            PlaySfx(KnifeVariant(true));
+        }
+
+        private void OnKnifeStruck(Transform enemy)
+        {
+            PlayWorld(KnifeVariant(false), enemy.position, .02f);
+        }
+
         private void OnEnemyChargeStarted(Transform actor, EnemyActionKind kind)
         {
             string clip = kind == EnemyActionKind.ChargeTelegraph
@@ -368,6 +382,8 @@ namespace TienTuyen.Presentation
         private void OnWeaponSwitched(int from, int to)
         {
             reload = null;
+            // The knife comes out of its sheath without a draw sound.
+            if (to == game.WeaponCount) return;
             string id = game.WeaponAt(to)?.Id;
             string clip = id == ContentIds.Smg
                 ? "MP5SD_Draw__mp5_draw"

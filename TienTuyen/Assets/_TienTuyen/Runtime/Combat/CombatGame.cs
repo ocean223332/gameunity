@@ -106,6 +106,18 @@ namespace TienTuyen.Combat
         public ShopSession Shop { get; private set; }
         public ProgressionStats Stats => Run == null ? ProgressionRules.Aggregate(Array.Empty<StatModifier>()) : Run.Stats;
         public int WeaponCount => Run?.Weapons.Count ?? 0;
+        /// <summary>The knife is in hand: key 5, the entry after the guns in the scroll and Q cycle. The gun slot it
+        /// was drawn from stays <see cref="ActiveWeaponSlot"/>.</summary>
+        public bool KnifeOut { get; private set; }
+        /// <summary>Seconds into the slash in progress, or -1.</summary>
+        public float KnifeSwingTime { get; private set; } = -1f;
+        public bool KnifeSwinging => KnifeSwingTime >= 0;
+        /// <summary>The slash in progress is a quick slash (F) from a gun, which comes back when it ends.</summary>
+        public bool QuickKnife { get; private set; }
+        /// <summary>The hand's entry in the weapon list: a gun slot, or <see cref="WeaponCount"/> for the knife.</summary>
+        public int SelectedEntry => KnifeOut || QuickKnife && KnifeSwinging ? WeaponCount : ActiveWeaponSlot;
+        public event Action KnifeSwung;
+        public event Action<Transform> KnifeStruck;
         public int UpgradeChoiceCount => Run?.CurrentChoices.Count ?? 0;
         public bool SupplyVisible { get; private set; }
         public float SupplyProgress { get; private set; }
@@ -326,6 +338,8 @@ namespace TienTuyen.Combat
                 if (keyboard.digit2Key.wasPressedThisFrame) SwitchWeapon(1);
                 if (keyboard.digit3Key.wasPressedThisFrame) SwitchWeapon(2);
                 if (keyboard.digit4Key.wasPressedThisFrame) SwitchWeapon(3);
+                if (keyboard.digit5Key.wasPressedThisFrame) DrawKnife();
+                if (keyboard.fKey.wasPressedThisFrame) Slash();
                 if (keyboard.qKey.wasPressedThisFrame) LastWeapon();
             }
             crouchHeld = (keyboard != null && (keyboard.leftCtrlKey.isPressed || keyboard.cKey.isPressed)) ||
@@ -375,7 +389,7 @@ namespace TienTuyen.Combat
         public void RequestReload()
         {
             int slot = ActiveWeaponSlot;
-            if (State != CombatState.Playing || switchRemaining > 0 || slot >= WeaponCount) return;
+            if (State != CombatState.Playing || switchRemaining > 0 || slot >= WeaponCount || KnifeOut || KnifeSwinging) return;
             if (weaponReload[slot] <= 0 && weaponAmmo[slot] < MagazineSizeAt(slot))
                 StartReload(slot);
         }
@@ -394,10 +408,12 @@ namespace TienTuyen.Combat
         /// </summary>
         public bool SwitchWeapon(int slot)
         {
-            if (State != CombatState.Playing || slot < 0 || slot >= WeaponCount || slot == ActiveWeaponSlot) return false;
-            int from = ActiveWeaponSlot;
-            weaponReload[from] = 0;
+            if (State != CombatState.Playing || slot < 0 || slot >= WeaponCount || slot == ActiveWeaponSlot && !KnifeOut ||
+                KnifeSwinging) return false;
+            int from = SelectedEntry;
+            weaponReload[ActiveWeaponSlot] = 0;
             lastWeaponSlot = from;
+            KnifeOut = false;
             ActiveWeaponSlot = slot;
             heldWeapon = Run.Weapons[slot];
             SwitchDuration = CombatRules.WeaponDrawSeconds;
@@ -406,9 +422,72 @@ namespace TienTuyen.Combat
             return true;
         }
 
-        public bool NextWeapon() => WeaponCount > 1 && SwitchWeapon((ActiveWeaponSlot + 1) % WeaponCount);
-        public bool PreviousWeapon() => WeaponCount > 1 && SwitchWeapon((ActiveWeaponSlot + WeaponCount - 1) % WeaponCount);
-        public bool LastWeapon() => SwitchWeapon(lastWeaponSlot);
+        /// <summary>Puts the gun away and draws the knife (one draw, like a gun).</summary>
+        public bool DrawKnife()
+        {
+            if (State != CombatState.Playing || WeaponCount == 0 || KnifeOut || KnifeSwinging) return false;
+            int from = ActiveWeaponSlot;
+            weaponReload[from] = 0;
+            lastWeaponSlot = from;
+            KnifeOut = true;
+            SwitchDuration = CombatRules.WeaponDrawSeconds;
+            switchRemaining = SwitchDuration;
+            WeaponSwitched?.Invoke(from, WeaponCount);
+            return true;
+        }
+
+        /// <summary>A knife slash: from the knife in hand, or from any gun (F), which cancels its reload and comes back
+        /// ready once the slash ends.</summary>
+        public bool Slash()
+        {
+            if (State != CombatState.Playing || WeaponCount == 0 || KnifeSwinging || KnifeOut && switchRemaining > 0) return false;
+            if (!KnifeOut)
+            {
+                weaponReload[ActiveWeaponSlot] = 0;
+                switchRemaining = 0;
+            }
+            QuickKnife = !KnifeOut;
+            KnifeSwingTime = 0;
+            KnifeSwung?.Invoke();
+            return true;
+        }
+
+        private bool SelectEntry(int entry) => entry == WeaponCount ? DrawKnife() : SwitchWeapon(entry);
+        public bool NextWeapon() => WeaponCount > 0 && SelectEntry((SelectedEntry + 1) % (WeaponCount + 1));
+        public bool PreviousWeapon() => WeaponCount > 0 && SelectEntry((SelectedEntry + WeaponCount) % (WeaponCount + 1));
+        public bool LastWeapon() => SelectEntry(lastWeaponSlot);
+
+        /// <summary>Advances the slash: at contact it strikes every enemy in the frontal arc within reach.</summary>
+        private void UpdateKnife(float dt)
+        {
+            if (!KnifeSwinging) return;
+            float before = KnifeSwingTime;
+            KnifeSwingTime += dt;
+            if (before < CombatRules.KnifeContactSeconds && KnifeSwingTime >= CombatRules.KnifeContactSeconds)
+            {
+                float cos = Mathf.Cos(CombatRules.KnifeArcDegrees * Mathf.Deg2Rad);
+                foreach (var enemy in enemies)
+                {
+                    if (enemy == null || !enemy.active) continue;
+                    Vector3 to = enemy.body.transform.position - player.position;
+                    to.y = 0;
+                    if (to.sqrMagnitude > CombatRules.KnifeReach * CombatRules.KnifeReach ||
+                        to.sqrMagnitude > .01f && Vector3.Dot(to.normalized, aimDirection) < cos) continue;
+                    var body = enemy.body.transform;
+                    ApplyShotDamage(enemy, CombatRules.KnifeDamage * Stats.DamageFactor * (enemy.elite ? CombatRules.KnifeEliteFactor : 1f), false);
+                    KnifeStruck?.Invoke(body);
+                }
+            }
+            if (KnifeSwingTime < CombatRules.KnifeSwingSeconds) return;
+            KnifeSwingTime = -1f;
+            QuickKnife = false;
+        }
+
+        private void PutKnifeAway()
+        {
+            KnifeOut = QuickKnife = false;
+            KnifeSwingTime = -1f;
+        }
 
         private static Vector2 RotatePlanar(Vector2 input, float yawDegrees)
         {
@@ -466,6 +545,7 @@ namespace TienTuyen.Combat
             Run = null;
             heldWeapon = null;
             ActiveWeaponSlot = 0;
+            PutKnifeAway();
             lastWeaponSlot = -1;
             switchRemaining = 0;
             State = CombatState.Menu;
@@ -607,7 +687,7 @@ namespace TienTuyen.Combat
             {
                 switchRemaining = Mathf.Max(0, switchRemaining - dt);
                 // An empty weapon starts its reload as soon as it is drawn.
-                if (switchRemaining == 0 && weaponAmmo[ActiveWeaponSlot] <= 0 && weaponReload[ActiveWeaponSlot] <= 0)
+                if (switchRemaining == 0 && !KnifeOut && weaponAmmo[ActiveWeaponSlot] <= 0 && weaponReload[ActiveWeaponSlot] <= 0)
                     StartReload(ActiveWeaponSlot);
             }
             MovePlayer(dt, movement);
@@ -618,6 +698,8 @@ namespace TienTuyen.Combat
             UpdateBullets(dt);
             if (State != CombatState.Playing) return;
             UpdatePickups();
+            UpdateKnife(dt);
+            if (State != CombatState.Playing) return;
             FireWeapon();
             RunElapsed += dt;
             WaveRemaining = Mathf.Max(0, WaveRemaining - dt);
@@ -634,6 +716,7 @@ namespace TienTuyen.Combat
             squadLeft = 0;
             elitesThisWave = 0;
             KeepHeldWeaponInHand();
+            PutKnifeAway();
             lastWeaponSlot = -1;
             switchRemaining = 0;
             for (int slot = 0; slot < ProgressionRun.MaxWeaponSlots; slot++)
@@ -1155,6 +1238,13 @@ namespace TienTuyen.Combat
 
         private void FireWeapon()
         {
+            if (KnifeOut || KnifeSwinging)
+            {
+                AimOnTarget = false;
+                // The knife in hand slashes on the trigger, or by itself at an enemy within reach.
+                if (KnifeOut && (manualAim ? triggerHeld : FindTarget(CombatRules.KnifeReach) >= 0)) Slash();
+                return;
+            }
             if (manualAim)
             {
                 FireManualWeapons();

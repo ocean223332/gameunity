@@ -34,7 +34,7 @@ TILES, OUT = sys.argv[1], sys.argv[2]
 X0, X1, Y0, Y1 = 3252, 3260, 1842, 1851
 ROW, COL, PX = 1150, 1100, 36.44            # station pixel, metres per pixel at 17.5 N
 HS, VS, FAR_LIFT = .4, 1.9, .35
-SUN_FORWARD = np.array([.55, -.4, .73]); SUN_FORWARD /= np.linalg.norm(SUN_FORWARD)   # Sunny LightingPreset
+SUN_FORWARD = np.array([.55, -.4, .73]); SUN_FORWARD /= np.linalg.norm(SUN_FORWARD)   # CombatEnvironment's shaft sun
 
 def smooth(x): x = np.clip(x, 0, 1); return x * x * (3 - 2 * x)
 

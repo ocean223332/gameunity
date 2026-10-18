@@ -24,8 +24,9 @@ MonoBehaviour:
   reload: {fileID: -614494759756961371, guid: 20550f7151e9a834692c2244e2d338ad, type: 3}
   hit: {fileID: 0}
   death: {fileID: -6342246027399269078, guid: 332c137a795802e48b19a792fd0ff815, type: 3}
-  meleeAttack: {fileID: 0}
-  meleeContactTime: 0
+  meleeAttack: {fileID: 4285215494567231982, guid: 332c137a795802e48b19a792fd0ff815, type: 3}
+  meleeContactTime: 0.26666668
+  knifeIdle: {fileID: 2221430889938196818, guid: 332c137a795802e48b19a792fd0ff815, type: 3}
   guardHold: 0
   runCarriesUpperBody: 0
   fistChannel: {x: 0, y: 0}

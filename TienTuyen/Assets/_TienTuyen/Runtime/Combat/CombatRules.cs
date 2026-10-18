@@ -9,13 +9,13 @@ namespace TienTuyen.Combat
     public static class CombatRules
     {
         /// <summary>Enemies alive at once; a squad member that would pass it waits for a kill.</summary>
-        public const int EnemyCap = 12;
+        public const int EnemyCap = 14;
         /// <summary>Each wave sends its enemies in squads: the first squad 1.1 s in, members 0.35 s apart, and a lull
-        /// until the next squad starts. Squads grow 2, 2, 3, 3, 4, 4 and come every 9 s, 8.5 s ... 6.5 s, about 113
-        /// enemies a run (Elites take a squad place).</summary>
+        /// until the next squad starts. Squads grow 3, 3, 4, 5, 6, 7 and come every 8.2 s, 7.6 s ... 5.2 s:
+        /// 15, 18, 24, 35, 54 and 70 enemies, 216 a run (Elites take a squad place).</summary>
         public const float FirstSquadSeconds = 1.1f, SquadSpacingSeconds = 0.35f;
-        public static int SquadSize(int wave) => 2 + (Mathf.Max(1, wave) - 1) / 2;
-        public static float SquadIntervalSeconds(int wave) => Mathf.Max(6f, 9f - .5f * (Mathf.Max(1, wave) - 1));
+        public static int SquadSize(int wave) => 3 + (Mathf.Max(1, wave) - 1) * 4 / 5;
+        public static float SquadIntervalSeconds(int wave) => 8.2f - .6f * (Mathf.Max(1, wave) - 1);
         public const float PlayerMaxHealth = 200f;
         public const float PlayerSpeed = 4.75f;
         /// <summary>Crouch-walk speed over run speed: CS:GO's crouch-walk cycle against its run cycle (67.8 / 145.7 in).</summary>
@@ -33,6 +33,10 @@ namespace TienTuyen.Combat
         public const float WaveSeconds = 40f;
         /// <summary>Seconds to draw the weapon switched to; it cannot fire or reload meanwhile.</summary>
         public const float WeaponDrawSeconds = 0.5f;
+        /// <summary>The knife: one slash lasts KnifeSwingSeconds and strikes at KnifeContactSeconds every enemy within
+        /// KnifeReach metres and KnifeArcDegrees either side of the aim. Infantry (35 HP) falls in two; elites take half.</summary>
+        public const float KnifeDamage = 25f, KnifeEliteFactor = .5f, KnifeReach = 1.8f, KnifeArcDegrees = 60f;
+        public const float KnifeSwingSeconds = .6f, KnifeContactSeconds = .2f;
         public static int Settlement(int remainingMinorUnits) => Mathf.Max(0, remainingMinorUnits / 200) * 100;
         public static int ExperienceThreshold(int level) => 8 + 4 * (Mathf.Max(1, level) - 1);
         public static bool IsSpawnSafe(Vector3 spawn, Vector3 player)

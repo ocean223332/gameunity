@@ -29,7 +29,12 @@ half EnvHazeAmount(float distance, float height)
 {
     // max() guards keep the scene view sane before CombatEnvironment publishes the globals.
     float depth = distance / max(_EnvHaze.y, 1.0);
-    half forest = _EnvHaze.x * (1.0 - exp(-depth * depth)) * exp(-max(height, 0.0) / max(_EnvHaze.w, 1.0));
+    // The forest air thins with height: what a ray crosses is its density averaged from the eye down to the surface,
+    // so from a high eye the valley floor is seen through the thin air above, not the ground layer's full depth.
+    // A surface above the eye keeps its own height's density, as before.
+    float w = max(_EnvHaze.w, 1.0), hs = max(height, 0.0), hc = max(GetCameraPositionWS().y, hs);
+    float layer = hc - hs > 0.5 ? w * (exp(-hs / w) - exp(-hc / w)) / (hc - hs) : exp(-hs / w);
+    half forest = _EnvHaze.x * (1.0 - exp(-depth * depth)) * layer;
     half atmosphere = exp(-pow(distance / max(_EnvHaze.z, 1.0), 1.6));
     return 1.0 - (1.0 - forest) * atmosphere;
 }

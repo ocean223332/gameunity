@@ -225,7 +225,7 @@ namespace TienTuyen.Combat.Tests
         [Test]
         public void WavesSendSquadsWithLullsAndNeverPassTheAliveCap()
         {
-            // Nobody dies here, so wave 2 shows the bare squad schedule and wave 6 fills up to the cap.
+            // Nobody dies here, so wave 2 shows the bare squad schedule until the cap holds it, and wave 6 fills up to the cap.
             var flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
             var entries = ((System.Array)typeof(CombatGame).GetField("enemies", flags).GetValue(game)).Cast<object>().ToArray();
             var fireTimers = new float[TienTuyen.Progression.ProgressionRun.MaxWeaponSlots];
@@ -261,7 +261,7 @@ namespace TienTuyen.Combat.Tests
                 int size = CombatRules.SquadSize(wave);
                 float lull = CombatRules.SquadIntervalSeconds(wave) - (size - 1) * CombatRules.SquadSpacingSeconds;
                 int squads = Mathf.CeilToInt((game.WaveLength - .1f - CombatRules.FirstSquadSeconds) / CombatRules.SquadIntervalSeconds(wave));
-                Assert.That(spawns.Count, Is.EqualTo(squads * size), "Spawns in wave " + wave + ": " + string.Join(", ", spawns));
+                Assert.That(spawns.Count, Is.EqualTo(Mathf.Min(squads * size, CombatRules.EnemyCap)), "Spawns in wave " + wave + ": " + string.Join(", ", spawns));
                 Assert.That(spawns[0], Is.EqualTo(CombatRules.FirstSquadSeconds).Within(.05f));
                 for (var i = 1; i < spawns.Count; i++)
                 {
