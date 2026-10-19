@@ -24,13 +24,19 @@ namespace TienTuyen.Duel.Presentation
         private const string HeadPing = "Impact_Cover__impactGeneric_light_000";
         private const float HeadPingPitch = 1.6f;
         private const string ImpactClip = "Impact_Cover__impactGeneric_light_000";
+        private const string ConfirmClip = "Hit_Enemy__impactSoft_medium_000";
+        /// <summary>
+        /// How far each impact and hit confirm strays in pitch (and in volume, by <see cref="VolumeJitter"/>) from the
+        /// take, so one take fired at a gun's rate does not repeat like a machine.
+        /// </summary>
+        private const float PitchJitter = .06f, VolumeJitter = .1f;
         private static readonly bool LogEvents = Array.IndexOf(Environment.GetCommandLineArgs(), "-duelAudioLog") >= 0;
         private static readonly Dictionary<string, AudioClip> clips = new Dictionary<string, AudioClip>(StringComparer.Ordinal);
         private static Dictionary<string, List<(float time, string clip)>> takes;
 
         private readonly Transform root;
         private readonly int localSlot;
-        private readonly AudioSource flat, ping;
+        private readonly AudioSource flat, confirm, ping;
         private readonly AudioSource[] world = new AudioSource[12];
         private int worldCursor;
 
@@ -70,6 +76,8 @@ namespace TienTuyen.Duel.Presentation
             root = new GameObject("DuelAudio").transform;
             root.SetParent(parent, false);
             flat = Source("Own", false);
+            // The confirm has its own source so its pitch can stray without bending your shots on the flat one.
+            confirm = Source("Confirm", false);
             // The bank has no head-hit clip: a light impact pitched up is the stand-in "dink".
             ping = Source("HeadPing", false);
             ping.pitch = HeadPingPitch;
@@ -89,7 +97,13 @@ namespace TienTuyen.Duel.Presentation
         /// <summary>Your bullet hit the opponent: one flat confirm at any range, a head hit with a sharp ping over it.</summary>
         public void HitConfirm(bool head)
         {
-            PlayFlat("Hit_Enemy__impactSoft_medium_000", head ? .7f : .85f, localSlot, head ? "head confirm" : "hit confirm");
+            var flesh = Clip(ConfirmClip);
+            if (flesh != null)
+            {
+                confirm.pitch = Jitter(PitchJitter);
+                confirm.PlayOneShot(flesh, (head ? .7f : .85f) * Jitter(VolumeJitter));
+                Log(localSlot, head ? "head confirm" : "hit confirm", ConfirmClip + " pitch " + confirm.pitch.ToString("0.00"));
+            }
             if (!head) return;
             var clip = Clip(HeadPing);
             if (clip == null) return;
@@ -98,10 +112,16 @@ namespace TienTuyen.Duel.Presentation
         }
 
         /// <summary>
-        /// A round striking cover or the ground, at the point, from either gun. One generic impact for every surface: the
-        /// soft impact the campaign uses for earth is the hit confirm here, and a miss must not sound like a hit.
+        /// A round striking cover or the ground, at the point, from either gun. Every surface plays the bank's one generic
+        /// impact until its own take exists (ImpactClipFor); the soft impact the campaign uses for earth is the hit
+        /// confirm here, and a miss must not sound like a hit.
         /// </summary>
-        public void Impact(int shooter, Vector3 at) => PlayAt(ImpactClip, at, .6f, 1.5f, 25f, shooter, "impact");
+        public void Impact(int shooter, Vector3 at, DuelSurface surface) =>
+            PlayAt(ImpactClipFor(surface), at, .6f * Jitter(VolumeJitter), 1.5f, 25f, shooter, "impact " + surface, Jitter(PitchJitter));
+
+        private static string ImpactClipFor(DuelSurface surface) => ImpactClip;
+
+        private static float Jitter(float range) => 1f + UnityEngine.Random.Range(-range, range);
 
         /// <summary>The opponent's shot as the play view times it, and whether it passes close by the local eye.</summary>
         public void OpponentShot(int slot, Vector3 muzzle, Vector3 end, Vector3 localEye)
@@ -406,7 +426,7 @@ namespace TienTuyen.Duel.Presentation
             Log(slot, what, name);
         }
 
-        private void PlayAt(string name, Vector3 at, float volume, float near, float far, int slot, string what)
+        private void PlayAt(string name, Vector3 at, float volume, float near, float far, int slot, string what, float pitch = 1f)
         {
             var clip = Clip(name);
             if (clip == null) return;
@@ -418,8 +438,9 @@ namespace TienTuyen.Duel.Presentation
             source.maxDistance = far;
             source.clip = clip;
             source.volume = Master * Sfx * volume;
+            source.pitch = pitch;
             source.Play();
-            Log(slot, what, name + " at " + at.ToString("F1"));
+            Log(slot, what, name + " at " + at.ToString("F1") + (pitch != 1f ? " pitch " + pitch.ToString("0.00") : ""));
         }
 
         private void Log(int slot, string what, string clip)

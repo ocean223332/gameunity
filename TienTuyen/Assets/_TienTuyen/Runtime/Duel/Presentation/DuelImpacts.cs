@@ -11,12 +11,22 @@ namespace TienTuyen.Duel.Presentation
     /// that lasts. The point is found as the resolver stops a round, against the cover boxes (DuelArenaLayout.RayHitsCover)
     /// within the gun's range sphere; the ground, which the resolver never tests, is met here as well. The arena has no
     /// colliders, so nothing here uses physics. Marks are projected decals on the arena's receiver layer, so they never
-    /// land on a body. Run with -duelAudioLog to log every impact.
+    /// land on a body. The same pool takes the blood a hit sprays onto cover close behind the body (<see cref="Splatter"/>).
+    /// Run with -duelAudioLog to log every impact and splatter.
     /// </summary>
+    /// <summary>What a round strikes, as both its dust and its sound tell it: one grouping, so they never disagree.</summary>
+    internal enum DuelSurface { Ground, Burlap, Concrete, Brick, Metal }
+
     internal sealed class DuelImpacts
     {
         /// <summary>Marks alive at once; past this the oldest is taken for the next (a long firefight cycles them).</summary>
         public const int Capacity = 48;
+
+        /// <summary>
+        /// How far past the body a hit's spray still lands on cover as one spatter. Farther, the drops spread too wide to
+        /// read as a mark, and the eye no longer ties it to the man who was hit.
+        /// </summary>
+        public const float SplatterReach = 2f;
         private const float Lifetime = 30f, FadeSeconds = 6f;
         private const uint ReceiverLayer = 2;   // the bit DuelStage sets on the arena's renderers
         private const float GroundStep = .5f;
@@ -29,10 +39,11 @@ namespace TienTuyen.Duel.Presentation
         private struct Mark
         {
             public DecalProjector projector;
-            public float age;
+            public float age, opacity;
         }
 
         private readonly Transform root;
+        private readonly Material holes, blood;
         private readonly Mark[] marks = new Mark[Capacity];
         private readonly ParticleSystem dust, chips, sparks;
         private readonly System.Random random = new System.Random(1968);
@@ -42,15 +53,18 @@ namespace TienTuyen.Duel.Presentation
         {
             root = new GameObject("DuelImpacts").transform;
             root.SetParent(parent, false);
-            var material = new Material(Shader.Find("Shader Graphs/Decal")) { name = "ImpactMarks", enableInstancing = true };
-            material.SetTexture("Base_Map", MarkAtlas());
-            material.SetFloat("Normal_Blend", 0);
+            holes = new Material(Shader.Find("Shader Graphs/Decal")) { name = "ImpactMarks", enableInstancing = true };
+            holes.SetTexture("Base_Map", MarkAtlas());
+            holes.SetFloat("Normal_Blend", 0);
+            // The campaign's wall splatter (CombatBloodEffects' surface blood): the same atlas, four tiles.
+            blood = new Material(holes) { name = "SplatterMarks" };
+            blood.SetTexture("Base_Map", Resources.Load<Texture2D>("Blood/SplatterAtlas"));
             for (int i = 0; i < marks.Length; i++)
             {
                 var node = new GameObject("ImpactMark");
                 node.transform.SetParent(root, false);
                 var projector = node.AddComponent<DecalProjector>();
-                projector.material = material;
+                projector.material = holes;
                 projector.renderingLayerMask = ReceiverLayer;
                 projector.pivot = Vector3.zero;
                 projector.drawDistance = 45f;
@@ -157,40 +171,74 @@ namespace TienTuyen.Duel.Presentation
         /// <summary>The evidence of one round at a point <see cref="Trace"/> found.</summary>
         public void Strike(Vector3 point, Vector3 normal, DuelCoverKind? kind, int slot)
         {
-            bool metal = kind == DuelCoverKind.Truck || kind == DuelCoverKind.Apc;
-            Color puff = !kind.HasValue ? Laterite : metal ? Soot : Surface(kind.Value);
+            var surface = SurfaceOf(kind);
+            bool metal = surface == DuelSurface.Metal;
+            Color puff = surface == DuelSurface.Ground ? Laterite : metal ? Soot : surface == DuelSurface.Concrete ? Concrete
+                : surface == DuelSurface.Brick ? Brick : Burlap;
             Burst(dust, point + normal * .04f, normal, 4, .3f, 1.1f, .12f, .32f, .7f, puff);
             Burst(chips, point + normal * .03f, normal, metal ? 2 : 5, 1.6f, 3.4f, .02f, .05f, .55f,
                 new Color(puff.r * .55f, puff.g * .55f, puff.b * .55f, 1f));
             if (metal) Burst(sparks, point + normal * .02f, normal, 5, 2.5f, 5f, .03f, .07f, .18f, Color.white);
 
-            ref var mark = ref marks[next];
-            next = (next + 1) % marks.Length;
-            var projector = mark.projector;
-            var up = Mathf.Abs(normal.y) > .95f ? Vector3.forward : Vector3.up;
-            projector.transform.SetPositionAndRotation(point, Quaternion.LookRotation(-normal, up) * Quaternion.Euler(0, 0, Range(0, 360)));
             // Tiles 0-1 are holes in a hard face; 2-3 are craters kicked in the dirt.
-            int variant = (kind.HasValue ? 0 : 2) + random.Next(2);
-            projector.uvBias = new Vector2(variant % 2, variant / 2) * .5f;
             float diameter = kind.HasValue ? Range(.1f, .14f) : Range(.16f, .24f);
-            projector.size = new Vector3(diameter, diameter, .3f);
-            projector.fadeFactor = 1f;
-            projector.enabled = true;
-            mark.age = 0;
+            Place(holes, point, normal, Vector3.zero, new Vector2(diameter, diameter), (kind.HasValue ? 0 : 2) + random.Next(2), 1f);
             if (LogEvents)
                 Debug.Log($"DuelImpact t={Time.time:0.00} slot {slot} {(kind.HasValue ? kind.Value.ToString() : "Ground")} at {point.ToString("F2")} normal {normal.ToString("F1")}");
         }
 
-        private static Color Surface(DuelCoverKind kind)
+        /// <summary>
+        /// Blood a hit throws on cover behind the body: the shot's ray, continued from where it left the body, meeting a
+        /// cover face within <see cref="SplatterReach"/>. The mark runs along the shot's line on the face and widens with
+        /// the distance flown; a head hit throws a larger, denser one. The ground behind is CombatBloodEffects' already.
+        /// </summary>
+        public bool Splatter(Vector3 exit, Vector3 direction, bool head, int slot)
+        {
+            if (!DuelArenaLayout.RayHitsCover(exit, direction, SplatterReach, out float distance)) return false;
+            Vector3 point = exit + direction * distance;
+            Vector3 normal = CoverFace(point, out _);
+            float diameter = (head ? .75f : .55f) * Range(.85f, 1.15f) * (1f + .3f * distance);
+            Place(blood, point, normal, direction, new Vector2(diameter * Range(.6f, .8f), diameter * 1.25f), random.Next(4), head ? .95f : .85f);
+            if (LogEvents)
+                Debug.Log($"DuelSplatter t={Time.time:0.00} slot {slot} {(head ? "head" : "body")} {distance:0.00} m behind at {point.ToString("F2")} normal {normal.ToString("F1")}");
+            return true;
+        }
+
+        /// <summary>One mark from the pool, the oldest when it is full; <paramref name="along"/> (if any) runs up its tile.</summary>
+        private void Place(Material material, Vector3 point, Vector3 normal, Vector3 along, Vector2 size, int variant, float opacity)
+        {
+            ref var mark = ref marks[next];
+            next = (next + 1) % marks.Length;
+            var projector = mark.projector;
+            projector.material = material;
+            along = Vector3.ProjectOnPlane(along, normal);
+            bool directional = along.sqrMagnitude > .001f;
+            var up = directional ? along.normalized : Mathf.Abs(normal.y) > .95f ? Vector3.forward : Vector3.up;
+            projector.transform.SetPositionAndRotation(point,
+                Quaternion.LookRotation(-normal, up) * Quaternion.Euler(0, 0, directional ? Range(-15, 15) : Range(0, 360)));
+            projector.uvBias = new Vector2(variant % 2, variant / 2) * .5f;
+            projector.size = new Vector3(size.x, size.y, .3f);
+            projector.fadeFactor = opacity;
+            projector.enabled = true;
+            mark.age = 0;
+            mark.opacity = opacity;
+        }
+
+        /// <summary>The surface a <see cref="Trace"/> kind is made of; null is the ground.</summary>
+        public static DuelSurface SurfaceOf(DuelCoverKind? kind)
         {
             switch (kind)
             {
+                case null:
+                    return DuelSurface.Ground;
+                case DuelCoverKind.Truck: case DuelCoverKind.Apc:
+                    return DuelSurface.Metal;
                 case DuelCoverKind.WarehouseWall: case DuelCoverKind.Column: case DuelCoverKind.Bunker: case DuelCoverKind.RoofSlab:
-                    return Concrete;
+                    return DuelSurface.Concrete;
                 case DuelCoverKind.BrickWall:
-                    return Brick;
+                    return DuelSurface.Brick;
                 default:
-                    return Burlap;
+                    return DuelSurface.Burlap;
             }
         }
 
@@ -202,7 +250,7 @@ namespace TienTuyen.Duel.Presentation
                 if (mark.age < 0) continue;
                 mark.age += deltaTime;
                 if (mark.age >= Lifetime) { mark.age = -1; mark.projector.enabled = false; continue; }
-                if (mark.age > Lifetime - FadeSeconds) mark.projector.fadeFactor = (Lifetime - mark.age) / FadeSeconds;
+                if (mark.age > Lifetime - FadeSeconds) mark.projector.fadeFactor = mark.opacity * (Lifetime - mark.age) / FadeSeconds;
             }
         }
 

@@ -13,6 +13,12 @@ namespace TienTuyen.Presentation
 
         /// <summary>The ground's height at (x, z) for the ground decals; null (the campaign) is the station's terrain.</summary>
         public System.Func<float, float, float> GroundHeight;
+
+        /// <summary>
+        /// Multiply the spray's colour and alpha: the droplets and streaks, and the mist. White, the campaign's, leaves them
+        /// as authored for a body seen at distance and in motion; a closer camera can darken them and thin the mist.
+        /// </summary>
+        public Color DropletTint = Color.white, MistTint = Color.white;
         private const float Lifetime = 45f, FadeSeconds = 8f, PoolStart = .25f;
         private enum Kind { Droplet, Streak, Mist }
         private struct Decal
@@ -366,6 +372,8 @@ namespace TienTuyen.Presentation
                         origin += right * Range(-.07f, .07f) + up * Range(-.06f, .08f);
                         break;
                 }
+                var tint = kind == Kind.Mist ? MistTint : DropletTint;
+                if (tint != Color.white) emit.startColor = (Color)emit.startColor * tint;
                 emit.position = origin;
                 emit.velocity = velocity;
                 emit.rotation = rotation;

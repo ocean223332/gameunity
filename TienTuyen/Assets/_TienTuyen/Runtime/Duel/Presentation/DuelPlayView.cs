@@ -60,6 +60,11 @@ namespace TienTuyen.Duel.Presentation
             bleeding.transform.SetParent(root, false);
             blood = bleeding.AddComponent<CombatBloodEffects>();
             blood.GroundHeight = DuelArenaView.Height;
+            // The campaign's spray is bright enough to read at range; two metres away in shade its droplets, still bunched
+            // at the wound, read as a solid card beside the head even at half alpha. The duel draws none: the darker mist's
+            // spatter and the marks on the wall behind carry the hit.
+            blood.DropletTint = new Color(.55f, .5f, .5f, 0f);
+            blood.MistTint = new Color(.55f, .5f, .5f, 1f);
             blood.Initialize();
             impacts = new DuelImpacts(root);
             eye.WeaponFired += (slot, start, end) =>
@@ -165,6 +170,7 @@ namespace TienTuyen.Duel.Presentation
             // Never the critical spray, on purpose: at duel range its billboard reads as a flat red sprite beside the
             // head. A head hit is already told by its confirm sound and the doubled damage.
             blood.Hit(opponent.Actor, point + moved, direction, false, killed);
+            if (!attack.Knife) impacts.Splatter(point + moved + direction * DuelArenaLayout.PlayerRadius, direction, head, localSlot);
         }
 
         /// <summary>
@@ -232,7 +238,7 @@ namespace TienTuyen.Duel.Presentation
                 }
                 impacts.Strike(point, normal, kind, shooter);
                 if (heard) continue;
-                audio.Impact(shooter, point);
+                audio.Impact(shooter, point, DuelImpacts.SurfaceOf(kind));
                 heard = true;
             }
         }
