@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace TienTuyen.Duel.Presentation
 {
@@ -32,7 +32,7 @@ namespace TienTuyen.Duel.Presentation
         DuelPhase Phase { get; }
         /// <summary>The round being played or just decided, from 1.</summary>
         int Round { get; }
-        /// <summary>Rounds needed to take the match: 2 in a best of 3.</summary>
+        /// <summary>Rounds needed to take the match: 3 in a best of 5.</summary>
         int RoundsToWin { get; }
         int LocalRounds { get; }
         int OpponentRounds { get; }
@@ -41,8 +41,9 @@ namespace TienTuyen.Duel.Presentation
         /// <summary>Seconds until the round starts, during <see cref="DuelPhase.Warmup"/>.</summary>
         float CountdownRemaining { get; }
         DuelRoundResult LastRound { get; }
-        /// <summary>Valid in <see cref="DuelPhase.MatchOver"/>.</summary>
-        bool MatchWon { get; }
+        /// <summary>How the match ended for the local player; <see cref="DuelRoundResult.None"/> until it is over.
+        /// A match can be drawn, so this is not a bool: rounds can finish level and leave the damage level too.</summary>
+        DuelRoundResult MatchResult { get; }
 
         string LocalName { get; }
         string OpponentName { get; }

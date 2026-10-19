@@ -1,4 +1,4 @@
-using TienTuyen.Combat;
+﻿using TienTuyen.Combat;
 using TienTuyen.Content;
 using TienTuyen.Duel.Net;
 using TienTuyen.Duel.Presentation;
@@ -140,7 +140,16 @@ namespace TienTuyen.Duel.Play
             }
         }
 
-        public bool MatchWon => View.MatchWinnerSlot >= 0 && View.MatchWinnerSlot == session.LocalSlot;
+        public DuelRoundResult MatchResult
+        {
+            get
+            {
+                var view = View;
+                if (view.Phase != DuelPhase.MatchOver) return DuelRoundResult.None;
+                if (view.MatchWinnerSlot < 0) return DuelRoundResult.Draw;
+                return view.MatchWinnerSlot == session.LocalSlot ? DuelRoundResult.Won : DuelRoundResult.Lost;
+            }
+        }
 
         public string LocalName => "Bạn";
         public string OpponentName => "Đối thủ";

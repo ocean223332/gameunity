@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using TienTuyen.Presentation.Interface;
 using TMPro;
 using UnityEngine;
@@ -420,15 +420,22 @@ namespace TienTuyen.Duel.Presentation
         /// <summary>Fills the dialog from the finished match (called when it opens).</summary>
         public void Present(IDuelHudState state)
         {
-            bool won = state.MatchWon;
-            Accent(won ? UiTheme.Gold : UiTheme.Danger);
+            var result = state.MatchResult;
+            bool won = result == DuelRoundResult.Won, drawn = result == DuelRoundResult.Draw;
+            Accent(won ? UiTheme.Gold : drawn ? UiTheme.Muted : UiTheme.Danger);
             Eyebrow.text = $"KẾT THÚC TRẬN  ·  {state.Round} HIỆP";
-            Title.text = won ? "CHIẾN THẮNG" : "THẤT BẠI";
+            Title.text = won ? "CHIẾN THẮNG" : drawn ? "HÒA" : "THẤT BẠI";
             score.text = $"{state.LocalRounds}<color=#6E7868> – </color>{state.OpponentRounds}";
             localLabel.text = string.IsNullOrEmpty(state.LocalName) ? "BẠN" : state.LocalName.ToUpperInvariant();
             opponentLabel.text = string.IsNullOrEmpty(state.OpponentName) ? "ĐỐI THỦ" : state.OpponentName.ToUpperInvariant();
-            line.text = won ? "Bạn đã thắng " + state.LocalRounds + " hiệp trước. Giữ vững phong độ!"
-                : "Đối thủ đã thắng " + state.OpponentRounds + " hiệp trước. Hẹn trận sau.";
+            // Level rounds with a winner means the damage broke the tie: saying either of you "won more rounds"
+            // would contradict the score printed right above this line.
+            bool onDamage = state.LocalRounds == state.OpponentRounds;
+            line.text = drawn ? $"Hòa {state.LocalRounds}–{state.OpponentRounds}, sát thương ngang nhau. Đá lại để phân thắng bại."
+                : won ? (onDamage ? "Hòa hiệp, nhưng bạn gây nhiều sát thương hơn. Thắng sát nút!"
+                                  : "Bạn đã thắng " + state.LocalRounds + " hiệp trước. Giữ vững phong độ!")
+                : (onDamage ? "Hòa hiệp, nhưng đối thủ gây nhiều sát thương hơn. Hẹn trận sau."
+                            : "Đối thủ đã thắng " + state.OpponentRounds + " hiệp trước. Hẹn trận sau.");
         }
     }
 }

@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using UnityEngine;
@@ -136,7 +136,7 @@ namespace TienTuyen.Duel.Presentation
         public float RoundRemaining { get; set; } = RoundLength;
         public float CountdownRemaining { get; set; } = CountdownLength;
         public DuelRoundResult LastRound { get; set; }
-        public bool MatchWon { get; set; }
+        public DuelRoundResult MatchResult { get; set; }
 
         public string LocalName { get; set; } = "Bạn";
         public string OpponentName { get; set; } = "Đối thủ";
@@ -174,7 +174,7 @@ namespace TienTuyen.Duel.Presentation
                     if (phaseAge < ResultLength) break;
                     if (LocalRounds >= RoundsToWin || OpponentRounds >= RoundsToWin)
                     {
-                        MatchWon = LocalRounds > OpponentRounds;
+                        MatchResult = LocalRounds > OpponentRounds ? DuelRoundResult.Won : DuelRoundResult.Lost;
                         Enter(DuelPhase.MatchOver);
                     }
                     else
