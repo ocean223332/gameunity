@@ -37,7 +37,7 @@ namespace TienTuyen.Duel.Play
             if (!session.HasState) return;
             var local = session.LocalState;
             var opponent = session.Opponent;
-            var correction = session.LastReconciliation;
+            var correction = session.TakeLargestReconciliation();
             writer.WriteLine(string.Join(",",
                 F(DateTime.UtcNow.Ticks / (double)TimeSpan.TicksPerMillisecond), F(deltaTime * 1000.0), session.LocalSlot.ToString(),
                 session.Stage.ToString(), session.Match.ServerTick.ToString(), opponent.ServerTick.ToString(),

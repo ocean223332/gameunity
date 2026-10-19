@@ -108,8 +108,17 @@ namespace TienTuyen.Duel.Net
         /// <summary>Joiner: owner snapshots accepted so far.</summary>
         public int SnapshotsReceived { get; private set; }
 
-        /// <summary>Joiner: the last correction against an owner snapshot, and how many inputs it replayed.</summary>
-        public DuelReconciliationResult LastReconciliation { get; private set; }
+        /// <summary>
+        /// Joiner: the largest correction against an owner snapshot since the last call, which forgets it. Several
+        /// snapshots land in one frame after a host stall, and a later clean one must not hide an earlier correction.
+        /// </summary>
+        public DuelReconciliationResult TakeLargestReconciliation()
+        {
+            DuelReconciliationResult largest = m_LargestReconciliation;
+            m_LargestReconciliation = default;
+            return largest;
+        }
+        private DuelReconciliationResult m_LargestReconciliation;
 
         /// <summary>Host: joiner inputs received but not yet consumed by the server loop.</summary>
         public int JoinerInputBacklog => m_Loop == null ? 0 :
@@ -247,7 +256,10 @@ namespace TienTuyen.Duel.Net
             }
             else
             {
-                LastReconciliation = m_Predictor.Reconcile(snapshot.State, snapshot.LastConsumedInputTick, snapshot.ServerTick);
+                DuelReconciliationResult result =
+                    m_Predictor.Reconcile(snapshot.State, snapshot.LastConsumedInputTick, snapshot.ServerTick);
+                if (result.Applied && result.PositionError >= m_LargestReconciliation.PositionError)
+                    m_LargestReconciliation = result;
                 return;
             }
             m_PredictedGeneration = snapshot.RoundGeneration;
