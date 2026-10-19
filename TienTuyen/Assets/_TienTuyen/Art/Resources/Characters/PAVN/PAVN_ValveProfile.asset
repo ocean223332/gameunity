@@ -996,10 +996,8 @@ MonoBehaviour:
   walkBackwardSpeed: 2.0429246
   walkLeftSpeed: 1.4208771
   walkRightSpeed: 1.6369311
-  bannerSource: {fileID: 919132149155446097, guid: db264defb73a21c4495892748724bbc2, type: 3}
-  bannerOffset: {x: 0, y: 0, z: 0}
-  chestBack: {x: 0.011267188, y: -0.064969, z: -0.000000008227454}
   modelScale: 1
+  firstPersonArms: 
   weaponSets:
   - weapon: rifle
     model: {fileID: 919132149155446097, guid: b0bece43209a5234d8865130c2ca752e, type: 3}
