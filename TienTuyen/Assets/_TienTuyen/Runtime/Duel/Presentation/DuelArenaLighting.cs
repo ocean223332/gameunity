@@ -27,7 +27,41 @@ namespace TienTuyen.Duel.Presentation
         private static readonly Color CoolShadowTint = new Color(.325f, .388f, .5f);
         private static readonly Color NeutralTint = new Color(.5f, .5f, .5f);
 
+        /// <summary>
+        /// The duel's weather, approved by the Human: fixed rather than the station's per-run roll (stored per machine),
+        /// so both ends of a duel always stand in the same light.
+        /// </summary>
+        public const string PresetName = "Overcast";
+
         public LightingPreset Preset { get; private set; }
+
+        /// <summary>
+        /// The preset named by -lighting NAME (captures, comparisons), else <see cref="PresetName"/>. Logs the one
+        /// chosen, so a playtest report can be checked afterwards, and warns when a name does not resolve.
+        /// </summary>
+        public static LightingPreset Choose()
+        {
+            LightingPreset Named(string name)
+            {
+                foreach (var preset in LightingPreset.All)
+                    if (string.Equals(preset.name, name, System.StringComparison.OrdinalIgnoreCase)) return preset;
+                return null;
+            }
+            string forced = LightingPreset.Forced;
+            if (!string.IsNullOrEmpty(forced))
+            {
+                var chosen = Named(forced);
+                if (chosen != null) { Debug.Log($"Duel lighting: {chosen.name} (-lighting)."); return chosen; }
+                Debug.LogWarning($"Duel lighting: -lighting {forced} is not a preset in Resources/{LightingPreset.ResourceFolder}; ignoring it.");
+            }
+            var own = Named(PresetName);
+            if (own != null) { Debug.Log($"Duel lighting: {own.name}."); return own; }
+            // Never silent: the menu's preset is this machine's last roll, so two ends of a duel could differ.
+            var menu = LightingPreset.ForMenu();
+            Debug.LogError($"Duel lighting: preset {PresetName} is missing from Resources/{LightingPreset.ResourceFolder}; " +
+                           $"using this machine's last single-player preset ({(menu != null ? menu.name : "none")}), which the other player may not share.");
+            return menu;
+        }
 
         public DuelArenaLighting(Transform root, Camera view)
         {

@@ -3,9 +3,9 @@ Opens two game windows side by side on this machine, for a 1v1 duel against your
 
   play-duel-local.ps1           launch from the existing build in Builds/Windows
   play-duel-local.ps1 -Build    rebuild the Windows player first (about 10-20 min; close the Unity Editor first)
-  play-duel-local.ps1 -Lighting Overcast   both windows in the brighter preset instead of Misty
+  play-duel-local.ps1 -Lighting Misty      both windows in another preset than the duel's own (Overcast)
 #>
-param([switch]$Build, [string]$Lighting = 'Misty')
+param([switch]$Build, [string]$Lighting = '')
 $ErrorActionPreference = 'Stop'
 
 $repo = Resolve-Path (Join-Path $PSScriptRoot '..\..')
@@ -39,7 +39,8 @@ $height = [int]($width * 9 / 16)
 
 function Start-Duel([string]$name, [int]$x) {
     $log = Join-Path $logs "$name.log"
-    $argv = @('-screen-fullscreen', '0', '-screen-width', "$width", '-screen-height', "$height", '-lighting', $Lighting, '-logFile', "`"$log`"")
+    $argv = @('-screen-fullscreen', '0', '-screen-width', "$width", '-screen-height', "$height", '-logFile', "`"$log`"")
+    if ($Lighting) { $argv += @('-lighting', $Lighting) }
     $p = Start-Process $exe -PassThru -ArgumentList $argv
     for ($i = 0; $i -lt 100 -and $p.MainWindowHandle -eq 0; $i++) { Start-Sleep -Milliseconds 200; $p.Refresh() }
     if ($p.MainWindowHandle -ne 0) { [DuelWindow]::MoveWindow($p.MainWindowHandle, $x, $area.Top, $width, $height, $true) | Out-Null }

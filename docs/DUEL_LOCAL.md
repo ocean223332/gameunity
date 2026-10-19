@@ -8,10 +8,9 @@ on one machine.
 To rebuild the player first, close the Unity Editor and run `play-duel-local.cmd -Build` (10-20 minutes).
 Without `-Build` it uses the last build in `Builds/Windows`.
 
-Both windows use the Misty lighting: a low warm sun and mist over the jungle. Across the whole field the opponent
-looks soft, and someone crouched in a parapet's shade is hard to pick out; at the usual 10-25 m between the works
-it makes little difference. If spotting feels too hard, run `play-duel-local.cmd -Lighting Overcast`, which is
-brighter and flatter; nothing else changes.
+Both windows use the duel's own lighting, Overcast: bright and even, so the opponent reads clearly across the
+whole field. `play-duel-local.cmd -Lighting Misty` puts both windows in the low warm sun and mist instead; it is
+prettier, but across the field the opponent looks soft and someone crouched in a parapet's shade is hard to pick out.
 
 Only the window you clicked last takes the keyboard and mouse; the other keeps running. Click a window to play
 that side; press Esc to free the mouse, then click the other window. Esc does not leave the match, and neither

@@ -151,7 +151,7 @@ namespace TienTuyen.Duel.Presentation
             View = SetupCamera();
             lighting = new DuelArenaLighting(transform, View);
             DuelArenaView.Build(transform);
-            lighting.Apply(LightingPreset.ForMenu());
+            lighting.Apply(DuelArenaLighting.Choose());
 
             var root = BuildCanvas();
             fake = new FakeDuelLobbyHost();
