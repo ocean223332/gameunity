@@ -22,6 +22,7 @@ namespace TienTuyen.Duel.Presentation
         private readonly DuelBody local, opponent;
         private readonly DuelAudio audio;
         private readonly CombatBloodEffects blood;
+        private readonly DuelImpacts impacts;
         private DuelSimState opponentPose;
 
         /// <summary>
@@ -60,10 +61,12 @@ namespace TienTuyen.Duel.Presentation
             blood = bleeding.AddComponent<CombatBloodEffects>();
             blood.GroundHeight = DuelArenaView.Height;
             blood.Initialize();
+            impacts = new DuelImpacts(root);
             eye.WeaponFired += (slot, start, end) =>
             {
                 local.Fired(slot, end);
                 audio.OwnShot(slot);
+                Strike(localSlot, slot, eye.AimOrigin, eye.AimDirection, start, eye.Aiming, opponentPose);
                 Remember(new Attack { Weapon = slot, Origin = start, Direction = (end - start).normalized, Target = opponentPose });
             };
             audio.Hurt += OnHurt;
@@ -90,12 +93,14 @@ namespace TienTuyen.Duel.Presentation
                 roundGeneration = match.RoundGeneration;
                 pending.Clear();
                 blood.Clear();
+                impacts.Clear();
             }
             if (pose.KnifeRemaining > lastKnife)
                 Remember(new Attack { Knife = true, Origin = DuelPlayerSim.MuzzlePosition(pose), Target = opponentPose });
             lastKnife = pose.KnifeRemaining;
             audio.Tick(match, pose, opponentPose, newer.Reloading, deltaTime);
             blood.Tick(deltaTime);
+            impacts.Tick(deltaTime);
         }
 
         private void Remember(in Attack attack)
@@ -157,8 +162,9 @@ namespace TienTuyen.Duel.Presentation
             }
             // Move the point with the body from where it stood when you fired to where it is drawn now.
             Vector3 moved = opponentPose.Position - attack.Target.Position;
-            // A head hit is the critical one: the heavier spray. (No single duel hit reaches 50, so a damage threshold never fires.)
-            blood.Hit(opponent.Actor, point + moved, direction, head, killed);
+            // Never the critical spray, on purpose: at duel range its billboard reads as a flat red sprite beside the
+            // head. A head hit is already told by its confirm sound and the doubled damage.
+            blood.Hit(opponent.Actor, point + moved, direction, false, killed);
         }
 
         /// <summary>
@@ -203,6 +209,43 @@ namespace TienTuyen.Duel.Presentation
             return (onRay - point).sqrMagnitude <= reach * reach;
         }
 
+        /// <summary>
+        /// Marks where a shot's rounds struck cover or the ground (<see cref="DuelImpacts.Trace"/>, the resolver's
+        /// geometry). A round whose ray meets the target's body first is a hit: it draws blood when the health drops,
+        /// not a mark. Pellets scatter in the resolver's cone but not on its exact lines, which are seeded by the attack's
+        /// tick and the view never sees it; the shot is heard once, where its first round struck.
+        /// </summary>
+        private void Strike(int shooter, int weapon, Vector3 origin, Vector3 direction, Vector3 muzzle, bool aiming, in DuelSimState target)
+        {
+            var gun = DuelPlayerSim.WeaponAt(weapon);
+            Body(target, out Vector3 low, out Vector3 high);
+            float radius = DuelArenaLayout.PlayerRadius;
+            bool heard = false;
+            for (int pellet = 0; pellet < gun.PelletsPerShot; pellet++)
+            {
+                Vector3 ray = gun.PelletsPerShot == 1 ? direction : Scatter(direction, aiming);
+                if (!DuelImpacts.Trace(origin, ray, muzzle, gun.Range, out Vector3 point, out Vector3 normal, out var kind)) continue;
+                if (!target.Dead)
+                {
+                    Vector3 axis = ClosestOnAxis(origin, ray, low, high, out Vector3 onRay);
+                    if ((onRay - axis).sqrMagnitude < radius * radius && Vector3.Dot(onRay - origin, ray) < Vector3.Dot(point - origin, ray)) continue;
+                }
+                impacts.Strike(point, normal, kind, shooter);
+                if (heard) continue;
+                audio.Impact(shooter, point);
+                heard = true;
+            }
+        }
+
+        private static Vector3 Scatter(Vector3 forward, bool aiming)
+        {
+            float cone = Mathf.Tan(DuelCombatResolver.PelletSpreadDegrees * (aiming ? .5f : 1f) * Mathf.Deg2Rad);
+            float radius = Mathf.Sqrt(Random.value) * cone, angle = Random.value * Mathf.PI * 2f;
+            Vector3 right = Vector3.Cross(Mathf.Abs(forward.y) > .99f ? Vector3.forward : Vector3.up, forward).normalized;
+            Vector3 up = Vector3.Cross(forward, right);
+            return (forward + (right * Mathf.Cos(angle) + up * Mathf.Sin(angle)) * radius).normalized;
+        }
+
         /// <summary>The point of segment low..high nearest the ray, and the ray's point nearest it.</summary>
         private static Vector3 ClosestOnAxis(Vector3 origin, Vector3 direction, Vector3 low, Vector3 high, out Vector3 onRay)
         {
@@ -243,11 +286,11 @@ namespace TienTuyen.Duel.Presentation
             opponentPose = pose;
             bool aiming = (newer.Buttons & DuelButtons.Aim) != 0;
             opponent.Tick(pose, aiming, newer.Reloading, deltaTime);
-            InferOpponentShot(pose, deltaTime);
+            InferOpponentShot(pose, aiming, deltaTime);
         }
 
         /// <summary>The simulation fires a held trigger every cooldown while the gun is up and loaded.</summary>
-        private void InferOpponentShot(in DuelSimState pose, float deltaTime)
+        private void InferOpponentShot(in DuelSimState pose, bool aiming, float deltaTime)
         {
             bool firing = (pose.PreviousButtons & DuelButtons.Fire) != 0 && !pose.Dead && !newer.Reloading &&
                           pose.ActiveWeaponSlot < DuelPlayerSim.KnifeSlot;
@@ -261,6 +304,7 @@ namespace TienTuyen.Duel.Presentation
             Vector3 muzzle = DuelPlayerSim.MuzzlePosition(pose), end = muzzle + look * weapon.Range;
             opponent.Fired(pose.ActiveWeaponSlot, end);
             audio.OpponentShot(pose.ActiveWeaponSlot, muzzle, end, DuelPlayerSim.EyePosition(eye.Pose));
+            Strike(1 - localSlot, pose.ActiveWeaponSlot, DuelPlayerSim.EyePosition(pose), look, muzzle, aiming, eye.Pose);
         }
 
         public void Dispose()

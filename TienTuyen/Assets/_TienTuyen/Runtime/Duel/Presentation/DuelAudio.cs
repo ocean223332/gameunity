@@ -23,6 +23,7 @@ namespace TienTuyen.Duel.Presentation
         private const float WhizzDistance = 1.5f;
         private const string HeadPing = "Impact_Cover__impactGeneric_light_000";
         private const float HeadPingPitch = 1.6f;
+        private const string ImpactClip = "Impact_Cover__impactGeneric_light_000";
         private static readonly bool LogEvents = Array.IndexOf(Environment.GetCommandLineArgs(), "-duelAudioLog") >= 0;
         private static readonly Dictionary<string, AudioClip> clips = new Dictionary<string, AudioClip>(StringComparer.Ordinal);
         private static Dictionary<string, List<(float time, string clip)>> takes;
@@ -95,6 +96,12 @@ namespace TienTuyen.Duel.Presentation
             ping.PlayOneShot(clip, 1f);
             Log(localSlot, "head confirm ping", HeadPing + " pitch " + HeadPingPitch);
         }
+
+        /// <summary>
+        /// A round striking cover or the ground, at the point, from either gun. One generic impact for every surface: the
+        /// soft impact the campaign uses for earth is the hit confirm here, and a miss must not sound like a hit.
+        /// </summary>
+        public void Impact(int shooter, Vector3 at) => PlayAt(ImpactClip, at, .6f, 1.5f, 25f, shooter, "impact");
 
         /// <summary>The opponent's shot as the play view times it, and whether it passes close by the local eye.</summary>
         public void OpponentShot(int slot, Vector3 muzzle, Vector3 end, Vector3 localEye)
