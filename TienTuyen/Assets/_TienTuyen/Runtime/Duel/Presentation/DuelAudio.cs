@@ -21,10 +21,8 @@ namespace TienTuyen.Duel.Presentation
         private const string ResourceRoot = "CombatAudio/";
         private const float Master = .88f, Sfx = .75f, AmbienceVolume = .32f;
         private const float WhizzDistance = 1.5f;
-        private const string HeadPing = "Impact_Cover__impactGeneric_light_000";
-        private const float HeadPingPitch = 1.6f;
-        private const string ImpactClip = "Impact_Cover__impactGeneric_light_000";
-        private const string ConfirmClip = "Hit_Enemy__impactSoft_medium_000";
+        private const string HeadPing = "Hit_Head__bhit_helmet-1";
+        private const string ConfirmClip = "Hit_Enemy__flesh_impact_bullet1";
         /// <summary>
         /// How far each impact and hit confirm strays in pitch (and in volume, by <see cref="VolumeJitter"/>) from the
         /// take, so one take fired at a gun's rate does not repeat like a machine.
@@ -78,9 +76,7 @@ namespace TienTuyen.Duel.Presentation
             flat = Source("Own", false);
             // The confirm has its own source so its pitch can stray without bending your shots on the flat one.
             confirm = Source("Confirm", false);
-            // The bank has no head-hit clip: a light impact pitched up is the stand-in "dink".
             ping = Source("HeadPing", false);
-            ping.pitch = HeadPingPitch;
             for (int i = 0; i < world.Length; i++) world[i] = Source("World" + i, true);
             LoadTakes();
             StartAmbience();
@@ -108,18 +104,28 @@ namespace TienTuyen.Duel.Presentation
             var clip = Clip(HeadPing);
             if (clip == null) return;
             ping.PlayOneShot(clip, 1f);
-            Log(localSlot, "head confirm ping", HeadPing + " pitch " + HeadPingPitch);
+            Log(localSlot, "head confirm ping", HeadPing);
+        }
+
+        /// <summary>A round striking cover or the ground, at the point, from either gun, in that surface's own take.</summary>
+        public void Impact(int shooter, Vector3 at, DuelSurface surface)
+        {
+            var (clip, volume, far) = ImpactClipFor(surface);
+            PlayAt(clip, at, volume * Jitter(VolumeJitter), 1.5f, far, shooter, "impact " + surface, Jitter(PitchJitter));
         }
 
         /// <summary>
-        /// A round striking cover or the ground, at the point, from either gun. Every surface plays the bank's one generic
-        /// impact until its own take exists (ImpactClipFor); the soft impact the campaign uses for earth is the hit
-        /// confirm here, and a miss must not sound like a hit.
+        /// Each surface's take, volume and the distance it fades out by, all in one place: earth thuds under the
+        /// sandbags, the sandbags under the masonry's crack, and metal rings loudest and carries furthest.
         /// </summary>
-        public void Impact(int shooter, Vector3 at, DuelSurface surface) =>
-            PlayAt(ImpactClipFor(surface), at, .6f * Jitter(VolumeJitter), 1.5f, 25f, shooter, "impact " + surface, Jitter(PitchJitter));
-
-        private static string ImpactClipFor(DuelSurface surface) => ImpactClip;
+        private static (string clip, float volume, float far) ImpactClipFor(DuelSurface surface) => surface switch
+        {
+            DuelSurface.Ground => ("Impact_Ground__sand_impact_bullet1", .45f, 20f),
+            DuelSurface.Burlap => ("Impact_Burlap__elevenlabs_burlap_b_dry", .55f, 22f),
+            DuelSurface.Brick => ("Impact_Brick__elevenlabs_brick_c_alternate", .65f, 26f),
+            DuelSurface.Concrete => ("Impact_Concrete__concrete_impact_bullet1", .7f, 28f),
+            _ => ("Impact_Metal__bullet_metal_auto_01", .8f, 40f),
+        };
 
         private static float Jitter(float range) => 1f + UnityEngine.Random.Range(-range, range);
 
