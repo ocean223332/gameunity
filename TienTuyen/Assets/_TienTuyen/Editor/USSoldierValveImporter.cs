@@ -12,7 +12,7 @@ namespace TienTuyen.Editor
     /// Installs the duel's slot-1 US soldier on the ValveBiped skeleton (output/us-slot1: the Tripo body skinned through
     /// Auto-Rig Pro, five fingers per hand, A-pose bind, scale 1) as US_ValveProfile, from PAVN_HeroProfile (left as it is).
     /// It moves and carries the CS:GO guns like the hero (<see cref="HeroValveImporter"/>) on clips baked for its own body;
-    /// until it has a hand correction of its own its grips come from the hero's.
+    /// until it has a hand correction of its own its grips come from the hero's, its fingers carried onto its own bind.
     /// Batch: Unity -batchmode -projectPath TienTuyen -executeMethod TienTuyen.Editor.USSoldierValveImporter.Import -quit
     /// </summary>
     public static class USSoldierValveImporter
@@ -56,12 +56,15 @@ namespace TienTuyen.Editor
             profile.deathFloorLift = SkinnedCharacterProfileBaker.MeasureDeathFloorLift(profile);
             SkinnedCharacterProfileBaker.MeasureSoles(profile);
             string json = Path.Combine(Repo, HeroValveImporter.Correction);
+            // The correction's finger rotations are the hero's, local to its finger bind frames.
+            var hero = AssetDatabase.LoadAssetAtPath<GameObject>(HeroValveImporter.ArtDir + "/HeroValve.fbx")
+                ?? throw new InvalidOperationException("Missing " + HeroValveImporter.ArtDir + "/HeroValve.fbx");
             profile.weaponSets = Guns.Select(g =>
             {
                 var set = sets.First(s => s.weapon == g.weapon);
                 var takes = new[] { set.fire, set.reload, set.reloadStart, set.reloadInsert, set.reloadEnd }.Where(c => c != null)
                     .ToDictionary(c => c.name.Substring(c.name.IndexOf('@') + 1), c => c);
-                set.grip = HandGripImporter.Import(json, g.gun, ArtDir + "/USSoldierGrip_" + g.gun + ".asset", takes, model);
+                set.grip = HandGripImporter.Import(json, g.gun, ArtDir + "/USSoldierGrip_" + g.gun + ".asset", takes, model, hero);
                 return set;
             }).ToArray();
             EditorUtility.SetDirty(profile);
