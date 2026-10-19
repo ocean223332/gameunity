@@ -48,6 +48,16 @@ namespace TienTuyen.Duel.Presentation
         private Vector3 hitFrom;
         private float hitAge = 99f, lastLocalHealth = -1f, healthFlash;
 
+        private readonly RectTransform[] hitTicks = new RectTransform[4];
+        private CanvasGroup hitTick;
+        private float tickAge = 99f, tickStrength;
+
+        /// <summary>
+        /// How long the hit tick shows, and the damage it spans from small and dim to large and bright: an SMG round (10)
+        /// to a rifle head hit (48).
+        /// </summary>
+        private const float TickSeconds = .15f, TickWeakDamage = 10f, TickStrongDamage = 48f;
+
         /// <summary>How long the hit arc takes to fade, and the share of the circle it spans (about 50 degrees).</summary>
         private const float HitArcSeconds = 1.2f, HitArcSpan = .14f;
         private DuelPhase lastPhase = (DuelPhase)(-1);
@@ -166,6 +176,45 @@ namespace TienTuyen.Duel.Presentation
                 UiKit.Box("Shadow", centre, UiKit.Center, new Vector2(.5f, .5f), direction * 10f, size + Vector2.one * 2f, UiSprites.Rounded(1f), UiTheme.Alpha(UiTheme.Ink, .45f));
                 UiKit.Box("Tick", centre, UiKit.Center, new Vector2(.5f, .5f), direction * 10f, size, UiSprites.Rounded(1f), UiTheme.Alpha(UiTheme.Paper, .92f));
             }
+            // Your hit landed: four diagonal ticks between the crosshair's arms, larger and brighter the harder it hit.
+            // They say how hard you hit, never how much the opponent has left.
+            var ticks = UiKit.Node("HitTick", centre, UiKit.Center, new Vector2(.5f, .5f), Vector2.zero, new Vector2(40, 40));
+            hitTick = ticks.gameObject.AddComponent<CanvasGroup>();
+            hitTick.alpha = 0f;
+            for (int i = 0; i < hitTicks.Length; i++)
+            {
+                var arm = UiKit.Node("Arm" + i, ticks, UiKit.Center, new Vector2(.5f, .5f), Vector2.zero, Vector2.zero);
+                arm.localRotation = Quaternion.Euler(0f, 0f, 45f + 90f * i);
+                UiKit.Box("Shadow", arm, UiKit.Center, new Vector2(0f, .5f), new Vector2(-1f, 0f), new Vector2(10, 4), UiSprites.Rounded(1f), UiTheme.Alpha(UiTheme.Ink, .5f));
+                UiKit.Box("Tick", arm, UiKit.Center, new Vector2(0f, .5f), Vector2.zero, new Vector2(8, 2), UiSprites.Rounded(1f), UiTheme.Paper);
+                hitTicks[i] = arm;
+            }
+        }
+
+        /// <summary>Your round hit the opponent for <paramref name="damage"/>: flashes the hit tick.</summary>
+        public void HitLanded(float damage)
+        {
+            tickAge = 0f;
+            tickStrength = Mathf.InverseLerp(TickWeakDamage, TickStrongDamage, damage);
+        }
+
+        private void RefreshHitTick(float deltaTime)
+        {
+            tickAge += deltaTime;
+            float left = 1f - tickAge / TickSeconds;
+            hitTick.alpha = left <= 0f ? 0f : Mathf.Lerp(.55f, 1f, tickStrength) * Mathf.Clamp01(left * 2f);
+            if (left <= 0f) return;
+            // Out from the centre as it fades; a hard hit starts further out and longer.
+            float inner = Mathf.Lerp(7f, 10f, tickStrength) + 3f * (1f - left);
+            float scale = Mathf.Lerp(.8f, 1.5f, tickStrength);
+            foreach (var arm in hitTicks)
+            {
+                var tick = (RectTransform)arm.GetChild(1);
+                var shadow = (RectTransform)arm.GetChild(0);
+                tick.anchoredPosition = new Vector2(inner, 0f);
+                shadow.anchoredPosition = new Vector2(inner - 1f, 0f);
+                tick.localScale = shadow.localScale = new Vector3(scale, 1f, 1f);
+            }
         }
 
         /// <summary>A red arc round the crosshair, on the side the shot came from, turning with you as you look round.</summary>
@@ -232,6 +281,7 @@ namespace TienTuyen.Duel.Presentation
             RefreshWeapon(state, deltaTime);
             RefreshBanner(state, deltaTime);
             RefreshHitArc(deltaTime);
+            RefreshHitTick(deltaTime);
             crosshair.alpha = Mathf.MoveTowards(crosshair.alpha, state.Phase == DuelPhase.Live ? 1f : 0f, deltaTime * 6f);
         }
 

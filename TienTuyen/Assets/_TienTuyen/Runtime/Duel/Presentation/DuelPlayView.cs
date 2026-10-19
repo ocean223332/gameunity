@@ -81,6 +81,8 @@ namespace TienTuyen.Duel.Presentation
 
         /// <summary>You lost health: where the opponent stood (its chest, as drawn), for the hit arc.</summary>
         public event System.Action<Vector3> Wounded;
+        /// <summary>Your bullet hit the opponent, for this much damage: the HUD's hit tick, alongside the confirm sound.</summary>
+        public event System.Action<float> Struck;
 
         /// <param name="playing">The match is on screen (not its result): the cursor is locked and look is read.</param>
         public void Look(bool playing, float deltaTime) => eye.Look(playing, deltaTime);
@@ -135,7 +137,7 @@ namespace TienTuyen.Duel.Presentation
                 if (CouldHit(pending[i])) match = i;
             // The server's pose is not the drawn one; if none lines up, the oldest still fired first.
             if (match < 0) match = pending.Count > 0 ? 0 : -1;
-            if (match < 0) { if (!knife) audio.HitConfirm(false); return; }
+            if (match < 0) { if (!knife) { audio.HitConfirm(false); Struck?.Invoke(damage); } return; }
             var attack = pending[match];
             // Your hit is confirmed flat, as CS:GO does, so it carries at any range; a knife sounds its own hit.
             // Two shots that could both have hit may have landed between two snapshots as one drop of twice the damage:
@@ -146,6 +148,7 @@ namespace TienTuyen.Duel.Presentation
                 head = IsHead(attack.Weapon, damage, killed);
                 if (head && candidates > 1) { head = false; audio.Note("head read ambiguous: " + candidates + " shots could have hit"); }
                 audio.HitConfirm(head);
+                Struck?.Invoke(damage);
             }
             // The body flinches from the hit: its head snaps back on a head hit, a knife reads as a body hit.
             opponent.Hurt(head);

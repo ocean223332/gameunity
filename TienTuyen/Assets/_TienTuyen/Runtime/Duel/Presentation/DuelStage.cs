@@ -256,6 +256,7 @@ namespace TienTuyen.Duel.Presentation
                 {
                     play = new DuelPlayView(transform, View, session.LocalSlot);
                     play.Wounded += from => HudView.Wounded(from, View.transform);
+                    play.Struck += HudView.HitLanded;
                 }
                 playing = session;
                 play.Look(Match != null && Match.Phase != DuelPhase.MatchOver, deltaTime);
