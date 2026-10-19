@@ -30,6 +30,8 @@ namespace TienTuyen.Duel.Presentation
         private const float Lifetime = 30f, FadeSeconds = 6f;
         private const uint ReceiverLayer = 2;   // the bit DuelStage sets on the arena's renderers
         private const float GroundStep = .5f;
+        /// <summary>The splatter's colour over the campaign atlas's: its saturated red read as a red card at two metres.</summary>
+        private static readonly Color SplatterTint = new Color(.55f, .5f, .5f, 1f);
         private static readonly bool LogEvents = Array.IndexOf(Environment.GetCommandLineArgs(), "-duelAudioLog") >= 0;
 
         // The arena's own colours: laterite for the floor and the bags' fill, burlap, broken concrete, soot.
@@ -56,9 +58,10 @@ namespace TienTuyen.Duel.Presentation
             holes = new Material(Shader.Find("Shader Graphs/Decal")) { name = "ImpactMarks", enableInstancing = true };
             holes.SetTexture("Base_Map", MarkAtlas());
             holes.SetFloat("Normal_Blend", 0);
-            // The campaign's wall splatter (CombatBloodEffects' surface blood): the same atlas, four tiles.
+            // The campaign's wall splatter (CombatBloodEffects' surface blood): the same atlas, four tiles, darkened as the
+            // duel's spray is. The decal graph has no colour input, so the tint is baked into a copy of the atlas.
             blood = new Material(holes) { name = "SplatterMarks" };
-            blood.SetTexture("Base_Map", Resources.Load<Texture2D>("Blood/SplatterAtlas"));
+            blood.SetTexture("Base_Map", Tinted(Resources.Load<Texture2D>("Blood/SplatterAtlas"), SplatterTint));
             for (int i = 0; i < marks.Length; i++)
             {
                 var node = new GameObject("ImpactMark");
@@ -324,6 +327,39 @@ namespace TienTuyen.Duel.Presentation
                 parameters.rotation = Range(0, 360);
                 system.Emit(parameters, 1);
             }
+        }
+
+        /// <summary>
+        /// A copy of <paramref name="source"/> with its colour multiplied by <paramref name="tint"/>, made once. The atlas is
+        /// not CPU-readable, so it is drawn into a render texture and read back.
+        /// </summary>
+        private static Texture2D Tinted(Texture2D source, Color tint)
+        {
+            if (source == null) return null;
+            var target = RenderTexture.GetTemporary(source.width, source.height, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
+            var previous = RenderTexture.active;
+            Graphics.Blit(source, target);
+            RenderTexture.active = target;
+            var copy = new Texture2D(source.width, source.height, TextureFormat.RGBA32, true) { name = source.name + "Tinted", wrapMode = source.wrapMode };
+            copy.ReadPixels(new Rect(0, 0, source.width, source.height), 0, 0);
+            RenderTexture.active = previous;
+            RenderTexture.ReleaseTemporary(target);
+            var pixels = copy.GetPixels32();
+            int sample = -1;
+            Color32 read = default;
+            for (int i = 0; i < pixels.Length; i++)
+            {
+                var p = pixels[i];
+                if (sample < 0 && p.a > 200 && p.r > 100) { sample = i; read = p; }
+                pixels[i] = new Color32((byte)(p.r * tint.r), (byte)(p.g * tint.g), (byte)(p.b * tint.b), (byte)(p.a * tint.a));
+            }
+            // The proof the bake took: one texel as read back from the atlas and as tinted (row 0 is the image's bottom).
+            if (LogEvents)
+                Debug.Log(sample < 0 ? $"DuelSplatter atlas {source.name}: no opaque red texel read back" :
+                    $"DuelSplatter atlas {source.name} texel ({sample % source.width}, {sample / source.width}) read {read} tinted {pixels[sample]}");
+            copy.SetPixels32(pixels);
+            copy.Apply(true, true);
+            return copy;
         }
 
         /// <summary>

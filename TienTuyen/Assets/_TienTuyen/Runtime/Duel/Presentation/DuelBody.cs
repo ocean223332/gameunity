@@ -24,6 +24,10 @@ namespace TienTuyen.Duel.Presentation
         /// <summary>The Resources path of the character the fighter in <paramref name="slot"/> wears.</summary>
         public static string ProfileFor(int slot) => slot == 1 ? OpponentProfile : HeroProfile;
 
+        // The duel's death: HL2's death_04 crumple (knees give, down onto them, over onto the side) on the xdR skeleton,
+        // in place of the profiles' CS:GO @Death1, whose arms go up over the head for most of the round-over time.
+        private const string DeathClip = "Animations/GMod/gmod@Death";
+
         // The rig's guns in the duel's slot order (DuelPlayerSim.WeaponAt): the station's visual names, which pick the hold.
         private static readonly (string group, string model, string instance)[] Guns =
         {
@@ -33,6 +37,9 @@ namespace TienTuyen.Duel.Presentation
         /// <summary>At the body's pivot; for the local player the first-person view hides its "HeroVisual" child.</summary>
         public readonly Transform Actor;
         private CombatCharacterRig rig;
+        private DuelHitReaction reaction;
+        private Transform[] guns;
+        private int hurtFrame = -1;
         private readonly Transform standIn;
         private Vector3 lastPosition;
         private bool hasLast;
@@ -47,11 +54,13 @@ namespace TienTuyen.Duel.Presentation
             root.SetParent(Actor, false);
             var weapons = new Transform[Guns.Length];
             for (int i = 0; i < Guns.Length; i++) weapons[i] = Gun(root, Guns[i].group, Guns[i].model, Guns[i].instance);
+            guns = weapons;
             rig = root.gameObject.AddComponent<CombatCharacterRig>();
             string profile = ProfileFor(slot);
-            if (rig.InitializeSkinned(Resources.Load<SkinnedCharacterProfile>(profile), weapons, new Vector3(0, -DuelArenaLayout.GroundY, 0)))
+            if (rig.InitializeSkinned(WithDuelDeath(Resources.Load<SkinnedCharacterProfile>(profile)), weapons, new Vector3(0, -DuelArenaLayout.GroundY, 0)))
             {
                 AttachKnife(root);
+                reaction = new DuelHitReaction(root);
                 return;
             }
             Debug.LogWarning("Duel body: " + profile + " cannot drive a Humanoid; drawing a stand-in.");
@@ -62,6 +71,27 @@ namespace TienTuyen.Duel.Presentation
             standIn.name = "StandIn";
             standIn.SetParent(root, false);
             standIn.GetComponent<Renderer>().material.color = new Color(.33f, .37f, .22f);
+        }
+
+        /// <summary>A copy of the profile that falls with the duel's death; its floor lift is measured as it falls (DuelHitReaction).</summary>
+        private static SkinnedCharacterProfile WithDuelDeath(SkinnedCharacterProfile profile)
+        {
+            AnimationClip death = null;
+            foreach (var clip in Resources.LoadAll<AnimationClip>(DeathClip))
+                if (clip.name == "death") death = clip;
+            if (profile == null || death == null) return profile;
+            var copy = Object.Instantiate(profile);
+            copy.name = profile.name;
+            copy.death = death;
+            copy.deathFloorLift = new AnimationCurve();
+            return copy;
+        }
+
+        /// <summary>A hit on this body, told by the shooter's side: a head hit flinches differently from a body hit.</summary>
+        public void Hurt(bool head)
+        {
+            hurtFrame = Time.frameCount;
+            reaction?.Hurt(head);
         }
 
         private static Transform Gun(Transform root, string group, string model, string instance)
@@ -111,7 +141,12 @@ namespace TienTuyen.Duel.Presentation
             Vector3 velocity = hasLast ? (pose.Position - lastPosition) / deltaTime : Vector3.zero;
             lastPosition = pose.Position;
             hasLast = true;
-            if (pose.Health < lastHealth - .01f) hitTimer = .18f;
+            if (pose.Health < lastHealth - .01f)
+            {
+                hitTimer = .18f;
+                // A drop no one has told apart flinches as a body hit.
+                if (hurtFrame != Time.frameCount && !pose.Dead) reaction?.Hurt(false);
+            }
             lastHealth = pose.Health;
             hitTimer = Mathf.Max(0f, hitTimer - deltaTime);
             if (standIn != null)
@@ -147,6 +182,7 @@ namespace TienTuyen.Duel.Presentation
             var rounds = weapon.RoundReload;
             rig.ReloadPhases = rounds.HasValue ? new Vector2(rounds.Value.StartSeconds, rounds.Value.EndSeconds) : Vector2.zero;
             rig.Tick(deltaTime, velocity, look, progress, hitTimer / .18f, pose.Dead ? 1f : 0f);
+            reaction?.Apply(deltaTime, pose.Dead, knife ? null : guns[lastGun]);
         }
     }
 }

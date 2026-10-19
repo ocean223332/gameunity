@@ -147,6 +147,8 @@ namespace TienTuyen.Duel.Presentation
                 if (head && candidates > 1) { head = false; audio.Note("head read ambiguous: " + candidates + " shots could have hit"); }
                 audio.HitConfirm(head);
             }
+            // The body flinches from the hit: its head snaps back on a head hit, a knife reads as a body hit.
+            opponent.Hurt(head);
             pending.RemoveRange(0, match + 1);
             Body(attack.Target, out Vector3 low, out Vector3 high);
             Vector3 point, direction;
