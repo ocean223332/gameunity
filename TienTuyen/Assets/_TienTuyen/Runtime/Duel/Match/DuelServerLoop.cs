@@ -17,7 +17,8 @@ namespace TienTuyen.Duel
     }
 
     /// <summary>
-    /// Fixed-step authority for two players. Each step consumes at most one queued input per slot.
+    /// Fixed-step authority for two players. Each step consumes one queued input per slot, and replays a surplus
+    /// left by a host stall (see <see cref="MaxCatchUpFrames"/>).
     /// Missing input is idle (no movement/buttons), while gravity and weapon timers keep advancing.
     /// Input ticks are sequence numbers, with wrap supported within a half-int-range comparison window.
     /// </summary>
@@ -26,6 +27,12 @@ namespace TienTuyen.Duel
         public const int DefaultInputCapacity = 128;
         /// <summary>Frames a slot may keep queued after a step: absorbs arrival jitter, not a backlog.</summary>
         public const int MaxQueuedInputs = 1;
+        /// <summary>
+        /// Most surplus frames one step replays for a slot: 1/3 s, the longest frame Unity itself still simulates in
+        /// full (Time.maximumDeltaTime). A longer freeze folds the rest into the step's input and their movement is
+        /// lost, so an opponent never jumps more than 1/3 s of running (about 1.6 m) in one step.
+        /// </summary>
+        public const int MaxCatchUpFrames = 10;
         private const DuelButtons PressButtons = DuelButtons.Fire | DuelButtons.Reload | DuelButtons.Jump;
         private readonly DuelSimState[] players = new DuelSimState[2];
         private readonly InputBuffer[] inputs;
@@ -79,15 +86,16 @@ namespace TienTuyen.Duel
             bool respawned = RespawnIfRequested();
             bool canAct = Match.CanAct;
             DuelPhase phaseBefore = Match.Phase;
-            DuelInputFrame input0 = TakeInputOrIdle(0), input1 = TakeInputOrIdle(1);
+            float caughtUp0 = 0, caughtUp1 = 0;
+            DuelInputFrame input0 = TakeInput(0, canAct, ref caughtUp0), input1 = TakeInput(1, canAct, ref caughtUp1);
             DuelStepResult step0 = DuelPlayerSim.Step(ref players[0], input0, FixedDeltaTime, canAct);
             DuelStepResult step1 = DuelPlayerSim.Step(ref players[1], input1, FixedDeltaTime, canAct);
 
             // Both traces see the same pair of living states. Never apply slot 0's hit before tracing slot 1.
             DuelHitResult hit0 = DuelCombatResolver.Resolve(players[0], step0.Attack, players[1]);
             DuelHitResult hit1 = DuelCombatResolver.Resolve(players[1], step1.Attack, players[0]);
-            float damage0 = Mathf.Min(players[1].Health, hit0.Damage);
-            float damage1 = Mathf.Min(players[0].Health, hit1.Damage);
+            float damage0 = Mathf.Min(players[1].Health, hit0.Damage + caughtUp0);
+            float damage1 = Mathf.Min(players[0].Health, hit1.Damage + caughtUp1);
             players[0].Health -= damage1;
             players[1].Health -= damage0;
             Match.ReportDamage(0, damage0);
@@ -100,18 +108,30 @@ namespace TienTuyen.Duel
             return new DuelServerStepResult(step0, step1, hit0, hit1, respawned);
         }
 
-        private DuelInputFrame TakeInputOrIdle(int slot)
+        private DuelInputFrame TakeInput(int slot, bool canAct, ref float caughtUpDamage)
         {
             if (inputs[slot].TryTake(out DuelInputFrame input))
             {
                 // A host stall skips server steps while the client keeps sending, and a surplus left queued would
-                // delay every later input by that many steps for the rest of the round. Fold it into this step,
-                // keeping any press or weapon switch from the frames folded away; held states (aim, crouch, walk)
-                // are the latest frame's, so a released crouch is not simulated as held.
+                // delay every later input by that many steps for the rest of the round. Replay it in this step
+                // instead, each frame as the client predicted it: the slot keeps the position it already drew,
+                // and an automatic weapon held through the stall keeps its shots, each traced from where it was
+                // fired. Their damage lands with this step's, so neither slot is hit before both have traced.
+                int caughtUp = 0;
                 while (inputs[slot].Count > MaxQueuedInputs && inputs[slot].TryTake(out DuelInputFrame next))
                 {
-                    next.Buttons |= input.Buttons & PressButtons;
-                    if (next.WeaponSlot < 0) next.WeaponSlot = input.WeaponSlot;
+                    if (caughtUp++ < MaxCatchUpFrames)
+                    {
+                        DuelAttack attack = DuelPlayerSim.Step(ref players[slot], input, FixedDeltaTime, canAct).Attack;
+                        caughtUpDamage += DuelCombatResolver.Resolve(players[slot], attack, players[1 - slot]).Damage;
+                    }
+                    else
+                    {
+                        // Past the ceiling, fold: keep presses and a weapon switch, not the frame's movement. Held
+                        // states (aim, crouch, walk) are the latest frame's, so a released crouch is not held.
+                        next.Buttons |= input.Buttons & PressButtons;
+                        if (next.WeaponSlot < 0) next.WeaponSlot = input.WeaponSlot;
+                    }
                     input = next;
                 }
                 return input;

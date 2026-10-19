@@ -136,6 +136,9 @@ namespace TienTuyen.Duel.Tests
             var shoulderShot = Shot(new Vector3(shooter.Position.x, 1.65658784f, shooter.Position.z));
             Assert.That(DuelCombatResolver.Resolve(shooter, shoulderShot, target).Damage,
                 Is.EqualTo(weapon.DamagePerHit));
+            // Just above the head plane (1.667 m) the same level ray already earns the head reward.
+            var neckShot = Shot(new Vector3(shooter.Position.x, 1.68f, shooter.Position.z));
+            Assert.That(DuelCombatResolver.Resolve(shooter, neckShot, target).Zones, Is.EqualTo(DuelHitZone.Head));
         }
 
         [Test]

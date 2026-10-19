@@ -116,22 +116,30 @@ namespace TienTuyen.Duel.Tests
         }
 
         [Test]
-        public void QueuedSurplusIsFoldedIntoOneStepKeepingPressesNotHolds()
+        public void QueuedSurplusIsReplayedFrameByFrameUpToTheCatchUpCeiling()
         {
             var loop = new DuelServerLoop(match: new DuelMatch(0, 300, 3));
             loop.Step();
-            int ammo = loop.GetState(1).Ammo0;
-            for (int tick = 0; tick < 5; tick++)
+            DuelSimState expected = loop.GetState(1);
+            int ammo = expected.Ammo0, frames = DuelServerLoop.MaxCatchUpFrames + 5;
+            var queued = new DuelInputFrame[frames];
+            for (int tick = 0; tick < frames; tick++)
             {
-                var input = Input(loop, 1, tick, Vector2.zero, tick == 1);
-                if (tick == 1 || tick == 2) input.Buttons |= DuelButtons.Crouch; // released before the kept frame
-                loop.TryQueueInput(1, input);
+                queued[tick] = Input(loop, 1, tick, Vector2.up, tick == 1);
+                if (tick == 1 || tick == 2) queued[tick].Buttons |= DuelButtons.Crouch; // released before the kept frame
+                loop.TryQueueInput(1, queued[tick]);
             }
             loop.Step();
-            Assert.That(loop.GetBufferedInputCount(1), Is.AtMost(1));
-            Assert.That(loop.GetLastConsumedInputTick(1), Is.EqualTo(3));
+            int kept = frames - 1 - DuelServerLoop.MaxQueuedInputs;
+            Assert.That(loop.GetBufferedInputCount(1), Is.EqualTo(DuelServerLoop.MaxQueuedInputs));
+            Assert.That(loop.GetLastConsumedInputTick(1), Is.EqualTo(kept));
+            // Frames up to the ceiling move exactly as the client predicted them; the rest fold into the last one.
+            for (int tick = 0; tick < DuelServerLoop.MaxCatchUpFrames; tick++)
+                DuelPlayerSim.Step(ref expected, queued[tick], loop.FixedDeltaTime, loop.Match.CanAct);
+            DuelPlayerSim.Step(ref expected, queued[kept], loop.FixedDeltaTime, loop.Match.CanAct);
+            Assert.That(loop.GetState(1).Position, Is.EqualTo(expected.Position));
             Assert.That(loop.GetState(1).Ammo0, Is.EqualTo(ammo - 1));
-            Assert.That(loop.GetState(1).Crouch, Is.Zero);
+            Assert.That(loop.GetState(1).Crouch, Is.EqualTo(expected.Crouch));
         }
 
         private static void Approach(DuelServerLoop loop, ref int tick)
