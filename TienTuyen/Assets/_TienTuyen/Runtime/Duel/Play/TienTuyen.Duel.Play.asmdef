@@ -1,0 +1,6 @@
+{
+  "name": "TienTuyen.Duel.Play",
+  "rootNamespace": "TienTuyen.Duel.Play",
+  "references": ["TienTuyen.Duel", "TienTuyen.Duel.Presentation", "TienTuyen.Combat", "TienTuyen.Content", "Unity.InputSystem"],
+  "autoReferenced": true
+}

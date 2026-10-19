@@ -68,9 +68,9 @@ namespace TienTuyen.Presentation
 
         private sealed class Flash { public FlashFile file; public Material burst, flame; public GameObject root; }
 
-        private CombatGame game;
+        private IFirstPersonSource game;
         private Transform player, body;
-        private CombatThirdPersonCamera view;
+        private IFirstPersonSource view;
         private Camera mainCamera, overlay;
         // Set while first person swaps STP for SMAA: the upscaling and camera anti-aliasing to put back.
         private UpscalingFilterSelection? shippedUpscaling;
@@ -106,12 +106,16 @@ namespace TienTuyen.Presentation
             return true;
         }
 
-        public void Initialize(CombatGame combat, Transform actor, CombatThirdPersonCamera camera)
+        public void Initialize(CombatGame combat, Transform actor, CombatThirdPersonCamera camera) =>
+            Initialize(new StationSource(combat, camera), actor);
+
+        /// <summary>Binds the view to any first-person player, the duel's included; <paramref name="actor"/> carries its body as "HeroVisual".</summary>
+        internal void Initialize(IFirstPersonSource source, Transform actor)
         {
             if (game != null) game.WeaponFired -= OnWeaponFired;
-            game = combat;
+            game = source;
             player = actor;
-            view = camera;
+            view = source;
             mainCamera = GetComponent<Camera>();
             game.WeaponFired += OnWeaponFired;
             if (overlay == null) BuildOverlay();
@@ -735,7 +739,7 @@ namespace TienTuyen.Presentation
                 graph.Evaluate(0);
             }
 
-            public void Tick(CombatGame game, float dt)
+            public void Tick(IFirstPersonSource game, float dt)
             {
                 idleTime += dt;
                 shotTime += dt;
@@ -812,5 +816,63 @@ namespace TienTuyen.Presentation
                 if (graph.IsValid()) graph.Destroy();
             }
         }
+
+        /// <summary>The station's hero: its game and its camera, read as they always were.</summary>
+        private sealed class StationSource : IFirstPersonSource
+        {
+            private readonly CombatGame game;
+            private readonly CombatThirdPersonCamera view;
+
+            public StationSource(CombatGame game, CombatThirdPersonCamera view) { this.game = game; this.view = view; }
+
+            public CombatState State => game.State;
+            public WeaponDefinition ActiveWeapon => game.ActiveWeapon;
+            public WeaponDefinition WeaponAt(int slot) => game.WeaponAt(slot);
+            public int SelectedEntry => game.SelectedEntry;
+            public int WeaponCount => game.WeaponCount;
+            public bool IsSwitching => game.IsSwitching;
+            public float SwitchProgress => game.SwitchProgress;
+            public float ReloadRemaining => game.ReloadRemaining;
+            public float ReloadDuration => game.ReloadDuration;
+            public int Ammo => game.Ammo;
+            public int MagazineSize => game.MagazineSize;
+            public float KnifeSwingTime => game.KnifeSwingTime;
+            public event System.Action<int, Vector3, Vector3> WeaponFired
+            {
+                add => game.WeaponFired += value;
+                remove => game.WeaponFired -= value;
+            }
+            public float FirstPersonWeight => view.FirstPersonWeight;
+            public float Yaw => view.Yaw;
+            public float AimBlend => view.AimBlend;
+        }
+    }
+
+    /// <summary>
+    /// What <see cref="CombatFirstPersonView"/> reads each frame, named as on CombatGame and CombatThirdPersonCamera: the
+    /// station's hero, or another first-person player (the duel's) that maps its own state onto the same meanings.
+    /// </summary>
+    internal interface IFirstPersonSource
+    {
+        CombatState State { get; }
+        WeaponDefinition ActiveWeapon { get; }
+        WeaponDefinition WeaponAt(int slot);
+        /// <summary>Equal to <see cref="WeaponCount"/> while the knife is in hand.</summary>
+        int SelectedEntry { get; }
+        int WeaponCount { get; }
+        bool IsSwitching { get; }
+        float SwitchProgress { get; }
+        float ReloadRemaining { get; }
+        float ReloadDuration { get; }
+        int Ammo { get; }
+        int MagazineSize { get; }
+        /// <summary>Seconds into a knife slash, or -1.</summary>
+        float KnifeSwingTime { get; }
+        /// <summary>Every shot: weapon slot, start and end.</summary>
+        event System.Action<int, Vector3, Vector3> WeaponFired;
+        /// <summary>Past half, the view is first person.</summary>
+        float FirstPersonWeight { get; }
+        float Yaw { get; }
+        float AimBlend { get; }
     }
 }
