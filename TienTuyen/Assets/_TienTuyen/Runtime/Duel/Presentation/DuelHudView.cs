@@ -8,8 +8,8 @@ namespace TienTuyen.Duel.Presentation
 {
     /// <summary>
     /// The duel HUD, in the wave HUD's corners and type: a scoreboard at the top centre (the round clock between
-    /// the two fighters' health bars, you on the left in green, the opponent mirrored on the right in red, round
-    /// pips under each), your health large at bottom left, the weapon and magazine at bottom right, a crosshair,
+    /// the two fighters' names and round pips, you on the left, the opponent mirrored on the right; neither health
+    /// shows there, so the opponent's stays unknown), your health large at bottom left, the weapon and magazine at bottom right, a crosshair,
     /// and the round banner (countdown, then won / lost / drawn). Reads <see cref="IDuelHudState"/> every frame.
     /// </summary>
     public sealed class DuelHudView : UiScreen
@@ -18,16 +18,13 @@ namespace TienTuyen.Duel.Presentation
         public const string KnifeWeaponId = "weapon.knife";
 
         private const int MaxPips = 48, MaxRoundPips = 3;
-        private const float BarWidth = 250f;
 
         private TMP_Text roundCaption, timer;
         private Fighter local, opponent;
         private sealed class Fighter
         {
-            public TMP_Text Name, Value;
-            public UiBar Bar;
+            public TMP_Text Name;
             public readonly Image[] Pips = new Image[MaxRoundPips];
-            public float Flash, Last = -1f;
         }
 
         private TMP_Text healthText;
@@ -49,7 +46,7 @@ namespace TienTuyen.Duel.Presentation
         private Image hitArc;
         private Transform hitEye;
         private Vector3 hitFrom;
-        private float hitAge = 99f, lastLocalHealth = -1f;
+        private float hitAge = 99f, lastLocalHealth = -1f, healthFlash;
 
         /// <summary>How long the hit arc takes to fade, and the share of the circle it spans (about 50 degrees).</summary>
         private const float HitArcSeconds = 1.2f, HitArcSpan = .14f;
@@ -89,34 +86,32 @@ namespace TienTuyen.Duel.Presentation
             roundCaption = Centered(UiKit.Caption("Round", block, "", 13, UiTheme.Gold, TextAlignmentOptions.Center), -2, 18);
             timer = Centered(UiKit.Text("Timer", block, "", UiTheme.Display, 42, UiTheme.Paper, TextAlignmentOptions.Center, 2f), -18, 52);
             UiTheme.Shadow(timer);
-            local = BuildSide(block, -1f, UiTheme.Health);
-            opponent = BuildSide(block, 1f, UiTheme.Danger);
+            local = BuildSide(block, -1f);
+            opponent = BuildSide(block, 1f);
         }
 
-        /// <summary>One fighter's name, health bar and round pips; <paramref name="side"/> -1 grows leftwards from the clock, 1 rightwards.</summary>
-        private static Fighter BuildSide(RectTransform block, float side, Color color)
+        /// <summary>
+        /// One fighter's name over their round pips, held close against the clock with a thin rule between, so the
+        /// clock and both fighters read as one plate; <paramref name="side"/> -1 grows leftwards from the clock, 1 rightwards.
+        /// </summary>
+        private static Fighter BuildSide(RectTransform block, float side)
         {
             var result = new Fighter();
             bool right = side > 0;
             var anchor = UiKit.TopCenter;
             var pivot = new Vector2(right ? 0f : 1f, 1f);
-            const float inner = 92f;
-            result.Name = UiKit.Caption("Name", block, "", 13, UiTheme.Paper, right ? TextAlignmentOptions.MidlineLeft : TextAlignmentOptions.MidlineRight);
+            const float rule = 60f, inner = 74f;
+            UiKit.Box("Rule", block, anchor, new Vector2(.5f, 1f), new Vector2(side * rule, -26), new Vector2(1, 36),
+                null, UiTheme.Alpha(UiTheme.Paper, .22f));
+            result.Name = UiKit.Caption("Name", block, "", 14, UiTheme.Paper, right ? TextAlignmentOptions.MidlineLeft : TextAlignmentOptions.MidlineRight);
             // Tall enough for the font's line height: TMP drops an ellipsised line that does not fit vertically.
-            UiKit.Place(result.Name, anchor, pivot, new Vector2(side * inner, -10), new Vector2(BarWidth - 50, 26));
+            UiKit.Place(result.Name, anchor, pivot, new Vector2(side * inner, -20), new Vector2(200, 26));
             result.Name.textWrappingMode = TextWrappingModes.NoWrap;
             result.Name.overflowMode = TextOverflowModes.Ellipsis;
             UiTheme.Shadow(result.Name);
-            result.Value = UiKit.Text("Value", block, "", UiTheme.Display, 15, UiTheme.Paper, right ? TextAlignmentOptions.MidlineRight : TextAlignmentOptions.MidlineLeft);
-            UiKit.Place(result.Value, anchor, new Vector2(right ? 1f : 0f, 1f), new Vector2(side * (inner + BarWidth), -14), new Vector2(60, 18));
-            UiTheme.Shadow(result.Value);
-            result.Bar = new UiBar(right ? "OpponentHealth" : "LocalHealth", block, color, true, 3f);
-            // The opponent's bar is the local one mirrored: both keep their fill at the outer end and empty towards the clock.
-            UiKit.Place(result.Bar.Root, anchor, new Vector2(.5f, 1f), new Vector2(side * (inner + BarWidth * .5f), -36), new Vector2(BarWidth, 10));
-            if (right) result.Bar.Root.localScale = new Vector3(-1, 1, 1);
             for (int i = 0; i < MaxRoundPips; i++)
             {
-                var pip = UiKit.Box("RoundPip" + i, block, anchor, new Vector2(.5f, 1f), new Vector2(side * (inner + 8f + i * 22f), -54), new Vector2(16, 6),
+                var pip = UiKit.Box("RoundPip" + i, block, anchor, pivot, new Vector2(side * (inner + 1f + i * 24f), -50), new Vector2(18, 6),
                     UiSprites.Rounded(1.5f), UiTheme.Alpha(UiTheme.Paper, .16f));
                 result.Pips[i] = pip;
             }
@@ -249,22 +244,14 @@ namespace TienTuyen.Duel.Presentation
             timer.text = $"{seconds / 60}:{seconds % 60:00}";
             bool urgent = state.Phase == DuelPhase.Live && seconds <= 10;
             timer.color = urgent ? Color.Lerp(UiTheme.Paper, UiTheme.GoldBright, .5f + .5f * Mathf.Sin(Time.unscaledTime * 8f)) : UiTheme.Paper;
-            Show(local, state.LocalName, state.LocalHealth, state.LocalMaxHealth, state.LocalRounds, state.RoundsToWin, UiTheme.Health, UiTheme.GoldBright, deltaTime);
-            Show(opponent, state.OpponentName, state.OpponentHealth, state.OpponentMaxHealth, state.OpponentRounds, state.RoundsToWin, UiTheme.Danger, UiTheme.Danger, deltaTime);
+            Show(local, state.LocalName, state.LocalRounds, state.RoundsToWin, UiTheme.GoldBright);
+            Show(opponent, state.OpponentName, state.OpponentRounds, state.RoundsToWin, UiTheme.Danger);
         }
 
-        private static void Show(Fighter side, string name, float health, float max, int won, int toWin, Color bar, Color pip, float deltaTime)
+        private static void Show(Fighter side, string name, int won, int toWin, Color pip)
         {
             string label = string.IsNullOrEmpty(name) ? "" : name.ToUpperInvariant();
             if (side.Name.text != label) side.Name.text = label;
-            max = Mathf.Max(1f, max);
-            if (side.Last >= 0f && health < side.Last) side.Flash = 1f;
-            side.Last = health;
-            side.Flash = Mathf.Max(0f, side.Flash - deltaTime * 3f);
-            side.Value.text = Mathf.CeilToInt(Mathf.Max(0f, health)).ToString();
-            side.Value.color = Color.Lerp(UiTheme.Paper, UiTheme.Danger, side.Flash);
-            side.Bar.Set(health / max, deltaTime);
-            side.Bar.Fill.color = Color.Lerp(bar, UiTheme.Paper, side.Flash * .6f);
             for (int i = 0; i < side.Pips.Length; i++)
             {
                 side.Pips[i].gameObject.SetActive(i < toWin);
@@ -282,12 +269,13 @@ namespace TienTuyen.Duel.Presentation
             bool low = fraction <= .3f && state.LocalHealth > 0f;
             float pulse = low ? .5f + .5f * Mathf.Sin(Time.unscaledTime * 7f) : 0f;
             healthBar.Fill.color = low ? Color.Lerp(UiTheme.Danger, UiTheme.GoldBright, pulse * .25f) : UiTheme.Health;
-            healthText.color = Color.Lerp(low ? Color.Lerp(UiTheme.Paper, UiTheme.Danger, .6f + .4f * pulse) : UiTheme.Paper, UiTheme.Danger, local.Flash);
+            float damage = lastLocalHealth >= 0f ? lastLocalHealth - state.LocalHealth : 0f;
+            lastLocalHealth = state.LocalHealth;
+            healthFlash = damage > 0f ? 1f : Mathf.Max(0f, healthFlash - deltaTime * 3f);
+            healthText.color = Color.Lerp(low ? Color.Lerp(UiTheme.Paper, UiTheme.Danger, .6f + .4f * pulse) : UiTheme.Paper, UiTheme.Danger, healthFlash);
             // A hit is one flash scaled by its damage, from a faint edge for an SMG round (10) to at most .6 for a rifle
             // head hit (48); low health is a steady pulse. Kept quiet: a first-time player must read it as feedback,
             // not as the screen going wrong.
-            float damage = lastLocalHealth >= 0f ? lastLocalHealth - state.LocalHealth : 0f;
-            lastLocalHealth = state.LocalHealth;
             hurtFlash = Mathf.Max(hurtFlash - deltaTime * 1.6f, damage > 0f ? Mathf.Clamp(damage / 60f, .3f, .6f) : 0f);
             hurt.color = UiTheme.Alpha(UiTheme.Danger, .32f * hurtFlash + (low ? .12f + .08f * pulse : 0f));
         }
