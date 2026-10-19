@@ -1,5 +1,4 @@
 using NUnit.Framework;
-using TienTuyen.Combat;
 
 namespace TienTuyen.Duel.Tests
 {
@@ -49,7 +48,7 @@ namespace TienTuyen.Duel.Tests
             {
                 Live(match);
                 Assert.That(match.RoundNumber, Is.EqualTo(round));
-                match.Tick(1, 200, 200);
+                match.Tick(1, DuelPlayerSim.MaxHealth, DuelPlayerSim.MaxHealth);
                 Assert.That(match.Score0 + match.Score1, Is.Zero);
                 Assert.That(match.Phase == DuelPhase.MatchOver, Is.EqualTo(round == DuelMatch.MaxRounds));
             }
@@ -62,13 +61,13 @@ namespace TienTuyen.Duel.Tests
         {
             var match = new DuelMatch(0, 1, 0);
             Live(match);
-            match.ReportDamage(0, 200);
+            match.ReportDamage(0, 100);
             match.ReportDeath(1);
             for (int round = 2; round <= DuelMatch.MaxRounds; round++)
             {
                 Live(match);
-                match.ReportDamage(1, 150);
-                match.ReportDamage(0, 50);
+                match.ReportDamage(1, 75);
+                match.ReportDamage(0, 25);
                 match.ReportDeaths(true, true);
             }
             Assert.That(match.DamageDealt1, Is.GreaterThan(match.DamageDealt0));
@@ -109,8 +108,8 @@ namespace TienTuyen.Duel.Tests
 
         private static void Live(DuelMatch match)
         {
-            if (match.Phase == DuelPhase.RoundOver) match.Tick(0, 200, 200);
-            match.Tick(0, CombatRules.PlayerMaxHealth, CombatRules.PlayerMaxHealth);
+            if (match.Phase == DuelPhase.RoundOver) match.Tick(0, DuelPlayerSim.MaxHealth, DuelPlayerSim.MaxHealth);
+            match.Tick(0, DuelPlayerSim.MaxHealth, DuelPlayerSim.MaxHealth);
             Assert.That(match.CanAct, Is.True);
         }
     }

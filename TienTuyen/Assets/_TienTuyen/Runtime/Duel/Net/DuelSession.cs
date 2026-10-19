@@ -43,6 +43,7 @@ namespace TienTuyen.Duel.Net
 
         // Host.
         private DuelServerLoop m_Loop;
+        private int m_LatestJoinerInputTick = -1;
 
         // Joiner.
         private DuelPredictor m_Predictor;
@@ -102,6 +103,21 @@ namespace TienTuyen.Duel.Net
         /// <summary>Host only: the last authoritative step, for hit and shot effects. Default on the joiner.</summary>
         public DuelServerStepResult LastServerStep { get; private set; }
 
+        // Diagnostics, read by the duel stats log.
+
+        /// <summary>Joiner: owner snapshots accepted so far.</summary>
+        public int SnapshotsReceived { get; private set; }
+
+        /// <summary>Joiner: the last correction against an owner snapshot, and how many inputs it replayed.</summary>
+        public DuelReconciliationResult LastReconciliation { get; private set; }
+
+        /// <summary>Host: joiner inputs received but not yet consumed by the server loop.</summary>
+        public int JoinerInputBacklog => m_Loop == null ? 0 :
+            Math.Max(0, unchecked(m_LatestJoinerInputTick - m_Loop.GetLastConsumedInputTick(DuelNetworkBootstrap.JoinerSlot)));
+
+        /// <summary>Host: server steps that found no joiner input queued, so the joiner stood idle on the server.</summary>
+        public int JoinerStarvedSteps { get; private set; }
+
         /// <summary>The player's controls this frame. Taps between two fixed steps are kept, not lost.</summary>
         public void SubmitLocalInput(in DuelInputFrame input)
         {
@@ -159,7 +175,11 @@ namespace TienTuyen.Duel.Net
                 m_Net.SendInput(input);
                 // A decided match stops stepping but keeps sending its final state every step: snapshots are
                 // unreliable, and the joiner must not be left playing a round the host has already ended.
-                LastServerStep = m_Loop.Match.Phase == DuelPhase.MatchOver ? default : m_Loop.Step();
+                int consumed = m_Loop.GetLastConsumedInputTick(DuelNetworkBootstrap.JoinerSlot);
+                bool stepping = m_Loop.Match.Phase != DuelPhase.MatchOver;
+                LastServerStep = stepping ? m_Loop.Step() : default;
+                if (stepping && m_LatestJoinerInputTick >= 0 &&
+                    m_Loop.GetLastConsumedInputTick(DuelNetworkBootstrap.JoinerSlot) == consumed) JoinerStarvedSteps++;
                 SendSnapshots();
                 return;
             }
@@ -195,13 +215,19 @@ namespace TienTuyen.Duel.Net
         private DuelOpponentView OpponentViewOf(int slot) =>
             DuelOpponentView.From(m_Loop.GetState(slot), m_Loop.ServerTick);
 
-        private void OnInputReceived(int slot, DuelInputFrame input) => m_Loop?.TryQueueInput(slot, input);
+        private void OnInputReceived(int slot, DuelInputFrame input)
+        {
+            if (slot == DuelNetworkBootstrap.JoinerSlot && (m_LatestJoinerInputTick < 0 || unchecked(input.Tick - m_LatestJoinerInputTick) > 0))
+                m_LatestJoinerInputTick = input.Tick;
+            m_Loop?.TryQueueInput(slot, input);
+        }
 
         private void OnOwnerSnapshot(DuelOwnerSnapshot snapshot)
         {
             // A late snapshot must not flip CanAct or the round back; the predictor orders by ServerTick too.
             if (m_Predictor != null && unchecked(snapshot.ServerTick - m_LastSnapshotTick) <= 0) return;
             m_LastSnapshotTick = snapshot.ServerTick;
+            SnapshotsReceived++;
             bool wentLive = snapshot.CanAct && !m_CanAct;
             m_CanAct = snapshot.CanAct;
             if (m_Predictor == null)
@@ -221,7 +247,7 @@ namespace TienTuyen.Duel.Net
             }
             else
             {
-                m_Predictor.Reconcile(snapshot.State, snapshot.LastConsumedInputTick, snapshot.ServerTick);
+                LastReconciliation = m_Predictor.Reconcile(snapshot.State, snapshot.LastConsumedInputTick, snapshot.ServerTick);
                 return;
             }
             m_PredictedGeneration = snapshot.RoundGeneration;

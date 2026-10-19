@@ -38,7 +38,7 @@ namespace TienTuyen.Duel.Tests
             Assert.That(loop.Match.Score0, Is.EqualTo(1));
             Assert.That(loop.Match.RoundWinnerSlot, Is.EqualTo(0));
             Assert.That(loop.GetState(1).Dead, Is.True);
-            Assert.That(loop.Match.DamageDealt0, Is.EqualTo(CombatRules.PlayerMaxHealth));
+            Assert.That(loop.Match.DamageDealt0, Is.EqualTo(DuelPlayerSim.MaxHealth));
             int lastConsumed = loop.GetLastConsumedInputTick(0);
             Assert.That(lastConsumed, Is.EqualTo(tick - 1));
             bool respawned = false;
@@ -65,8 +65,8 @@ namespace TienTuyen.Duel.Tests
             Assert.That(loop.Match.Score0 + loop.Match.Score1, Is.Zero);
             Assert.That(loop.Match.CompletedRounds, Is.EqualTo(1));
             Assert.That(loop.Match.RoundEndReason, Is.EqualTo(DuelRoundEndReason.DoubleKnockout));
-            Assert.That(loop.Match.DamageDealt0, Is.EqualTo(CombatRules.PlayerMaxHealth));
-            Assert.That(loop.Match.DamageDealt1, Is.EqualTo(CombatRules.PlayerMaxHealth));
+            Assert.That(loop.Match.DamageDealt0, Is.EqualTo(DuelPlayerSim.MaxHealth));
+            Assert.That(loop.Match.DamageDealt1, Is.EqualTo(DuelPlayerSim.MaxHealth));
         }
 
         [Test]
@@ -113,6 +113,20 @@ namespace TienTuyen.Duel.Tests
             Assert.That(loop.Match.CompletedRounds, Is.Zero);
             Assert.That(loop.GetBufferedInputCount(1), Is.Zero);
             Assert.That(loop.TryQueueInput(1, Input(loop, 1, 1, Vector2.zero, false)), Is.False);
+        }
+
+        [Test]
+        public void QueuedSurplusIsFoldedIntoOneStepKeepingAPress()
+        {
+            var loop = new DuelServerLoop(match: new DuelMatch(0, 300, 3));
+            loop.Step();
+            int ammo = loop.GetState(1).Ammo0;
+            for (int tick = 0; tick < 5; tick++)
+                loop.TryQueueInput(1, Input(loop, 1, tick, Vector2.zero, tick == 1));
+            loop.Step();
+            Assert.That(loop.GetBufferedInputCount(1), Is.AtMost(1));
+            Assert.That(loop.GetLastConsumedInputTick(1), Is.EqualTo(3));
+            Assert.That(loop.GetState(1).Ammo0, Is.EqualTo(ammo - 1));
         }
 
         private static void Approach(DuelServerLoop loop, ref int tick)

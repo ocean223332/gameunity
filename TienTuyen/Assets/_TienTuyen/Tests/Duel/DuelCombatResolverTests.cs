@@ -13,7 +13,8 @@ namespace TienTuyen.Duel.Tests
             float laneX = low.Center.x + low.Half.x * .5f;
             var shooter = At(0, laneX, low.Center.y + low.Half.y + 5.2f);
             var target = At(1, laneX, low.Center.y - low.Half.y - .6f);
-            float headRayHeight = (CombatRules.PlayerStandHeight + CombatRules.PlayerCrouchHeight) / 2;
+            // Above both measured crouched crowns (1.41-1.47 m), inside the standing head.
+            const float headRayHeight = 1.7f;
             var attack = new DuelAttack(DuelAttackKind.Shot, 0, 12,
                 new Vector3(shooter.Position.x, headRayHeight, shooter.Position.z), Vector3.back);
             var standing = DuelCombatResolver.Resolve(shooter, attack, target);
@@ -52,8 +53,10 @@ namespace TienTuyen.Duel.Tests
             var result = DuelCombatResolver.Resolve(shooter, attack, target);
             Assert.That(result.Damage, Is.EqualTo(DuelPlayerSim.WeaponAt(0).DamagePerHit));
             Assert.That(result.HitCount, Is.EqualTo(1));
-            var top = target.Position + Vector3.up * (target.Height - DuelArenaLayout.GroundY - DuelArenaLayout.PlayerRadius);
-            Assert.That((result.HitPoint - top).magnitude, Is.EqualTo(DuelArenaLayout.PlayerRadius).Within(.0001f));
+            float feet = target.Position.y - DuelArenaLayout.GroundY;
+            var axisPoint = new Vector3(target.Position.x,
+                Mathf.Clamp(result.HitPoint.y, feet + DuelArenaLayout.PlayerRadius, feet + target.Height), target.Position.z);
+            Assert.That((result.HitPoint - axisPoint).magnitude, Is.EqualTo(DuelArenaLayout.PlayerRadius).Within(.0001f));
             Assert.That(result.HitCover, Is.False);
         }
 
@@ -102,9 +105,13 @@ namespace TienTuyen.Duel.Tests
         public void CapsuleHitUsesCrouchHeightAndJumpElevation()
         {
             Pair(5, out var shooter, out var target);
-            float betweenHeights = (CombatRules.PlayerStandHeight + CombatRules.PlayerCrouchHeight) / 2;
-            var headShot = Shot(new Vector3(shooter.Position.x, betweenHeights, shooter.Position.z));
-            Assert.That(DuelCombatResolver.Resolve(shooter, headShot, target).HitCount, Is.EqualTo(1));
+            // Baked upper heads reach 1.856-1.887 m, about 23 cm forward of the body axis.
+            const float visibleHeadHeight = 1.85f;
+            var headShot = Shot(new Vector3(shooter.Position.x, visibleHeadHeight, shooter.Position.z + .23f));
+            Assert.That(DuelCombatResolver.Resolve(shooter, headShot, target).Damage,
+                Is.EqualTo(DuelPlayerSim.WeaponAt(0).DamagePerHit));
+            var aboveHead = Shot(headShot.Origin + Vector3.up * .05f);
+            Assert.That(DuelCombatResolver.Resolve(shooter, aboveHead, target).HitCount, Is.Zero);
             target.Crouch = 1;
             Assert.That(DuelCombatResolver.Resolve(shooter, headShot, target).HitCount, Is.Zero);
             target.Crouch = 0;

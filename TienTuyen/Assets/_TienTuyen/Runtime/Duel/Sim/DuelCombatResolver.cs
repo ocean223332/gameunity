@@ -23,6 +23,10 @@ namespace TienTuyen.Duel
         // The catalog has no spread field. Only multi-pellet weapons use this four-degree cone.
         public const float PelletSpreadDegrees = 4f;
 
+        // Measured taller crown, shared for equal hit volumes in both slots. The US model receives
+        // 3.1 cm standing / 5.6 cm crouched forgiveness instead of a skin-dependent target size.
+        private const float StandingCrown = 1.887f, CrouchingCrown = 1.466f;
+
         public static DuelHitResult Resolve(in DuelSimState shooter, in DuelAttack attack, in DuelSimState target)
         {
             if (shooter.Dead || target.Dead || attack.Kind == DuelAttackKind.None ||
@@ -129,17 +133,30 @@ namespace TienTuyen.Duel
         {
             float feet = target.Position.y - DuelArenaLayout.GroundY;
             bottom = new Vector3(target.Position.x, feet + DuelArenaLayout.PlayerRadius, target.Position.z);
-            top = new Vector3(target.Position.x, feet + target.Height - DuelArenaLayout.PlayerRadius, target.Position.z);
+            // Enclose the head's measured forward offset; the crown plane below clips the rounded cap.
+            top = new Vector3(target.Position.x, feet + target.Height, target.Position.z);
         }
 
         private static bool RayHitsCapsule(Vector3 origin, Vector3 direction, in DuelSimState target,
             float limit, out float distance)
         {
+            distance = float.PositiveInfinity;
+            float ceiling = target.Position.y - DuelArenaLayout.GroundY +
+                Mathf.Lerp(StandingCrown, CrouchingCrown, Mathf.Clamp01(target.Crouch));
+            float start = 0;
+            if (origin.y > ceiling)
+            {
+                if (direction.y >= 0) return false;
+                start = (ceiling - origin.y) / direction.y;
+                if (start > limit) return false;
+                origin += direction * start;
+                limit -= start;
+            }
+            else if (direction.y > 0) limit = Mathf.Min(limit, (ceiling - origin.y) / direction.y);
             Capsule(target, out Vector3 bottom, out Vector3 top);
             float radius = DuelArenaLayout.PlayerRadius;
             Vector3 closest = new Vector3(bottom.x, Mathf.Clamp(origin.y, bottom.y, top.y), bottom.z);
-            distance = float.PositiveInfinity;
-            if ((origin - closest).sqrMagnitude <= radius * radius) { distance = 0; return true; }
+            if ((origin - closest).sqrMagnitude <= radius * radius) { distance = start; return true; }
             // Cylinder between the end-cap centres.
             float dx = origin.x - bottom.x, dz = origin.z - bottom.z;
             float a = direction.x * direction.x + direction.z * direction.z;
@@ -154,7 +171,9 @@ namespace TienTuyen.Duel
             }
             SphereCandidate(origin, direction, bottom, radius, ref distance);
             SphereCandidate(origin, direction, top, radius, ref distance);
-            return distance <= limit;
+            bool hit = distance <= limit;
+            distance += start;
+            return hit;
         }
 
         private static void CylinderCandidate(float t, Vector3 origin, Vector3 direction, float low, float high,

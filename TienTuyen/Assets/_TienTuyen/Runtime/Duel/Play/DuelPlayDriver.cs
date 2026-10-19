@@ -19,6 +19,7 @@ namespace TienTuyen.Duel.Play
         private DuelSession session;
         private readonly DuelLocalInput input = new DuelLocalInput();
         private bool readySent, aimMissingLogged;
+        private DuelNetStats stats;
 
         // By assignment, so a Play without a domain reload never attaches a second driver.
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
@@ -35,6 +36,7 @@ namespace TienTuyen.Duel.Play
             stage.Session = session;
             stage.Lobby = this;
             stage.LeaveMatchRequested += session.Leave;
+            stats = DuelNetStats.Open();
         }
 
         // After DuelStage.Update (order -50) has refreshed Aim, so the input carries this frame's look.
@@ -58,12 +60,14 @@ namespace TienTuyen.Duel.Play
                 }
             }
             session.Update(Time.deltaTime);
+            stats?.Write(session, Time.unscaledDeltaTime);
             // The stage shows the lobby while Match is null: until there is a match to show, and again after leaving.
             stage.Match = session.HasState ? this : null;
         }
 
         private void OnDestroy()
         {
+            stats?.Dispose();
             if (session == null) return;
             session.Leave();
             net.Dispose();
@@ -134,9 +138,9 @@ namespace TienTuyen.Duel.Play
         public string LocalName => "Bạn";
         public string OpponentName => "Đối thủ";
         public float LocalHealth => session.LocalState.Health;
-        public float LocalMaxHealth => CombatRules.PlayerMaxHealth;
+        public float LocalMaxHealth => DuelPlayerSim.MaxHealth;
         public float OpponentHealth => session.Opponent.Health;
-        public float OpponentMaxHealth => CombatRules.PlayerMaxHealth;
+        public float OpponentMaxHealth => DuelPlayerSim.MaxHealth;
 
         private int ActiveSlot => session.LocalState.ActiveWeaponSlot;
         private bool KnifeInHand => ActiveSlot == DuelPlayerSim.KnifeSlot;

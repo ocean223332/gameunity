@@ -79,6 +79,7 @@ namespace TienTuyen.Duel
     public static class DuelPlayerSim
     {
         public const int KnifeSlot = 3;
+        public const float MaxHealth = 100f;
 
         // Duel reach is independent of survival; SMG/shotgun approximate CS:GO half-damage distances.
         // RangeModifier per 500 inches: 0.85 -> 54.17 m, 0.70 -> 24.68 m. Rifle clears the arena.
@@ -114,7 +115,7 @@ namespace TienTuyen.Duel
             return new DuelSimState
             {
                 Slot = slot, Position = DuelArenaLayout.Spawn(slot), Yaw = DuelArenaLayout.SpawnYaw(slot),
-                Health = CombatRules.PlayerMaxHealth,
+                Health = MaxHealth,
                 Ammo0 = WeaponAt(0).MagazineSize, Ammo1 = WeaponAt(1).MagazineSize, Ammo2 = WeaponAt(2).MagazineSize
             };
         }
