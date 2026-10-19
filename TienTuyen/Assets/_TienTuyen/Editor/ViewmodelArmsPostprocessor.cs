@@ -7,16 +7,23 @@ using UnityEngine;
 namespace TienTuyen.Editor
 {
     /// <summary>
-    /// First-person arms that match the third-person hero: on import of a CS:GO viewmodel (Resources/Viewmodels/*/v_*.fbx),
+    /// First-person arms that match the third-person bodies: on import of a CS:GO viewmodel (Resources/Viewmodels/*/v_*.fbx),
     /// its "Arms" mesh (gloves and sleeves) is replaced by the hero's own forearms, hands and rolled sleeve cuffs, retargeted
     /// in Blender onto the viewmodel's arm bones (output/hero-valve/_scripts/fp_arms.py) and drawn with the hero's material.
-    /// The data file is HeroArms_&lt;viewmodel&gt;.json in <see cref="HeroValveImporter.ArtDir"/>; without it the viewmodel
-    /// keeps its own arms. The gun, its takes, sights and flash are untouched.
+    /// Each other body's arms (<see cref="Sets"/>) go beside it on a disabled renderer "Arms_&lt;set&gt;" on the same bones, which
+    /// the first-person view shows instead for a body whose profile names that set (SkinnedCharacterProfile.firstPersonArms).
+    /// A set's data file is &lt;prefix&gt;&lt;viewmodel&gt;.json; without the hero's the viewmodel keeps its own arms, without
+    /// another set's it has no renderer for it. The gun, its takes, sights and flash are untouched.
     /// </summary>
     public sealed class ViewmodelArmsPostprocessor : AssetPostprocessor
     {
         private const string ViewmodelFolder = "Assets/_TienTuyen/Art/Resources/Viewmodels/";
-        private const string MaterialPath = HeroValveImporter.ArtDir + "/HeroValve.mat";
+        /// <summary>Arm sets: name (null: the hero's, which replaces "Arms"), data file prefix, material.</summary>
+        private static readonly (string name, string data, string material)[] Sets =
+        {
+            (null, HeroValveImporter.ArtDir + "/HeroArms_", HeroValveImporter.ArtDir + "/HeroValve.mat"),
+            ("USSoldier", USSoldierValveImporter.ArtDir + "/USSoldierArms_", USSoldierValveImporter.ArtDir + "/USSoldierValve.mat"),
+        };
 
         /// <summary>Layout of the data file (flat arrays; positions, normals and heads in the file's Blender world).</summary>
         [Serializable]
@@ -33,15 +40,19 @@ namespace TienTuyen.Editor
         {
             if (!assetPath.StartsWith(ViewmodelFolder, StringComparison.Ordinal) ||
                 !assetPath.EndsWith(".fbx", StringComparison.OrdinalIgnoreCase)) return;
-            string dataPath = HeroValveImporter.ArtDir + "/HeroArms_" + Path.GetFileNameWithoutExtension(assetPath) + ".json";
-            context.DependsOnSourceAsset(dataPath);
-            context.DependsOnSourceAsset(MaterialPath);
-            if (!File.Exists(dataPath)) return;
-            var data = JsonUtility.FromJson<ArmsFile>(File.ReadAllText(dataPath));
+            var present = new List<(string name, string data, string material)>();
+            foreach (var set in Sets)
+            {
+                string dataPath = set.data + Path.GetFileNameWithoutExtension(assetPath) + ".json";
+                context.DependsOnSourceAsset(dataPath);
+                context.DependsOnSourceAsset(set.material);
+                if (File.Exists(dataPath)) present.Add((set.name, dataPath, set.material));
+            }
+            if (present.Count == 0) return;
             SkinnedMeshRenderer arms = null;
             foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
                 if (smr.name == "Arms") arms = smr;
-            if (arms == null) throw new InvalidOperationException(assetPath + " has no Arms mesh for " + dataPath);
+            if (arms == null) throw new InvalidOperationException(assetPath + " has no Arms mesh for " + present[0].data);
             var bones = new Dictionary<string, Transform>();
             foreach (var t in root.GetComponentsInChildren<Transform>(true)) bones[t.name] = t;
 
@@ -52,6 +63,37 @@ namespace TienTuyen.Editor
             for (int i = 0; i < oldBones.Length; i++) if (oldBones[i] != null) bind[oldBones[i].name] = oldBind[i];
             Matrix4x4 BindPose(Transform t) => bind.TryGetValue(t.name, out var m) ? m : t.worldToLocalMatrix * meshToWorld;
 
+            foreach (var set in present)
+            {
+                var (mesh, newBones) = Build(set.data, bones, bind, BindPose);
+                mesh.name = set.name == null ? "HeroArms" : set.name + "Arms";
+                context.AddObjectToAsset(mesh.name, mesh);
+                var target = arms;
+                if (set.name != null)
+                {
+                    // Beside "Arms", in its space, off until the first-person view picks it.
+                    var holder = new GameObject("Arms_" + set.name);
+                    holder.transform.SetParent(arms.transform.parent, false);
+                    holder.transform.localPosition = arms.transform.localPosition;
+                    holder.transform.localRotation = arms.transform.localRotation;
+                    holder.transform.localScale = arms.transform.localScale;
+                    target = holder.AddComponent<SkinnedMeshRenderer>();
+                    target.rootBone = arms.rootBone;
+                    holder.SetActive(false);
+                }
+                target.sharedMesh = mesh;
+                target.bones = newBones;
+                var material = AssetDatabase.LoadAssetAtPath<Material>(set.material);
+                if (material != null) target.sharedMaterials = new[] { material };
+                target.localBounds = mesh.bounds;
+            }
+        }
+
+        /// <summary>One set's arms as a mesh on the viewmodel's bones, in the Arms mesh's space.</summary>
+        private (Mesh mesh, Transform[] bones) Build(string dataPath, Dictionary<string, Transform> bones, Dictionary<string, Matrix4x4> bind,
+            Func<Transform, Matrix4x4> BindPose)
+        {
+            var data = JsonUtility.FromJson<ArmsFile>(File.ReadAllText(dataPath));
             // The Blender world of the data file -> this mesh's space: a similarity fitted on the heads of the bones the old
             // arms were bound to (mirrored when the importer flips handedness, which then also flips the triangles' winding).
             var src = new List<Vector3>(); var dst = new List<Vector3>();
@@ -89,17 +131,12 @@ namespace TienTuyen.Editor
                 if (!bones.TryGetValue(data.bone_names[i], out newBones[i])) throw new InvalidOperationException(assetPath + " has no bone " + data.bone_names[i]);
                 bindposes[i] = BindPose(newBones[i]);
             }
-            var mesh = new Mesh { name = "HeroArms" };
+            var mesh = new Mesh();
             if (n > 65535) mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
             mesh.vertices = vertices; mesh.normals = normals; mesh.uv = uv; mesh.triangles = triangles;
             mesh.boneWeights = weights; mesh.bindposes = bindposes;
             mesh.RecalculateTangents(); mesh.RecalculateBounds();
-            context.AddObjectToAsset("HeroArms", mesh);
-            arms.sharedMesh = mesh;
-            arms.bones = newBones;
-            var material = AssetDatabase.LoadAssetAtPath<Material>(MaterialPath);
-            if (material != null) arms.sharedMaterials = new[] { material };
-            arms.localBounds = mesh.bounds;
+            return (mesh, newBones);
         }
 
         private struct Similarity { public Quaternion rotation; public Vector3 translation; public float scale, error; }

@@ -83,6 +83,9 @@ The hero's mesh and textures (`Art/Characters/ValveBiped/Hero`) were generated f
 skinned to the xdR ValveBiped skeleton. Its grips were posed by eye after Valve's CS:GO GIGN third-person
 model, which served only as a visual reference and is not shipped.
 
+The duel's US soldier (`Art/Characters/ValveBiped/USSoldier`) was generated with Tripo by the project author, then
+rigged with Auto-Rig Pro and skinned to the xdR ValveBiped skeleton.
+
 ## CS:GO weapons and animations
 
 | Asset | Author / original creator | Source | Licence | Used for |
@@ -92,7 +95,7 @@ model, which served only as a visual reference and is not shipped.
 | CS2 default T knife ("Knife Default_t \| CS2") | Valve (model and textures); alyax (Sketchfab upload) | [Sketchfab](https://sketchfab.com/3d-models/5274207a087a455b86f68948facae4e5) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | The hero's knife and its hand-held/sheathed model (`Art/Resources/Models/hero_knife`; re-oriented, metallic-smoothness map rebuilt for URP); the first-person knife's mesh, its material `Art/Weapons/Viewmodels/ViewmodelKnifeT.mat` and that material's texture copies `ViewmodelKnifeT_BaseColor.png` / `ViewmodelKnifeT_MetallicSmoothness.png` (pommel darkened) |
 | CS:GO viewmodels: `v_ak47`, `v_mp5sd`, `v_xm1014` | RAGNA SS (pack); Valve / Hidden Path Entertainment (original CS:GO assets) | [GameBanana pack 552059](https://gamebanana.com/mods/552059) | CC BY-NC-ND 4.0 as stated by the source | First-person viewmodels in `Art/Resources/Viewmodels` |
 | CS:GO default T knife viewmodel animations (`v_knife_default_t`: idle1, draw, light_hit1, light_hit2) | Google61 (rig, porting, compiling); Ghost1507512 (hand rig); CS PRO (models); Valve (original models and animations) | [GameBanana WiP 48384](https://gamebanana.com/wips/48384) | CC BY-NC-ND 4.0 as stated by the source | First-person knife `Art/Resources/Viewmodels/knife/v_knife.fbx`, with the CS:GO viewmodel arms above and the CS2 default T knife mesh |
-| Olive sleeve textures: `sleeve_olive.png`, `sleeve_olive_normal.png` | clip-source; no third-party author listed | `Art/Weapons/Viewmodels/MANIFEST.md` | No third-party licence listed; procedural project asset | Olive sleeve material for the first-person arms |
+| Olive sleeve textures: `sleeve_olive.png`, `sleeve_olive_normal.png` | clip-source; no third-party author listed | `Art/Weapons/Viewmodels/MANIFEST.md` | No third-party licence listed; procedural project asset | Remap target for the viewmodels' arm material; not on screen (the hero's arms replace it) |
 
 The CS:GO pack manifests list the Valve and Hidden Path original assets separately from the RAGNA SS pack credit. They explicitly name the AK and MP5 world models and the AK, MP5 and XM1014 viewmodel sources; they do not give a separate author or licence line for the project's renamed `w_xm1014` path. The xdR manifest lists xDShot's port work separately from Valve's original motion data. No additional author or licence is stated for the procedural sleeve textures.
 

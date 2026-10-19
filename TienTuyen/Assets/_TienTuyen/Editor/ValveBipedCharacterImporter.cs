@@ -131,6 +131,18 @@ namespace TienTuyen.Editor
         }
 
         /// <summary>
+        /// Installs the boss body (Boss/BruteValve.*, output/enemy/boss): the Tripo brute on the xdR bone rotations with
+        /// its own limb lengths, so Humanoid plays the shared takes on it. As a knife body it takes the knife takes'
+        /// reference pose. No profile yet.
+        /// </summary>
+        [MenuItem("Tien Tuyen/Characters/Import ValveBiped Boss")]
+        public static void ImportBoss()
+        {
+            var knife = WeaponClipImporter.ImportKnifeTakes();
+            ImportBody("Brute", HumanoidRigSetup.ImportRestPose(RestPath), ArtDir + "/Boss", (knife.model, knife.avatar));
+        }
+
+        /// <summary>
         /// A knife body on the CS:GO knife takes. Every take carries its own knife arms, so there is no separate guard layer;
         /// the dagger attack keeps its contact time and the dash runs on the forward knife run.
         /// </summary>

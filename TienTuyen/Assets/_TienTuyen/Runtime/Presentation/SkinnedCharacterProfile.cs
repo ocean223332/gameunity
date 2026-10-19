@@ -75,6 +75,9 @@ namespace TienTuyen.Presentation
 
         public float modelScale = 1f;
 
+        [Tooltip("This body's own hands in first person: the viewmodels' Arms_<name> renderer (ViewmodelArmsPostprocessor). Empty keeps the viewmodels' Arms (the hero's).")]
+        public string firstPersonArms;
+
         [Header("Hand-carried weapons (optional)")]
         [Tooltip("Per-weapon world model and upper-body clips. A weapon listed here rides the model's Weapon bone with both " +
                  "hands solved onto it, instead of the fitted WeaponHold; weapons not listed keep that.")]
