@@ -58,9 +58,13 @@ Read by the `blender-code-model` skill. Paths are relative to the repo root.
     face;
   - the aim pitch bends the spine chain about it.
 
-  When ARP put it 6 cm under the US shoulders, the stock fell to the collar. `output/us-slot1/_scripts/fit_valve.py`
-  therefore sets Spine4 to xdR's place on Spine2→Neck1: 73.1% along, 3.7% of that length behind the line. Run this
-  table on every ARP body before export.
+  The whole curve also sets the Humanoid chest's pitch: on ARP's straight trunk the US chest, and the rifle riding it,
+  tipped about 7° off the hero's (0.8° after).
+
+  Rule for every ARP-rigged (or generated) body: place Spine, Spine1, Spine2, Spine4 and Neck1 at xdR's row above, scaled
+  to the body's own Pelvis→Head1 line, with xdR rest rotations. `valve_rig.xdr_trunk(pelvis, head1, forward)` gives the
+  places. `output/us-slot1/_scripts/fit_valve.py` uses it, and `retrunk.py` re-fits an already skinned body and moves
+  the trunk weights with their joints. Check the table on the exported bind before importing.
 
 ## Textures
 - `<name>_BaseColor.png` (sRGB), `<name>_Normal.png` (OpenGL, green up), `<name>_MetallicSmoothness.png` with
