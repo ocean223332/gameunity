@@ -1,0 +1,6 @@
+{
+  "name": "TienTuyen.Duel.Net.Tests",
+  "references": ["TienTuyen.Duel", "TienTuyen.Combat"],
+  "optionalUnityReferences": ["TestAssemblies"],
+  "autoReferenced": false
+}
