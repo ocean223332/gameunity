@@ -106,6 +106,23 @@ namespace TienTuyen.Presentation
             return true;
         }
 
+        /// <summary>
+        /// The body's own first-person hands (its profile's firstPersonArms): each viewmodel shows "Arms_&lt;name&gt;" in
+        /// place of "Arms" when it has one. Null or empty keeps "Arms" (the hero's).
+        /// </summary>
+        internal string ArmsSet
+        {
+            get => armsSet;
+            set
+            {
+                armsSet = value;
+                foreach (var model in viewmodels.Values)
+                    if (model != null) ShowArms(model.root);
+            }
+        }
+
+        private string armsSet;
+
         public void Initialize(CombatGame combat, Transform actor, CombatThirdPersonCamera camera) =>
             Initialize(new StationSource(combat, camera), actor);
 
@@ -368,6 +385,7 @@ namespace TienTuyen.Presentation
                         catch (System.ArgumentException) { model.fieldOfView = 0; }
                     }
             }
+            ShowArms(root);
             model.hipPosition = root.localPosition;
             model.hipRotation = root.localRotation;
             if (model.flash != null) model.flash.SetActive(false);
@@ -608,6 +626,19 @@ namespace TienTuyen.Presentation
             part.transform.localScale = size;
             part.GetComponent<Renderer>().material.color = color;
             return part.transform;
+        }
+
+        /// <summary>The viewmodel's arms for <see cref="ArmsSet"/>: its "Arms_&lt;set&gt;" if it has one, else its own "Arms".</summary>
+        private void ShowArms(Transform root)
+        {
+            var own = string.IsNullOrEmpty(armsSet) ? null : Find(root, "Arms_" + armsSet);
+            var hero = Find(root, "Arms");
+            if (own == null && !string.IsNullOrEmpty(armsSet))
+                Debug.LogWarning($"{root.name} has no Arms_{armsSet}: it keeps the hero's arms.");
+            own?.gameObject.SetActive(true);
+            hero?.gameObject.SetActive(own == null);
+            foreach (Transform child in hero?.parent ?? root)
+                if (child.name.StartsWith("Arms_", System.StringComparison.Ordinal) && child != own) child.gameObject.SetActive(false);
         }
 
         private static Transform Find(Transform root, string name)

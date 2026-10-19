@@ -52,6 +52,8 @@ namespace TienTuyen.Duel.Presentation
             this.body = body;
             yaw = DuelArenaLayout.SpawnYaw(slot);
             var data = view.GetComponent<CombatFirstPersonView>() ?? view.gameObject.AddComponent<CombatFirstPersonView>();
+            // The slot's own sleeves and hands, from the profile its body is drawn with (DuelBody.ProfileFor).
+            data.ArmsSet = Resources.Load<SkinnedCharacterProfile>(DuelBody.ProfileFor(slot))?.firstPersonArms;
             data.Initialize(this, body);
         }
 
