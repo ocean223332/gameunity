@@ -46,14 +46,16 @@ namespace TienTuyen.Duel.Presentation
         private int lastShotSlot = -1, lastShotAmmo;
 
         /// <param name="body">The local player's transform: drawn at the eased pose, its "HeroVisual" child hidden in first person.</param>
-        public DuelFirstPerson(Camera view, Transform body, int slot)
+        /// <param name="profile">The character the local body wears, whose first-person arms the viewmodels show.</param>
+        public DuelFirstPerson(Camera view, Transform body, int slot, string profile)
         {
             this.view = view;
             this.body = body;
             yaw = DuelArenaLayout.SpawnYaw(slot);
             var data = view.GetComponent<CombatFirstPersonView>() ?? view.gameObject.AddComponent<CombatFirstPersonView>();
-            // The slot's own sleeves and hands, from the profile its body is drawn with (DuelBody.ProfileFor).
-            data.ArmsSet = Resources.Load<SkinnedCharacterProfile>(DuelBody.ProfileFor(slot))?.firstPersonArms;
+            // Every viewmodel carries each character's sleeves and hands (ViewmodelArmsPostprocessor): the hero's replace its
+            // own "Arms", another's sit beside them as "Arms_<set>"; the profile names its set, empty for the hero's.
+            data.ArmsSet = Resources.Load<SkinnedCharacterProfile>(profile)?.firstPersonArms;
             data.Initialize(this, body);
         }
 

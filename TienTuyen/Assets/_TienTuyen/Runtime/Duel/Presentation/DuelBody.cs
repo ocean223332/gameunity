@@ -7,23 +7,12 @@ namespace TienTuyen.Duel.Presentation
 {
     /// <summary>
     /// One fighter's body: a skinned ValveBiped rig with the AK, MP5 and XM1014 and the knife, posed from a duel
-    /// state. Each slot has its own character (<see cref="ProfileFor"/>), so the enemy in front of you never looks
-    /// like you. Its root stands at the simulated pivot (feet + GroundY); the rig turns itself
+    /// state, wearing the character its player picked (<see cref="DuelRoster"/>). Its root stands at the simulated pivot (feet + GroundY); the rig turns itself
     /// to the aim. If the rig cannot be built, an olive stand-in of the body's height takes its place, so a fighter is
     /// never invisible.
     /// </summary>
     internal sealed class DuelBody
     {
-        public const string HeroProfile = "Characters/PAVN/PAVN_ValveProfile";
-        // Slot 1 is the US soldier. Its first-person arms are
-        // not this profile's: they are the viewmodel FBX in Resources/Viewmodels/<id>/ (gloves and sleeves included),
-        // the guns' folder picked by the source's ActiveWeapon.Id and the knife's by CombatFirstPersonView.KnifeId.
-        // So US gun arms need a WeaponDefinition with a distinct Id: Id is get-only, so build one with its constructor.
-        public const string OpponentProfile = "Characters/US/US_ValveProfile";
-
-        /// <summary>The Resources path of the character the fighter in <paramref name="slot"/> wears.</summary>
-        public static string ProfileFor(int slot) => slot == 1 ? OpponentProfile : HeroProfile;
-
         // The duel's death: HL2's death_04 crumple (knees give, down onto them, over onto the side) on the xdR skeleton,
         // in place of the profiles' CS:GO @Death1, whose arms go up over the head for most of the round-over time.
         private const string DeathClip = "Animations/GMod/gmod@Death";
@@ -46,7 +35,8 @@ namespace TienTuyen.Duel.Presentation
         private float lastHealth = float.MaxValue, hitTimer, aim, reloadElapsed;
         private int lastGun;
 
-        public DuelBody(Transform parent, string name, int slot)
+        /// <param name="profile">Resources path of the character's SkinnedCharacterProfile (<see cref="DuelCharacter.Profile"/>).</param>
+        public DuelBody(Transform parent, string name, string profile)
         {
             Actor = new GameObject(name).transform;
             Actor.SetParent(parent, false);
@@ -56,7 +46,6 @@ namespace TienTuyen.Duel.Presentation
             for (int i = 0; i < Guns.Length; i++) weapons[i] = Gun(root, Guns[i].group, Guns[i].model, Guns[i].instance);
             guns = weapons;
             rig = root.gameObject.AddComponent<CombatCharacterRig>();
-            string profile = ProfileFor(slot);
             if (rig.InitializeSkinned(WithDuelDeath(Resources.Load<SkinnedCharacterProfile>(profile)), weapons, new Vector3(0, -DuelArenaLayout.GroundY, 0)))
             {
                 AttachKnife(root);

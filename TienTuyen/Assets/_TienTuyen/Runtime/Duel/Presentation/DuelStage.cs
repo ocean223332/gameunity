@@ -158,7 +158,7 @@ namespace TienTuyen.Duel.Presentation
             var root = BuildCanvas();
             fake = new FakeDuelLobbyHost();
             if (Lobby == null) Lobby = fake;
-            LobbyView = new DuelLobbyView(root, () => Lobby, ReturnToMenu);
+            LobbyView = new DuelLobbyView(root, transform, () => Lobby, ReturnToMenu);
             HudView = new DuelHudView(root);
             ResultView = new DuelResultView(root, LeaveToLobby, ReturnToMenu);
             if (DemoMatch && Match == null) Match = fakeMatch = new FakeDuelHudState();
@@ -183,6 +183,8 @@ namespace TienTuyen.Duel.Presentation
             view.fieldOfView = 55f;
             view.nearClipPlane = .1f;
             view.farClipPlane = 420f;
+            // The lobby's character preview stands on its own layer, filmed by its own camera.
+            view.cullingMask &= ~(1 << DuelCharacterPreview.Layer);
             view.allowHDR = true;
             var data = view.GetComponent<UniversalAdditionalCameraData>() ?? view.gameObject.AddComponent<UniversalAdditionalCameraData>();
             data.renderType = CameraRenderType.Base;
@@ -228,6 +230,7 @@ namespace TienTuyen.Duel.Presentation
         {
             play?.Dispose();
             play = null;
+            LobbyView?.Dispose();
             if (canvasObject != null) Destroy(canvasObject);
         }
 
@@ -254,7 +257,11 @@ namespace TienTuyen.Duel.Presentation
             {
                 if (play == null)
                 {
-                    play = new DuelPlayView(transform, View, session.LocalSlot);
+                    // Both machines agree on what each slot wears once the match is there (IDuelLobbyHost.CharacterOf).
+                    var lobby = Lobby;
+                    int me = session.LocalSlot;
+                    play = new DuelPlayView(transform, View, me, lobby != null ? lobby.CharacterOf(me) : DuelRoster.For(me, DuelRoster.NoPick),
+                        lobby != null ? lobby.CharacterOf(1 - me) : DuelRoster.For(1 - me, DuelRoster.NoPick));
                     play.Wounded += from => HudView.Wounded(from, View.transform);
                     play.Struck += HudView.HitLanded;
                 }
@@ -301,7 +308,9 @@ namespace TienTuyen.Duel.Presentation
                 if (screen == Screen.Result) ResultView.Present(match);
                 Focus(screen == Screen.Lobby ? LobbyView.HostButton : screen == Screen.Result ? ResultView.Primary : null);
             }
-            if (LobbyView.Animate(deltaTime)) LobbyView.Refresh(deltaTime);
+            bool lobbyUp = LobbyView.Animate(deltaTime);
+            LobbyView.PreviewOn = lobbyUp;
+            if (lobbyUp) LobbyView.Refresh(deltaTime);
             if (HudView.Animate(deltaTime) && match != null) HudView.Refresh(match, deltaTime);
             ResultView.Animate(deltaTime);
         }

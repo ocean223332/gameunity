@@ -46,15 +46,16 @@ namespace TienTuyen.Duel.Presentation
         private bool hasNewer;
         private float sinceNewer, opponentCooldown;
 
-        public DuelPlayView(Transform parent, Camera view, int localSlot)
+        /// <param name="localMan">What the local player wears; <paramref name="opponentMan"/> the opponent's.</param>
+        public DuelPlayView(Transform parent, Camera view, int localSlot, DuelCharacter localMan, DuelCharacter opponentMan)
         {
             this.view = view;
             this.localSlot = localSlot;
             root = new GameObject("DuelPlay").transform;
             root.SetParent(parent, false);
-            local = new DuelBody(root, "LocalPlayer", localSlot);
-            opponent = new DuelBody(root, "Opponent", 1 - localSlot);
-            eye = new DuelFirstPerson(view, local.Actor, localSlot);
+            local = new DuelBody(root, "LocalPlayer", localMan.Profile);
+            opponent = new DuelBody(root, "Opponent", opponentMan.Profile);
+            eye = new DuelFirstPerson(view, local.Actor, localSlot, localMan.Profile);
             audio = new DuelAudio(root, localSlot);
             var bleeding = new GameObject("DuelBlood");
             bleeding.transform.SetParent(root, false);
