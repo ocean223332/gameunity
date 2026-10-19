@@ -6,6 +6,8 @@ namespace TienTuyen.Duel
     public readonly struct DuelServerStepResult
     {
         public readonly DuelStepResult Player0, Player1;
+        /// <summary>The final frame's hits only, not frames replayed after a stall (their damage is applied all the
+        /// same). Nothing reads these: presentation reacts to health drops in the replicated state.</summary>
         public readonly DuelHitResult Hit0, Hit1;
         public readonly bool Respawned;
 
