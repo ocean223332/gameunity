@@ -21,8 +21,14 @@ namespace TienTuyen.Duel.Net
         /// <summary>Server: both slots joined and reported ready, so the match may start.</summary>
         bool BothReady { get; }
 
-        /// <summary>This machine's arena is built and can take snapshots.</summary>
-        void MarkLocalReady();
+        /// <summary>
+        /// This machine's arena is built and can take snapshots. <paramref name="character"/> is the man this player
+        /// wears: it rides the same message, so the server knows it the moment the slot is ready.
+        /// </summary>
+        void MarkLocalReady(int character);
+
+        /// <summary>Server: the character a slot sent when it became ready; <see cref="DuelSession.NoCharacter"/> before.</summary>
+        int CharacterOf(int slot);
 
         /// <summary>Server: a slot finished connecting.</summary>
         event Action<int> SlotJoined;

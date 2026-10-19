@@ -27,6 +27,7 @@ namespace TienTuyen.Duel.Net
         private readonly GameObject m_Root;
         private readonly byte[] m_Protocol;
         private readonly bool[] m_Joined = new bool[SlotCount], m_Ready = new bool[SlotCount];
+        private readonly int[] m_Character = { DuelSession.NoCharacter, DuelSession.NoCharacter };
         private ulong m_JoinerId;
         private bool m_HasJoiner;
 
@@ -82,6 +83,8 @@ namespace TienTuyen.Duel.Net
 
         public bool IsReady(int slot) => slot >= 0 && slot < SlotCount && m_Ready[slot];
 
+        public int CharacterOf(int slot) => slot >= 0 && slot < SlotCount ? m_Character[slot] : DuelSession.NoCharacter;
+
         public int SlotOf(ulong clientId)
         {
             if (!Manager.IsListening) return NoSlot;
@@ -107,19 +110,20 @@ namespace TienTuyen.Duel.Net
 
         /// <summary>
         /// Call once this machine has built the arena and can take snapshots. The server sends snapshots only
-        /// to a ready slot, and the match waits for <see cref="BothReady"/>.
+        /// to a ready slot, and the match waits for <see cref="BothReady"/>. The ready message carries the
+        /// player's character, so a slot is never ready without it.
         /// </summary>
-        public void MarkLocalReady()
+        public void MarkLocalReady(int character)
         {
             if (!Manager.IsListening) return;
             if (Manager.IsServer)
             {
-                SetReady(HostSlot);
+                SetReady(HostSlot, character);
                 return;
             }
             if (!Manager.IsConnectedClient) return;
-            using var writer = new FastBufferWriter(1, Allocator.Temp);
-            writer.WriteByteSafe(1);
+            using var writer = new FastBufferWriter(sizeof(int), Allocator.Temp);
+            writer.WriteValueSafe(character);
             Manager.CustomMessagingManager.SendNamedMessage(ReadyMessage, NetworkManager.ServerClientId, writer, NetworkDelivery.ReliableSequenced);
         }
 
@@ -204,6 +208,7 @@ namespace TienTuyen.Duel.Net
             if (!Manager.IsServer || !m_HasJoiner || clientId != m_JoinerId) return;
             m_HasJoiner = false;
             m_Ready[JoinerSlot] = false;
+            m_Character[JoinerSlot] = DuelSession.NoCharacter;
             if (!m_Joined[JoinerSlot]) return;
             m_Joined[JoinerSlot] = false;
             SlotLeft?.Invoke(JoinerSlot);
@@ -211,12 +216,17 @@ namespace TienTuyen.Duel.Net
 
         private void OnReadyMessage(ulong sender, FastBufferReader reader)
         {
-            if (Manager.IsServer && SlotOf(sender) == JoinerSlot && m_Joined[JoinerSlot]) SetReady(JoinerSlot);
+            if (!Manager.IsServer || SlotOf(sender) != JoinerSlot || !m_Joined[JoinerSlot]) return;
+            // Approval refuses a different build, so the message holds the int; a short one reads as no pick.
+            int character = DuelSession.NoCharacter;
+            if (reader.TryBeginRead(sizeof(int))) reader.ReadValue(out character);
+            SetReady(JoinerSlot, character);
         }
 
-        private void SetReady(int slot)
+        private void SetReady(int slot, int character)
         {
             if (m_Ready[slot]) return;
+            m_Character[slot] = character;
             m_Ready[slot] = true;
             SlotReady?.Invoke(slot);
         }
@@ -226,6 +236,7 @@ namespace TienTuyen.Duel.Net
             m_HasJoiner = false;
             Array.Clear(m_Joined, 0, SlotCount);
             Array.Clear(m_Ready, 0, SlotCount);
+            m_Character[HostSlot] = m_Character[JoinerSlot] = DuelSession.NoCharacter;
         }
 
         private static byte[] ProtocolPayload()

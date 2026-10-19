@@ -61,6 +61,11 @@ namespace TienTuyen.Duel.Presentation
             Status = "";
         }
 
+        public int LocalCharacter { get; private set; } = DuelRoster.NoPick;
+        public void RequestCharacter(int index) => LocalCharacter = index;
+        /// <summary>The fake plays slot 0; the opponent wears its default.</summary>
+        public DuelCharacter CharacterOf(int slot) => DuelRoster.For(slot, slot == 0 ? LocalCharacter : DuelRoster.NoPick);
+
         /// <summary>Advances the fake; call once a frame.</summary>
         public void Tick()
         {

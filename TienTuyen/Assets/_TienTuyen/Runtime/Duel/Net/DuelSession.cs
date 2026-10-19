@@ -27,6 +27,9 @@ namespace TienTuyen.Duel.Net
     {
         public const float DefaultFixedDeltaTime = 1f / 30f;
 
+        /// <summary>A character index meaning none was picked: the presentation dresses the slot in its default.</summary>
+        public const int NoCharacter = -1;
+
         // A long hitch must not turn into a burst of catch-up steps; time beyond this is dropped.
         private const int MaxStepsPerUpdate = 5;
 
@@ -135,8 +138,21 @@ namespace TienTuyen.Duel.Net
             if (input.WeaponSlot >= 0) m_PendingWeaponSlot = input.WeaponSlot;
         }
 
-        /// <summary>Call once this machine's arena is built.</summary>
-        public void MarkArenaReady() => m_Net.MarkLocalReady();
+        /// <summary>Call once this machine's arena is built, with the character this player wears.</summary>
+        public void MarkArenaReady(int character = NoCharacter) => m_Net.MarkLocalReady(character);
+
+        /// <summary>
+        /// The character the fighter in <paramref name="slot"/> wears, the same on both machines from the moment
+        /// <see cref="HasState"/> is true: the host has had both since both were ready, and the joiner reads them from
+        /// the match view it cannot have state without. <see cref="NoCharacter"/> before then, or when none was picked.
+        /// </summary>
+        public int CharacterOf(int slot)
+        {
+            if (m_Net.IsServer) return m_Net.CharacterOf(slot);
+            if (!m_HasMatch) return NoCharacter;
+            return slot == DuelNetworkBootstrap.HostSlot ? m_Match.Character0 :
+                slot == DuelNetworkBootstrap.JoinerSlot ? m_Match.Character1 : NoCharacter;
+        }
 
         public void Leave()
         {
@@ -218,7 +234,10 @@ namespace TienTuyen.Duel.Net
                 State = m_Loop.GetState(joiner)
             });
             m_Net.SendOpponentView(joiner, OpponentViewOf(DuelNetworkBootstrap.HostSlot));
-            m_Net.SendMatchView(joiner, DuelMatchView.From(m_Loop.Match, m_Loop.ServerTick));
+            var match = DuelMatchView.From(m_Loop.Match, m_Loop.ServerTick);
+            match.Character0 = m_Net.CharacterOf(DuelNetworkBootstrap.HostSlot);
+            match.Character1 = m_Net.CharacterOf(joiner);
+            m_Net.SendMatchView(joiner, match);
         }
 
         private DuelOpponentView OpponentViewOf(int slot) =>

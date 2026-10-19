@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using System.Collections.Generic;
+using UnityEngine;
 
 namespace TienTuyen.Duel.Presentation
 {
@@ -19,6 +20,57 @@ namespace TienTuyen.Duel.Presentation
         void RequestHost();
         void RequestJoin(string target);
         void RequestCancel();
+
+        /// <summary>The index into <see cref="DuelRoster.All"/> this player will wear, or <see cref="DuelRoster.NoPick"/>.</summary>
+        int LocalCharacter { get; }
+        /// <summary>
+        /// Picks a man from <see cref="DuelRoster.All"/>; <see cref="DuelRoster.NoPick"/> clears the pick. Pick before
+        /// Host or Join: the pick goes to the other machine once, as soon as the two are connected, and a pick made after
+        /// Host or Join is not worn this match.
+        /// </summary>
+        void RequestCharacter(int index);
+        /// <summary>
+        /// What the fighter in a slot wears. Both machines agree on it from the moment the match is there to show (the
+        /// stage's Match is set), so build the bodies then; before it, the other slot reads as its default.
+        /// </summary>
+        DuelCharacter CharacterOf(int slot);
+    }
+
+    /// <summary>
+    /// A man a fighter can wear. Cosmetic only: every one has the same health, speed, hitboxes and guns, and nothing in
+    /// the simulation knows which it is.
+    /// </summary>
+    public readonly struct DuelCharacter
+    {
+        public readonly string Id;
+        /// <summary>The name the lobby shows.</summary>
+        public readonly string Name;
+        /// <summary>Resources path of the character's SkinnedCharacterProfile.</summary>
+        public readonly string Profile;
+
+        public DuelCharacter(string id, string name, string profile) { Id = id; Name = name; Profile = profile; }
+    }
+
+    /// <summary>
+    /// The men on offer. A pick crosses the wire as an index into <see cref="All"/>, so both machines need the same
+    /// roster, that is the same build. Another man is one more line here. Both players may wear the same one.
+    /// </summary>
+    public static class DuelRoster
+    {
+        public const int NoPick = -1;
+
+        public static readonly IReadOnlyList<DuelCharacter> All = new[]
+        {
+            new DuelCharacter("pavn", "Bộ đội", "Characters/PAVN/PAVN_ValveProfile"),
+            new DuelCharacter("us", "Lính Mỹ", "Characters/US/US_ValveProfile")
+        };
+
+        /// <summary>
+        /// What the fighter in <paramref name="slot"/> wears for <paramref name="pick"/>: the pick when it is on the
+        /// roster, else the slot's own man (the host PAVN, the joiner US), so nobody ever spawns without a character.
+        /// </summary>
+        public static DuelCharacter For(int slot, int pick) =>
+            pick >= 0 && pick < All.Count ? All[pick] : All[slot == 1 && All.Count > 1 ? 1 : 0];
     }
 
     public enum DuelRoundResult { None, Won, Lost, Draw }

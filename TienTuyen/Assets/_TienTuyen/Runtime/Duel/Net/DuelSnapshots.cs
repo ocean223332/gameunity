@@ -50,7 +50,10 @@ namespace TienTuyen.Duel.Net
         };
     }
 
-    /// <summary>Server to both clients: the match as the joiner's HUD shows it. Sent with every snapshot.</summary>
+    /// <summary>
+    /// Server to both clients: the match as the joiner's HUD shows it, and who wears which character. Sent with every
+    /// snapshot, so the joiner never has a match to show without knowing both characters.
+    /// </summary>
     [StructLayout(LayoutKind.Sequential)]
     public struct DuelMatchView
     {
@@ -62,6 +65,8 @@ namespace TienTuyen.Duel.Net
         public DuelRoundEndReason RoundEndReason;
         public DuelMatchEndReason MatchEndReason;
         public float PhaseRemaining, RoundRemaining;
+        /// <summary>Each slot's character as it sent it when ready; cosmetic, <see cref="DuelSession.NoCharacter"/> for none.</summary>
+        public int Character0, Character1;
 
         public static DuelMatchView From(DuelMatch match, int serverTick) => new DuelMatchView
         {

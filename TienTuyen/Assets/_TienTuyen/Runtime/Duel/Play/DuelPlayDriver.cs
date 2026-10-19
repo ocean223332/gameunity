@@ -19,6 +19,8 @@ namespace TienTuyen.Duel.Play
         private DuelSession session;
         private readonly DuelLocalInput input = new DuelLocalInput();
         private bool readySent, aimMissingLogged, matchEndLogged;
+        // The pick as it stood at Host or Join: what MarkArenaReady sends, whenever the arena turns out ready.
+        private int characterAtStart = DuelRoster.NoPick;
         private DuelNetStats stats;
 
         // By assignment, so a Play without a domain reload never attaches a second driver.
@@ -45,7 +47,7 @@ namespace TienTuyen.Duel.Play
             // The arena is ready for snapshots only once the stage has built it, never at Enter.
             if (!readySent && stage.IsBuilt && connection.State == DuelConnectionState.Connected)
             {
-                session.MarkArenaReady();
+                session.MarkArenaReady(characterAtStart);
                 readySent = true;
             }
             if (session.Stage == DuelSessionStage.Playing)
@@ -109,11 +111,28 @@ namespace TienTuyen.Duel.Play
                                                 session.Stage == DuelSessionStage.WaitingForOpponent ||
                                                 session.Stage == DuelSessionStage.Preparing);
 
-        public void RequestHost() => connection.BeginHost();
+        public void RequestHost()
+        {
+            characterAtStart = LocalCharacter;
+            connection.BeginHost();
+        }
 
-        public void RequestJoin(string target) => connection.BeginClient(target);
+        public void RequestJoin(string target)
+        {
+            characterAtStart = LocalCharacter;
+            connection.BeginClient(target);
+        }
 
         public void RequestCancel() => session.Leave();
+
+        public int LocalCharacter { get; private set; } = DuelRoster.NoPick;
+
+        public void RequestCharacter(int index) => LocalCharacter = index;
+
+        // Agreed once the match exists; before it, the lobby sees this player's pick on its own slot.
+        public DuelCharacter CharacterOf(int slot) =>
+            DuelRoster.For(slot, session.HasState ? session.CharacterOf(slot) :
+                slot == session.LocalSlot ? LocalCharacter : DuelRoster.NoPick);
 
         // ---------- IDuelHudState ----------
 

@@ -21,6 +21,28 @@ namespace TienTuyen.Duel.Tests
             => RunMatch(.01, .01, 20);
 
         [Test]
+        public void BothEndsAgreeWhoWearsWhatFromTheJoinersFirstState()
+        {
+            // Lossy and slow, so the joiner's first match view is not its first packet. The host picks the joiner's
+            // default man (both may wear him); the joiner picks nothing, which must stay "none" on both ends.
+            var wire = new ImpairedLink(.03, .15, 3);
+            var host = new DuelSession(wire.Host, new Connected(), FixedStep);
+            var client = new DuelSession(wire.Client, new Connected(), FixedStep);
+            Assert.That(client.CharacterOf(0), Is.EqualTo(DuelSession.NoCharacter), "nothing is known before the match view");
+            host.MarkArenaReady(1); client.MarkArenaReady();
+            for (int frame = 0; frame < 2 / Frame && !client.HasState; frame++)
+            {
+                wire.Advance(Frame);
+                host.Update(Frame); client.Update(Frame);
+            }
+            Assert.That(client.HasState, Is.True);
+            for (int slot = 0; slot < 2; slot++)
+                Assert.That(client.CharacterOf(slot), Is.EqualTo(host.CharacterOf(slot)), "slot " + slot);
+            Assert.That(host.CharacterOf(0), Is.EqualTo(1));
+            Assert.That(host.CharacterOf(1), Is.EqualTo(DuelSession.NoCharacter));
+        }
+
+        [Test]
         public void FreshSnapshotCorrectsHealthWithoutAnotherConsumedInput()
         {
             var wire = new ImpairedLink(.0005, .0005, 0);
@@ -188,6 +210,7 @@ namespace TienTuyen.Duel.Tests
             private readonly List<Packet> packets = new List<Packet>();
             private readonly int[] sent = new int[2], received = new int[2];
             private readonly bool[] ready = new bool[2];
+            private readonly int[] character = { DuelSession.NoCharacter, DuelSession.NoCharacter };
             private uint random = 0x65d1a33;
             private readonly double minimumDelay, maximumDelay;
             private readonly int lossEvery;
@@ -249,7 +272,8 @@ namespace TienTuyen.Duel.Tests
                 public event Action<DuelOpponentView> OpponentViewReceived;
                 public event Action<DuelMatchView> MatchViewReceived;
                 internal Action<DuelOwnerSnapshot> OwnerDelivered;
-                public void MarkLocalReady() => link.ready[slot] = true;
+                public void MarkLocalReady(int character) { link.character[slot] = character; link.ready[slot] = true; }
+                public int CharacterOf(int s) => link.character[s];
                 public void SendInput(in DuelInputFrame frame)
                 {
                     var copy = frame;

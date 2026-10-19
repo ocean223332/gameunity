@@ -62,8 +62,8 @@ namespace TienTuyen.Duel.Net.Tests
             sent.State.Reload2 = 0.125f;
             Assert.IsFalse(host.Net.Channel.SendOwnerSnapshot(DuelNetworkBootstrap.JoinerSlot, sent), "snapshots wait for the joiner's ready");
 
-            host.Net.MarkLocalReady();
-            joiner.Net.MarkLocalReady();
+            host.Net.MarkLocalReady(DuelSession.NoCharacter);
+            joiner.Net.MarkLocalReady(DuelSession.NoCharacter);
             yield return Until(() => host.Net.BothReady);
 
             var inputs = new List<(int Slot, DuelInputFrame Frame)>();
@@ -128,11 +128,17 @@ namespace TienTuyen.Duel.Net.Tests
             joiner.Connection.BeginClient("127.0.0.1:" + Port);
             yield return Until(() => joiner.Connection.State == DuelConnectionState.Connected);
 
-            hostSession.MarkArenaReady();
-            joinerSession.MarkArenaReady();
+            // Each wears the other's default man, so agreeing on the defaults could not pass for carrying the picks.
+            hostSession.MarkArenaReady(1);
+            joinerSession.MarkArenaReady(0);
             yield return Until(() => hostSession.Match.Phase == DuelPhase.Live && joinerSession.HasState && joinerSession.Match.Phase == DuelPhase.Live);
             Assert.AreEqual(DuelSessionStage.Playing, hostSession.Stage);
             Assert.AreEqual(DuelSessionStage.Playing, joinerSession.Stage);
+            for (int slot = 0; slot < DuelNetworkBootstrap.SlotCount; slot++)
+            {
+                Assert.AreEqual(1 - slot, hostSession.CharacterOf(slot), "host, slot " + slot);
+                Assert.AreEqual(1 - slot, joinerSession.CharacterOf(slot), "joiner, slot " + slot);
+            }
 
             Vector3 spawn = DuelArenaLayout.Spawn(DuelNetworkBootstrap.JoinerSlot);
             var toCentre = new DuelInputFrame
