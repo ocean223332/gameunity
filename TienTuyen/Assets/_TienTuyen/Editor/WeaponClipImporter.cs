@@ -371,11 +371,14 @@ namespace TienTuyen.Editor
                 Quaternion World(HumanBodyBones slot) => Quaternion.Inverse(root.rotation) * animator.GetBoneTransform(slot).rotation;
                 Vector3 Point(HumanBodyBones slot) => root.InverseTransformPoint(animator.GetBoneTransform(slot).position);
                 Vector3 across = Point(HumanBodyBones.RightUpperArm) - Point(HumanBodyBones.LeftUpperArm);
+                // The facing is a heading about the model's vertical (world up as the model stands), not the head-over-hips line:
+                // that line leans with how the trunk is skinned, and its lean would tip every retargeted chest and gun.
+                Vector3 vertical = root.InverseTransformDirection(Vector3.up);
                 Vector3 up = Point(HumanBodyBones.Head) - Point(HumanBodyBones.Hips);
                 return new Reference
                 {
                     hips = World(HumanBodyBones.Hips), chest = World(HumanBodyBones.UpperChest), right = World(HumanBodyBones.RightHand), left = World(HumanBodyBones.LeftHand),
-                    facing = Quaternion.LookRotation(Vector3.Cross(across, up), up),
+                    facing = Quaternion.LookRotation(Vector3.ProjectOnPlane(Vector3.Cross(across, up), vertical), vertical),
                     scale = animator.humanScale,
                 };
             }
