@@ -46,6 +46,13 @@ namespace TienTuyen.Duel.Presentation
         private TMP_Text bannerTitle, bannerCaption;
         private Image bannerRule, hurt;
         private float bannerAge = 99f, startAge = 99f, hurtFlash;
+        private Image hitArc;
+        private Transform hitEye;
+        private Vector3 hitFrom;
+        private float hitAge = 99f, lastLocalHealth = -1f;
+
+        /// <summary>How long the hit arc takes to fade, and the share of the circle it spans (about 50 degrees).</summary>
+        private const float HitArcSeconds = 1.2f, HitArcSpan = .14f;
         private DuelPhase lastPhase = (DuelPhase)(-1);
         private int lastRound = -1;
 
@@ -59,6 +66,7 @@ namespace TienTuyen.Duel.Presentation
             BuildHealth();
             BuildWeapon();
             BuildCrosshair();
+            BuildHitArc();
             BuildBanner();
         }
 
@@ -165,6 +173,39 @@ namespace TienTuyen.Duel.Presentation
             }
         }
 
+        /// <summary>A red arc round the crosshair, on the side the shot came from, turning with you as you look round.</summary>
+        private void BuildHitArc()
+        {
+            hitArc = UiKit.Box("HitArc", Root, UiKit.Center, new Vector2(.5f, .5f), Vector2.zero, new Vector2(230, 230), UiSprites.Ring(.06f), UiTheme.Alpha(UiTheme.Danger, 0f));
+            hitArc.type = Image.Type.Filled;
+            hitArc.fillMethod = Image.FillMethod.Radial360;
+            hitArc.fillOrigin = (int)Image.Origin360.Top;
+            hitArc.fillClockwise = true;
+            hitArc.fillAmount = HitArcSpan;
+            hitArc.raycastTarget = false;
+        }
+
+        /// <summary>You were hit from <paramref name="from"/> (world space); the arc points there from <paramref name="eye"/>.</summary>
+        public void Wounded(Vector3 from, Transform eye)
+        {
+            hitFrom = from;
+            hitEye = eye;
+            hitAge = 0f;
+        }
+
+        private void RefreshHitArc(float deltaTime)
+        {
+            hitAge += deltaTime;
+            float fade = 1f - Mathf.Clamp01(hitAge / HitArcSeconds);
+            if (hitEye == null || fade <= 0f) { hitArc.color = UiTheme.Alpha(UiTheme.Danger, 0f); return; }
+            Vector3 to = hitFrom - hitEye.position, forward = hitEye.forward;
+            to.y = forward.y = 0f;
+            float bearing = to.sqrMagnitude > 1e-4f && forward.sqrMagnitude > 1e-4f ? Vector3.SignedAngle(forward, to, Vector3.up) : 0f;
+            // The fill runs clockwise from the top; turn it back by half its span to centre it, then to the bearing.
+            hitArc.rectTransform.localEulerAngles = new Vector3(0f, 0f, HitArcSpan * 180f - bearing);
+            hitArc.color = UiTheme.Alpha(UiTheme.Danger, .7f * fade * fade);
+        }
+
         private void BuildBanner()
         {
             var block = UiKit.Node("RoundBanner", Root, UiKit.TopCenter, new Vector2(.5f, 1), new Vector2(0, -150), new Vector2(600, 130));
@@ -195,6 +236,7 @@ namespace TienTuyen.Duel.Presentation
             RefreshHealth(state, deltaTime);
             RefreshWeapon(state, deltaTime);
             RefreshBanner(state, deltaTime);
+            RefreshHitArc(deltaTime);
             crosshair.alpha = Mathf.MoveTowards(crosshair.alpha, state.Phase == DuelPhase.Live ? 1f : 0f, deltaTime * 6f);
         }
 
@@ -241,8 +283,13 @@ namespace TienTuyen.Duel.Presentation
             float pulse = low ? .5f + .5f * Mathf.Sin(Time.unscaledTime * 7f) : 0f;
             healthBar.Fill.color = low ? Color.Lerp(UiTheme.Danger, UiTheme.GoldBright, pulse * .25f) : UiTheme.Health;
             healthText.color = Color.Lerp(low ? Color.Lerp(UiTheme.Paper, UiTheme.Danger, .6f + .4f * pulse) : UiTheme.Paper, UiTheme.Danger, local.Flash);
-            hurtFlash = Mathf.Max(local.Flash, hurtFlash - deltaTime * 2.5f);
-            hurt.color = UiTheme.Alpha(UiTheme.Danger, .45f * hurtFlash + (low ? .12f + .08f * pulse : 0f));
+            // A hit is one flash scaled by its damage, from a faint edge for an SMG round (10) to at most .6 for a rifle
+            // head hit (48); low health is a steady pulse. Kept quiet: a first-time player must read it as feedback,
+            // not as the screen going wrong.
+            float damage = lastLocalHealth >= 0f ? lastLocalHealth - state.LocalHealth : 0f;
+            lastLocalHealth = state.LocalHealth;
+            hurtFlash = Mathf.Max(hurtFlash - deltaTime * 1.6f, damage > 0f ? Mathf.Clamp(damage / 60f, .3f, .6f) : 0f);
+            hurt.color = UiTheme.Alpha(UiTheme.Danger, .32f * hurtFlash + (low ? .12f + .08f * pulse : 0f));
         }
 
         private void RefreshWeapon(IDuelHudState state, float deltaTime)

@@ -5,7 +5,7 @@ namespace TienTuyen.Duel.Tests
     public sealed class DuelMatchTests
     {
         [Test]
-        public void BestOfThreeEndsAtTwoWinsAndNotBefore()
+        public void BestOfFiveEndsAtThreeWinsAndNotBefore()
         {
             var match = new DuelMatch(0, 10, 0);
             Assert.That(match.ConsumeRespawnRequest(), Is.True);
@@ -23,10 +23,19 @@ namespace TienTuyen.Duel.Tests
             Live(match);
             Assert.That(match.RoundNumber, Is.EqualTo(3));
             match.ReportDeath(1);
+            Assert.That(match.Score0, Is.EqualTo(2));
+            Assert.That(match.Phase, Is.EqualTo(DuelPhase.RoundOver));
+            Live(match);
+            match.ReportDeath(0);
+            Assert.That(match.Phase, Is.EqualTo(DuelPhase.RoundOver));
+            Live(match);
+            match.ReportDeath(1);
+            Assert.That(match.CompletedRounds, Is.EqualTo(5));
+            Assert.That(match.MatchEndReason, Is.EqualTo(DuelMatchEndReason.ScoreLimit));
             Assert.That(match.Phase, Is.EqualTo(DuelPhase.MatchOver));
             Assert.That(match.MatchWinnerSlot, Is.EqualTo(0));
-            Assert.That(match.Score0, Is.EqualTo(2));
-            Assert.That(match.Score1, Is.EqualTo(1));
+            Assert.That(match.Score0, Is.EqualTo(3));
+            Assert.That(match.Score1, Is.EqualTo(2));
         }
 
         [Test]
@@ -83,9 +92,12 @@ namespace TienTuyen.Duel.Tests
                 Live(match);
                 match.ReportDamage(0, 10);
                 match.ReportDamage(1, 20);
-                match.ReportDeaths(true, true);
-                Assert.That(match.Score0 + match.Score1, Is.Zero);
+                if (round < DuelMatch.MaxRounds) match.ReportDeath(round % 2);
+                else match.ReportDeaths(true, true);
             }
+            Assert.That(match.Score0, Is.EqualTo(2));
+            Assert.That(match.Score1, Is.EqualTo(2));
+            Assert.That(match.MatchEndReason, Is.EqualTo(DuelMatchEndReason.RoundLimit));
             Assert.That(match.MatchWinnerSlot, Is.EqualTo(1));
             Assert.That(match.IsDraw, Is.False);
         }

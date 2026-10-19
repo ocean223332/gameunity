@@ -116,17 +116,22 @@ namespace TienTuyen.Duel.Tests
         }
 
         [Test]
-        public void QueuedSurplusIsFoldedIntoOneStepKeepingAPress()
+        public void QueuedSurplusIsFoldedIntoOneStepKeepingPressesNotHolds()
         {
             var loop = new DuelServerLoop(match: new DuelMatch(0, 300, 3));
             loop.Step();
             int ammo = loop.GetState(1).Ammo0;
             for (int tick = 0; tick < 5; tick++)
-                loop.TryQueueInput(1, Input(loop, 1, tick, Vector2.zero, tick == 1));
+            {
+                var input = Input(loop, 1, tick, Vector2.zero, tick == 1);
+                if (tick == 1 || tick == 2) input.Buttons |= DuelButtons.Crouch; // released before the kept frame
+                loop.TryQueueInput(1, input);
+            }
             loop.Step();
             Assert.That(loop.GetBufferedInputCount(1), Is.AtMost(1));
             Assert.That(loop.GetLastConsumedInputTick(1), Is.EqualTo(3));
             Assert.That(loop.GetState(1).Ammo0, Is.EqualTo(ammo - 1));
+            Assert.That(loop.GetState(1).Crouch, Is.Zero);
         }
 
         private static void Approach(DuelServerLoop loop, ref int tick)

@@ -26,6 +26,7 @@ namespace TienTuyen.Duel
         public const int DefaultInputCapacity = 128;
         /// <summary>Frames a slot may keep queued after a step: absorbs arrival jitter, not a backlog.</summary>
         public const int MaxQueuedInputs = 1;
+        private const DuelButtons PressButtons = DuelButtons.Fire | DuelButtons.Reload | DuelButtons.Jump;
         private readonly DuelSimState[] players = new DuelSimState[2];
         private readonly InputBuffer[] inputs;
         private readonly bool[] connected = { true, true };
@@ -105,10 +106,11 @@ namespace TienTuyen.Duel
             {
                 // A host stall skips server steps while the client keeps sending, and a surplus left queued would
                 // delay every later input by that many steps for the rest of the round. Fold it into this step,
-                // keeping any press or weapon switch from the frames folded away.
+                // keeping any press or weapon switch from the frames folded away; held states (aim, crouch, walk)
+                // are the latest frame's, so a released crouch is not simulated as held.
                 while (inputs[slot].Count > MaxQueuedInputs && inputs[slot].TryTake(out DuelInputFrame next))
                 {
-                    next.Buttons |= input.Buttons;
+                    next.Buttons |= input.Buttons & PressButtons;
                     if (next.WeaponSlot < 0) next.WeaponSlot = input.WeaponSlot;
                     input = next;
                 }

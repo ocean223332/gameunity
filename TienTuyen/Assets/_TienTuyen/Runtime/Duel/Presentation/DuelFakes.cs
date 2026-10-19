@@ -120,8 +120,8 @@ namespace TienTuyen.Duel.Presentation
     }
 
     /// <summary>
-    /// A scripted best of three for looking at the HUD without the match logic: a countdown, a fight in which both
-    /// sides take hits, the round result and, after three rounds, the match result. Freeze it with
+    /// A scripted best of five for looking at the HUD without the match logic: a countdown, a fight in which both
+    /// sides take hits, the round result and, when either side wins three rounds, the match result. Freeze it with
     /// <see cref="Hold"/> to inspect one moment.
     /// </summary>
     public sealed class FakeDuelHudState : IDuelHudState
@@ -130,7 +130,7 @@ namespace TienTuyen.Duel.Presentation
 
         public DuelPhase Phase { get; set; } = DuelPhase.Warmup;
         public int Round { get; set; } = 1;
-        public int RoundsToWin => 2;
+        public int RoundsToWin => DuelMatch.RoundsToWin;
         public int LocalRounds { get; set; }
         public int OpponentRounds { get; set; }
         public float RoundRemaining { get; set; } = RoundLength;
@@ -202,7 +202,7 @@ namespace TienTuyen.Duel.Presentation
             nextShot = .45f;
             Ammo--;
             if (Ammo <= 0) ReloadRemaining = ReloadDuration;
-            // Round 1 goes to the local player, round 2 to the opponent, round 3 to the local player again.
+            // Round 2 favours the opponent; the other rounds favour the local player.
             bool localAhead = Round != 2;
             if (Random.value < (localAhead ? .55f : .3f)) OpponentHealth = Mathf.Max(0f, OpponentHealth - 18f);
             if (Random.value < (localAhead ? .3f : .55f)) LocalHealth = Mathf.Max(0f, LocalHealth - 18f);

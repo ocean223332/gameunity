@@ -150,7 +150,9 @@ namespace TienTuyen.Duel.Presentation
             Cursor.visible = true;
             View = SetupCamera();
             lighting = new DuelArenaLighting(transform, View);
-            DuelArenaView.Build(transform);
+            // Blood decals (CombatBloodEffects) project only onto renderers carrying its receiver layer, bit 2.
+            foreach (var receiver in DuelArenaView.Build(transform).GetComponentsInChildren<Renderer>(true))
+                receiver.renderingLayerMask |= 2u;
             lighting.Apply(DuelArenaLighting.Choose());
 
             var root = BuildCanvas();
@@ -250,7 +252,11 @@ namespace TienTuyen.Duel.Presentation
             var session = Session;
             if (session != null && session.HasState)
             {
-                play ??= new DuelPlayView(transform, View, session.LocalSlot);
+                if (play == null)
+                {
+                    play = new DuelPlayView(transform, View, session.LocalSlot);
+                    play.Wounded += from => HudView.Wounded(from, View.transform);
+                }
                 playing = session;
                 play.Look(Match != null && Match.Phase != DuelPhase.MatchOver, deltaTime);
                 return;

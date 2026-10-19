@@ -18,7 +18,7 @@ namespace TienTuyen.Duel.Play
         private LanDuelConnection connection;
         private DuelSession session;
         private readonly DuelLocalInput input = new DuelLocalInput();
-        private bool readySent, aimMissingLogged;
+        private bool readySent, aimMissingLogged, matchEndLogged;
         private DuelNetStats stats;
 
         // By assignment, so a Play without a domain reload never attaches a second driver.
@@ -60,6 +60,13 @@ namespace TienTuyen.Duel.Play
                 }
             }
             session.Update(Time.deltaTime);
+            if (!session.HasState || session.Match.Phase != DuelPhase.MatchOver) matchEndLogged = false;
+            else if (IsHost && !matchEndLogged)
+            {
+                var result = session.Match;
+                Debug.Log($"Duel match ended: reason={result.MatchEndReason}, score={result.Score0}:{result.Score1}, round={result.RoundNumber}.");
+                matchEndLogged = true;
+            }
             stats?.Write(session, Time.unscaledDeltaTime);
             // The stage shows the lobby while Match is null: until there is a match to show, and again after leaving.
             stage.Match = session.HasState ? this : null;

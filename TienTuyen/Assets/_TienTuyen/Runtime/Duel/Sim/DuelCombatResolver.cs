@@ -4,16 +4,21 @@ using UnityEngine;
 
 namespace TienTuyen.Duel
 {
-    /// <summary>For a multi-pellet hit, HitPoint is the nearest body impact. Otherwise it is cover or the ray end.</summary>
+    [Flags]
+    public enum DuelHitZone : byte { None = 0, Body = 1, Head = 2 }
+
+    /// <summary>Zones combines all landed pellets; HitPoint stays the nearest impact, including mixed hits.</summary>
     public readonly struct DuelHitResult
     {
         public readonly float Damage;
         public readonly int HitCount;
         public readonly Vector3 HitPoint;
         public readonly bool HitCover;
-        public DuelHitResult(float damage, int hitCount, Vector3 hitPoint, bool hitCover = false)
+        public readonly DuelHitZone Zones;
+        public DuelHitResult(float damage, int hitCount, Vector3 hitPoint, bool hitCover = false,
+            DuelHitZone zones = DuelHitZone.None)
         {
-            Damage = damage; HitCount = hitCount; HitPoint = hitPoint; HitCover = hitCover;
+            Damage = damage; HitCount = hitCount; HitPoint = hitPoint; HitCover = hitCover; Zones = zones;
         }
     }
 
@@ -22,10 +27,17 @@ namespace TienTuyen.Duel
     {
         // The catalog has no spread field. Only multi-pellet weapons use this four-degree cone.
         public const float PelletSpreadDegrees = 4f;
+        public const float HeadDamageMultiplier = 2f;
 
         // Measured taller crown, shared for equal hit volumes in both slots. The US model receives
         // 3.1 cm standing / 5.6 cm crouched forgiveness instead of a skin-dependent target size.
         private const float StandingCrown = 1.887f, CrouchingCrown = 1.466f;
+
+        // Baked standing/crouched ADS rifle idle, both skins: shoulders/upper arms reach 1.6566 / 1.2849 m.
+        // No animation or pitch sweep: other poses may raise a shoulder into the head band.
+        // Keep a shared plane 1 cm above them; the overlapping lower jaw deliberately stays body damage.
+        // A later head sphere could recover the jaw: radius ~.163 m, centres y=1.724 standing / 1.304 crouched.
+        private const float StandingHeadPlane = 1.667f, CrouchingHeadPlane = 1.295f;
 
         public static DuelHitResult Resolve(in DuelSimState shooter, in DuelAttack attack, in DuelSimState target)
         {
@@ -41,6 +53,9 @@ namespace TienTuyen.Duel
             // A third-person view ray starts behind the body. Range is measured from the shooter.
             float damage = 0;
             int hits = 0;
+            DuelHitZone zones = DuelHitZone.None;
+            float headPlane = target.Position.y - DuelArenaLayout.GroundY +
+                Mathf.Lerp(StandingHeadPlane, CrouchingHeadPlane, Mathf.Clamp01(target.Crouch));
             float nearestBody = float.PositiveInfinity, nearestCover = float.PositiveInfinity;
             Vector3 bodyPoint = default, coverPoint = default;
             Vector3 endPoint = muzzle + direction * weapon.Range;
@@ -77,11 +92,13 @@ namespace TienTuyen.Duel
                     }
                     continue;
                 }
-                damage += weapon.DamagePerHit;
+                DuelHitZone zone = point.y >= headPlane ? DuelHitZone.Head : DuelHitZone.Body;
+                damage += weapon.DamagePerHit * (zone == DuelHitZone.Head ? HeadDamageMultiplier : 1f);
+                zones |= zone;
                 hits++;
                 if (distance < nearestBody) { nearestBody = distance; bodyPoint = point; }
             }
-            return hits > 0 ? new DuelHitResult(damage, hits, bodyPoint) :
+            return hits > 0 ? new DuelHitResult(damage, hits, bodyPoint, zones: zones) :
                 new DuelHitResult(0, 0, float.IsPositiveInfinity(nearestCover) ? endPoint : coverPoint,
                     !float.IsPositiveInfinity(nearestCover));
         }
@@ -103,7 +120,8 @@ namespace TienTuyen.Duel
             if (distance > CombatRules.KnifeReach + DuelArenaLayout.PlayerRadius) return default;
             if (DuelArenaLayout.RayHitsCover(muzzle, toBody.normalized, distance, out float cover))
                 return new DuelHitResult(0, 0, muzzle + toBody.normalized * cover, true);
-            return new DuelHitResult(CombatRules.KnifeDamage, 1, point - toBody.normalized * DuelArenaLayout.PlayerRadius);
+            return new DuelHitResult(CombatRules.KnifeDamage, 1,
+                point - toBody.normalized * DuelArenaLayout.PlayerRadius, zones: DuelHitZone.Body);
         }
 
         private static Vector3 Spread(Vector3 forward, int tick, int slot, int pellet, float factor)

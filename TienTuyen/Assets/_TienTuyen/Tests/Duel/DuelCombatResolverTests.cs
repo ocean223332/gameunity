@@ -18,7 +18,7 @@ namespace TienTuyen.Duel.Tests
             var attack = new DuelAttack(DuelAttackKind.Shot, 0, 12,
                 new Vector3(shooter.Position.x, headRayHeight, shooter.Position.z), Vector3.back);
             var standing = DuelCombatResolver.Resolve(shooter, attack, target);
-            Assert.That(standing.Damage, Is.EqualTo(DuelPlayerSim.WeaponAt(0).DamagePerHit));
+            Assert.That(standing.Damage, Is.EqualTo(DuelPlayerSim.WeaponAt(0).DamagePerHit * DuelCombatResolver.HeadDamageMultiplier));
             target.Crouch = 1;
             Assert.That(DuelCombatResolver.Resolve(shooter, attack, target).Damage, Is.Zero);
         }
@@ -109,7 +109,7 @@ namespace TienTuyen.Duel.Tests
             const float visibleHeadHeight = 1.85f;
             var headShot = Shot(new Vector3(shooter.Position.x, visibleHeadHeight, shooter.Position.z + .23f));
             Assert.That(DuelCombatResolver.Resolve(shooter, headShot, target).Damage,
-                Is.EqualTo(DuelPlayerSim.WeaponAt(0).DamagePerHit));
+                Is.EqualTo(DuelPlayerSim.WeaponAt(0).DamagePerHit * DuelCombatResolver.HeadDamageMultiplier));
             var aboveHead = Shot(headShot.Origin + Vector3.up * .05f);
             Assert.That(DuelCombatResolver.Resolve(shooter, aboveHead, target).HitCount, Is.Zero);
             target.Crouch = 1;
@@ -117,6 +117,25 @@ namespace TienTuyen.Duel.Tests
             target.Crouch = 0;
             target.Position.y += DuelArenaLayout.JumpHeight;
             Assert.That(DuelCombatResolver.Resolve(shooter, Shot(shooter.Position), target).HitCount, Is.Zero);
+        }
+
+        [Test]
+        public void HeadHitsDealDoubleDamageButChestAndShouldersStayBodyHits()
+        {
+            Pair(5, out var shooter, out var target);
+            var weapon = DuelPlayerSim.WeaponAt(0);
+            var headShot = Shot(new Vector3(shooter.Position.x, 1.75f, shooter.Position.z + .23f));
+            var head = DuelCombatResolver.Resolve(shooter, headShot, target);
+            Assert.That(head.Damage, Is.EqualTo(weapon.DamagePerHit * 2f));
+            Assert.That(head.Zones, Is.EqualTo(DuelHitZone.Head));
+            var chestShot = Shot(new Vector3(shooter.Position.x, 1.5f, shooter.Position.z));
+            var chest = DuelCombatResolver.Resolve(shooter, chestShot, target);
+            Assert.That(chest.Damage, Is.EqualTo(weapon.DamagePerHit));
+            Assert.That(chest.Zones, Is.EqualTo(DuelHitZone.Body));
+            // Highest baked shoulder in either standing skin; it must never receive the head reward.
+            var shoulderShot = Shot(new Vector3(shooter.Position.x, 1.65658784f, shooter.Position.z));
+            Assert.That(DuelCombatResolver.Resolve(shooter, shoulderShot, target).Damage,
+                Is.EqualTo(weapon.DamagePerHit));
         }
 
         [Test]

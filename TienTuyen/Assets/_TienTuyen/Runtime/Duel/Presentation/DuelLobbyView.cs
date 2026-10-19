@@ -53,7 +53,7 @@ namespace TienTuyen.Duel.Presentation
             var title = Top(UiKit.Text("Title", column, "ĐẤU TAY ĐÔI", UiTheme.Display, 84, UiTheme.Paper, TextAlignmentOptions.TopLeft, 1f), -4, -16, 580, 104);
             title.textWrappingMode = TextWrappingModes.NoWrap;
             UiTheme.Shadow(title);
-            Top(UiKit.Text("Tagline", column, "Ba hiệp, mỗi hiệp một mạng — thắng hai hiệp là thắng trận.\nHai máy cùng mạng LAN, hoặc nối thẳng bằng địa chỉ IP.",
+            Top(UiKit.Text("Tagline", column, "Tối đa 5 hiệp, mỗi hiệp một mạng — thắng 3 hiệp là thắng trận.\nHai máy cùng mạng LAN, hoặc nối thẳng bằng địa chỉ IP.",
                 UiTheme.Body, 17, UiTheme.Alpha(UiTheme.Paper, .86f), TextAlignmentOptions.TopLeft), 0, -120, Width, 50);
 
             // Host card: a button while idle; the address, copy and cancel while hosting.
@@ -109,7 +109,7 @@ namespace TienTuyen.Duel.Presentation
             UiKit.Place(hints, UiKit.BottomLeft, UiKit.BottomLeft, new Vector2(86, 30), new Vector2(0, 22));
             hints.GetComponent<HorizontalLayoutGroup>().childAlignment = TextAnchor.MiddleLeft;
             hints.gameObject.AddComponent<ContentSizeFitter>().horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
-            var facts = UiKit.Caption("Arena", Root, "BÃI ĐẤU ĐỐI XỨNG  ·  9 VẬT CẢN  ·  CHẠM 2 HIỆP", 10, UiTheme.Faint, TextAlignmentOptions.BottomRight);
+            var facts = UiKit.Caption("Arena", Root, "BÃI ĐẤU ĐỐI XỨNG  ·  9 VẬT CẢN  ·  CHẠM 3 HIỆP", 10, UiTheme.Faint, TextAlignmentOptions.BottomRight);
             UiKit.Place(facts, UiKit.BottomRight, UiKit.BottomRight, new Vector2(-30, 30), new Vector2(460, 16));
         }
 

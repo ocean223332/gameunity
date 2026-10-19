@@ -13,7 +13,7 @@ namespace TienTuyen.Duel.Tests
         private const float FixedStep = 1f / 30f;
 
         [Test]
-        public void BestOfThreeConvergesThroughLossJitterAndRoundResets()
+        public void BestOfFiveConvergesThroughLossJitterAndRoundResets()
             => RunMatch(.03, .15, 20);
 
         [Test]
@@ -103,7 +103,7 @@ namespace TienTuyen.Duel.Tests
             Console.WriteLine($"Network match: delay={minimumDelay * 1000:F1}..{maximumDelay * 1000:F1}ms each way, loss=1/{lossEvery}, t={wire.Now:F3}s, host={host.Match.Score0}:{host.Match.Score1} {host.Match.Phase}, client={client.Match.Score0}:{client.Match.Score1} {client.Match.Phase}, position={maxPosition:F3}m correction={maxCorrection:F3}m (replay={maxReplay:F3},liveReset={maxLiveReset:F3}) health={maxHealth} for <= {maxHealthLagFrames * Frame * 1000:F1}ms (full hit={maxHitLagFrames * Frame * 1000:F1}ms), staleHealthSnapshots={staleHealthSnapshots}, resets={resets}, corrections={replayCorrections}, dropped={wire.Dropped}, reordered={wire.Reordered}, terminalDrops={wire.TerminalDrops}");
             Assert.That(host.Match.Phase, Is.EqualTo(DuelPhase.MatchOver), "Bots must finish a real match through Session input, movement and combat.");
             Assert.That(client.Match.Phase, Is.EqualTo(DuelPhase.MatchOver), "A lost result packet must not strand the joiner in a live match.");
-            Assert.That(host.Match.Score0, Is.EqualTo(2));
+            Assert.That(host.Match.Score0, Is.EqualTo(3));
             Assert.That(host.Match.Score1, Is.EqualTo(1));
             Assert.That(client.Match.Score0, Is.EqualTo(host.Match.Score0));
             Assert.That(client.Match.Score1, Is.EqualTo(host.Match.Score1));
@@ -111,7 +111,7 @@ namespace TienTuyen.Duel.Tests
             Assert.That(client.LocalState.Health, Is.EqualTo(host.Opponent.Health));
             Assert.That(staleHealthSnapshots, Is.Zero, "Every accepted owner snapshot must immediately install authoritative health.");
             Assert.That(maxHealthLagFrames * Frame, Is.LessThanOrEqualTo(maximumDelay + 3 * FixedStep + Frame));
-            Assert.That(resets, Is.EqualTo(3));
+            Assert.That(resets, Is.EqualTo(4));
             if (lossEvery > 0) Assert.That(replayCorrections, Is.GreaterThan(0));
             if (maximumDelay - minimumDelay > FixedStep) Assert.That(wire.Reordered, Is.GreaterThan(0));
             Assert.That(wire.Dropped, Is.GreaterThan(0));

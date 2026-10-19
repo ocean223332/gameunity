@@ -10,6 +10,9 @@ namespace TienTuyen.Presentation
         public const int SurfaceDecalCapacity = 8;
         public const int TotalDecalCapacity = DecalCapacity + SurfaceDecalCapacity;
         private const uint BloodReceiverLayer = 2;
+
+        /// <summary>The ground's height at (x, z) for the ground decals; null (the campaign) is the station's terrain.</summary>
+        public System.Func<float, float, float> GroundHeight;
         private const float Lifetime = 45f, FadeSeconds = 8f, PoolStart = .25f;
         private enum Kind { Droplet, Streak, Mist }
         private struct Decal
@@ -171,14 +174,16 @@ namespace TienTuyen.Presentation
         public void SurfaceSplatter(Vector3 point, Vector3 normal, float diameter) =>
             PlaceDecal(point, normal, diameter, .4f, random.Next(4), 0, true, Vector3.zero, 0);
 
+        private float Height(float x, float z) => GroundHeight != null ? GroundHeight(x, z) : CombatEnvironment.GroundHeight(x, z);
+
         private void Ground(Vector3 point, float diameter, int variant, float spreadSeconds, Vector3 direction, float delay)
         {
-            point.y = CombatEnvironment.GroundHeight(point.x, point.z);
+            point.y = Height(point.x, point.z);
             const float sample = .25f;
             var normal = new Vector3(
-                CombatEnvironment.GroundHeight(point.x - sample, point.z) - CombatEnvironment.GroundHeight(point.x + sample, point.z),
+                Height(point.x - sample, point.z) - Height(point.x + sample, point.z),
                 sample * 2,
-                CombatEnvironment.GroundHeight(point.x, point.z - sample) - CombatEnvironment.GroundHeight(point.x, point.z + sample)).normalized;
+                Height(point.x, point.z - sample) - Height(point.x, point.z + sample)).normalized;
             PlaceDecal(point, normal, diameter, .35f, variant, spreadSeconds, false, direction, delay);
         }
 

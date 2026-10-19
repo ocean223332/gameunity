@@ -7,7 +7,7 @@ namespace TienTuyen.Duel
     public enum DuelMatchEndReason { None, ScoreLimit, RoundLimit, Forfeit }
 
     /// <summary>
-    /// First to two wins. At timeout higher remaining health wins; equal health (or a double
+    /// First to three wins. At timeout higher remaining health wins; equal health (or a double
     /// knockout) awards no point. After five rounds, score then cumulative damage decides the
     /// match, with exact ties declared draws. Report actual applied damage and simultaneous deaths.
     /// </summary>
@@ -17,7 +17,7 @@ namespace TienTuyen.Duel
         public const float DefaultRoundSeconds = 90f;
         public const float DefaultRoundOverSeconds = 3f;
         public const int MaxRounds = 5;
-        public const int RoundsToWin = 2;
+        public const int RoundsToWin = 3;
 
         private readonly float warmupSeconds, roundSeconds, roundOverSeconds;
         private bool respawnRequested;
