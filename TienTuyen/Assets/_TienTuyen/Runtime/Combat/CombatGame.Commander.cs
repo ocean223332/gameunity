@@ -24,6 +24,7 @@ namespace TienTuyen.Combat
         public event Action<Vector3,float,bool> RocketExploded;
         public event Action<bool> LauncherFired;
         public bool IsCommanderActor(Transform actor) => CommanderActive && commander.body.transform == actor;
+        public bool IsCommanderWarning(Transform marker) => CommanderActive && commander.warning.transform==marker;
         private sealed class Rocket
         {
             public GameObject body; public Vector3 direction; public float left,damage,radius; public bool hostile;
@@ -72,7 +73,7 @@ namespace TienTuyen.Combat
         }
         public void DamageCommander(float damage)
         {
-            if(commanderPhase!=2 || commander==null || !commander.active) return;
+            if(State!=CombatState.Playing || commanderPhase!=2 || commander==null || !commander.active) return;
             ApplyShotDamage(commander,damage,false);
         }
         private void CommanderDefeated()
@@ -108,6 +109,7 @@ namespace TienTuyen.Combat
             else if(commanderMove>0)
             {
                 commanderMove-=dt;MoveWithCover(commander.body.transform,commanderWalk*2f*dt,.5f);
+                var p=commander.body.transform.position;commander.body.transform.position=new Vector3(Mathf.Clamp(p.x,-HalfWidth+.6f,HalfWidth-.6f),p.y,Mathf.Clamp(p.z,-HalfHeight+.6f,HalfHeight-.6f));
             }
         }
         private void LaunchRocket(Vector3 from,Vector3 destination,float damage,float radius,bool hostile)
@@ -162,7 +164,7 @@ namespace TienTuyen.Combat
                 if(RayHitsCover(origin,direction,30,out float wall)) distance=Mathf.Min(distance,wall);
                 if(RayHitsGround(origin,direction,30,out float ground)) distance=Mathf.Min(distance,ground);
             }
-            Vector3 to=target>=0 ? AimTargetPoint(target,origin,direction) : origin+direction*distance;
+            Vector3 to=target>=0 ? (manualAim ? AimTargetPoint(target,origin,direction) : enemies[target].body.transform.position+Vector3.up*.08f) : origin+direction*distance;
             int slot=ActiveWeaponSlot;weaponAmmo[slot]--;weaponFireTimer[slot]=ActiveWeapon.ShotCooldownSeconds;
             LaunchRocket(from,to,ActiveWeapon.DamagePerHit*Run.RocketDamageFactor*Stats.DamageFactor,Run.RocketRadius,false);
             WeaponFired?.Invoke(slot,from,to);if(weaponAmmo[slot]<=0) StartReload(slot);

@@ -397,7 +397,7 @@ namespace TienTuyen.Presentation.Interface
             if (game.State == CombatState.Menu) bannerWave = -1;
             bannerAge += deltaTime;
             float fadeIn = Mathf.Clamp01(bannerAge / .25f), fadeOut = Mathf.Clamp01((2.6f - bannerAge) / .6f);
-            banner.alpha = game.State == CombatState.Playing ? Mathf.Min(fadeIn, fadeOut) : 0f;
+            banner.alpha = game.State == CombatState.Playing && !game.CommanderActive ? Mathf.Min(fadeIn, fadeOut) : 0f;
             float scale = 1f + (1f - fadeIn) * .12f;
             banner.transform.localScale = new Vector3(scale, scale, 1f);
         }

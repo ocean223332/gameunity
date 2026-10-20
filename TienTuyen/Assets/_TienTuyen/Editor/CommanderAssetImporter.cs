@@ -98,7 +98,7 @@ namespace TienTuyen.Editor
             var weaponGeometry=JsonUtility.FromJson<Geometry>(File.ReadAllText(Root+"/RPG18Geometry.json"));
             weapon.AddComponent<MeshFilter>().sharedMesh=MeshAsset(weaponGeometry,"RPG18Mesh");weapon.AddComponent<MeshRenderer>().sharedMaterial=Material("RPG18");
             Socket(weapon.transform,"Muzzle",new Vector3(0,0,.525f));Socket(weapon.transform,"Rear",new Vector3(0,0,-.525f));
-            Socket(weapon.transform,"RightGrip",new Vector3(0,-.045f,-.05f));Socket(weapon.transform,"LeftGrip",new Vector3(0,-.045f,.2f));
+            Socket(weapon.transform,"RightGrip",new Vector3(0,-.16f,.16f));Socket(weapon.transform,"LeftGrip",new Vector3(-.08f,-.15f,.3f));
             PrefabUtility.SaveAsPrefabAsset(weapon,Root+"/RPG18.prefab");UnityEngine.Object.DestroyImmediate(weapon);
             AssetDatabase.SaveAssets();ReviewScene(profile);
             Debug.Log("[CommanderAssets] Imported Humanoid, retargeted clips, RPG18 and review scene.");
@@ -200,10 +200,3 @@ namespace TienTuyen.Editor
         }
     }
 }
-
-
-
-
-
-
-

@@ -16,6 +16,7 @@ namespace TienTuyen.Presentation
     [RequireComponent(typeof(Camera))]
     public sealed class CombatThirdPersonCamera : MonoBehaviour
     {
+        public bool EncounterCamera { get; set; }
         public float Sensitivity = .11f;
         public float Distance = 4.3f, AimDistance = 2.5f;
         public float FieldOfView = 56f, AimFieldOfView = 40f;
@@ -159,6 +160,7 @@ namespace TienTuyen.Presentation
 
         private void LateUpdate()
         {
+            if(EncounterCamera)return;
             if (game == null || player == null || view == null) return;
             float dt = Mathf.Min(Time.unscaledDeltaTime, .05f);
             bool paused = game.State == CombatState.Paused, menu = game.State == CombatState.Menu;

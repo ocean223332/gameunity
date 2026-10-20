@@ -85,7 +85,7 @@ namespace TienTuyen.Combat
         public float DamageDealt { get; private set; }
         public int Seed { get; private set; }
         public int AliveEnemies { get; private set; }
-        public int MagazineSize => ProgressionRules.MagazineSize(CurrentWeaponDefinition.MagazineSize, Stats);
+        public int MagazineSize => CurrentWeaponDefinition.Id==ContentIds.Rpg18 ? 1 : ProgressionRules.MagazineSize(CurrentWeaponDefinition.MagazineSize, Stats);
         /// <summary>Length of the reload in progress on the weapon in hand, else of an empty-magazine reload.</summary>
         public float ReloadDuration => weaponReload[ActiveWeaponSlot] > 0 ? weaponReloadTotal[ActiveWeaponSlot] :
             CurrentWeaponDefinition.ReloadSeconds * Stats.ReloadFactor;
@@ -315,6 +315,7 @@ namespace TienTuyen.Combat
                 if (debugKeyboard.f7Key.wasPressedThisFrame) ExecuteCheat("nextwave");
                 if (debugKeyboard.f8Key.wasPressedThisFrame) ExecuteCheat("sniper");
                 if (debugKeyboard.f9Key.wasPressedThisFrame) ExecuteCheat("boss");
+                if (debugKeyboard.f10Key.wasPressedThisFrame) ExecuteCheat("money");
             }
             if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
                 TogglePause();
@@ -924,6 +925,7 @@ namespace TienTuyen.Combat
         /// <summary>Local test controls: F6 god, F7 nextwave, F8 sniper. No rewards are granted by skipping.</summary>
         public void ExecuteCheat(string command)
         {
+            if(command=="boss" && State!=CombatState.Playing && State!=CombatState.Paused) BeginRun();
             if (State != CombatState.Playing && State != CombatState.Paused) return;
             switch (command)
             {

@@ -56,6 +56,7 @@ namespace TienTuyen.Presentation
         private float stanceFraction = .6f;
         private float lastReload = -1f;
         private bool weaponsHidden;
+        public bool ExternalLauncher { get; set; }
         private Vector3 smoothedVelocity;
         private bool freshPose = true;
         private float scale = 1f;
@@ -284,7 +285,7 @@ namespace TienTuyen.Presentation
             for (int i = 0; i < weapons.Length; i++)
             {
                 if (weapons[i] == null) continue;
-                weapons[i].root.gameObject.SetActive(i == selectedWeapon && !weaponsHidden);
+                weapons[i].root.gameObject.SetActive(i == selectedWeapon && !weaponsHidden && !ExternalLauncher);
                 if (i != selectedWeapon) weapons[i].flash.SetActive(false);
             }
         }

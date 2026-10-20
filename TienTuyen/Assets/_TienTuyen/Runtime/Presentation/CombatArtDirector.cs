@@ -551,6 +551,7 @@ namespace TienTuyen.Presentation
             int weaponIndex = WeaponVisualIndex(slot);
             if (playerRig != null)
             {
+                playerRig.ExternalLauncher=game.LauncherEquipped;
                 playerRig.SelectWeapon(weaponIndex);
                 playerRig.DrawProgress = game.State == CombatState.Playing && game.IsSwitching ? game.SwitchProgress : -1f;
                 playerRig.Crouch = game.Crouch;
@@ -598,6 +599,7 @@ namespace TienTuyen.Presentation
 
         private void OnWeaponFired(int slot, Vector3 start, Vector3 end)
         {
+            if(game.WeaponAt(slot)?.Id==TienTuyen.Content.ContentIds.Rpg18)return;
             if (!arenaBuilt || playerRig == null) return;
             lastShotDirection = end - start;
             lastShotDirection.y = 0;
@@ -630,6 +632,8 @@ namespace TienTuyen.Presentation
             foreach (var pair in enemyVisuals)
             {
                 Transform actor = pair.Key; EnemyVisual visual = pair.Value;
+                if(game.IsCommanderActor(actor)){visual.root.gameObject.SetActive(false);continue;}
+                visual.root.gameObject.SetActive(true);
                 bool active = actor.gameObject.activeSelf;
                 bool wasActive = previousEnemyActive[actor];
                 previousEnemyActive[actor] = active;
@@ -763,6 +767,7 @@ namespace TienTuyen.Presentation
 
         private void OnEnemyDamaged(Transform actor, float damage, bool critical, bool killed)
         {
+            if(game.IsCommanderActor(actor))return;
             if (!enemyVisuals.TryGetValue(actor, out var visual)) return;
             visual.hitRemaining = .18f;
             if (!killed) return;
@@ -783,7 +788,7 @@ namespace TienTuyen.Presentation
         {
             foreach (var warning in warnings)
             {
-                if (!warning.gameObject.activeSelf) continue;
+                if (!warning.gameObject.activeSelf || game.IsCommanderWarning(warning)) continue;
                 float pulse = .88f + Mathf.Abs(Mathf.Sin(time * 8f));
                 warning.localScale = new Vector3(pulse, .02f, pulse);
                 var renderer = warning.GetComponent<Renderer>();

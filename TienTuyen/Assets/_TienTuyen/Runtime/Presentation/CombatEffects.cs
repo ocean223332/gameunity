@@ -95,6 +95,7 @@ namespace TienTuyen.Presentation
 
         private void OnWeaponFired(int slot, Vector3 start, Vector3 end)
         {
+            if(game.WeaponAt(slot)?.Id==TienTuyen.Content.ContentIds.Rpg18)return;
             shotDirection = (end - start).normalized;
             hasEnemyImpact = false;
             Transform socket = muzzle?.Invoke();
