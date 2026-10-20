@@ -1,326 +1,585 @@
 import os
 import sys
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
 import numpy as np
 import miniaudio
 import imageio_ffmpeg
 import subprocess
+import scipy.signal as signal
 
 SR = 48000
 ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
 
-def hz(midi):
-    return 440.0 * (2.0 ** ((midi - 69) / 12.0))
-
-def lowpass(x, cutoff, order=2):
-    n = len(x)
-    size = 1 << (n - 1).bit_length()
-    spec = np.fft.rfft(x, size)
-    f = np.fft.rfftfreq(size, 1 / SR)
-    spec *= 1 / np.sqrt(1 + (f / cutoff) ** (2 * order))
-    return np.fft.irfft(spec, size)[:n]
-
-def highpass(x, cutoff, order=2):
-    n = len(x)
-    size = 1 << (n - 1).bit_length()
-    spec = np.fft.rfft(x, size)
-    f = np.fft.rfftfreq(size, 1 / SR)
-    spec *= 1 / np.sqrt(1 + (cutoff / np.maximum(f, 1e-3)) ** (2 * order))
-    return np.fft.irfft(spec, size)[:n]
-
-def bandpass(x, lo, hi):
-    return highpass(lowpass(x, hi), lo)
-
-def radio_filter(audio, noise_gain=0.015):
-    """Simulates a 1970s portable AM radio speaker."""
-    # Bandpass 320Hz to 3200Hz
-    filtered = bandpass(audio, 320, 3200)
-    # Gentle saturation/warmth
-    sat = np.tanh(filtered * 2.2) * 0.7
-    # Soft background transistor hiss
-    np.random.seed(1972)
-    hiss = bandpass(np.random.normal(0, 1, len(audio)), 400, 3000) * noise_gain
-    return sat + hiss
-
-def synth_vov_fanfare(length=3.5):
-    """Synthesises the iconic VOV trumpet/brass fanfare (Diệt phát xít opening motif)."""
-    t = np.arange(int(length * SR)) / SR
-    # Motif: F4, A4, C5, F5 (high), D5, C5, A4, F4
-    notes = [
-        (0.0, 0.35, 65),   # F4
-        (0.35, 0.35, 69),  # A4
-        (0.70, 0.35, 72),  # C5
-        (1.05, 0.80, 77),  # F5
-        (1.85, 0.35, 74),  # D5
-        (2.20, 0.35, 72),  # C5
-        (2.55, 0.35, 69),  # A4
-        (2.90, 0.60, 65),  # F4
-    ]
-    sig = np.zeros(len(t))
-    for start, dur, midi in notes:
-        st_idx = int(start * SR)
-        end_idx = min(st_idx + int(dur * SR), len(t))
-        note_t = t[st_idx:end_idx] - start
-        f = hz(midi)
-        # Brass harmonic stack
-        s = np.sin(2 * np.pi * f * note_t) + \
-            0.6 * np.sin(4 * np.pi * f * note_t) + \
-            0.35 * np.sin(6 * np.pi * f * note_t) + \
-            0.2 * np.sin(8 * np.pi * f * note_t)
-        # Envelope
-        env = np.ones(len(note_t))
-        att = int(0.04 * SR)
-        rel = int(0.08 * SR)
-        if len(env) > att:
-            env[:att] = np.linspace(0, 1, att)
-        if len(env) > rel:
-            env[-rel:] *= np.linspace(1, 0, rel)
-        sig[st_idx:end_idx] += s * env * 0.45
-    return sig
-
-def synth_truong_son_song(length=27.0):
-    """Synthesises an evocative acoustic/đàn bầu folk melody for the radio."""
-    t = np.arange(int(length * SR)) / SR
-    sig = np.zeros(len(t))
-    
-    # Đàn bầu melodic phrases (Truong Son melody inspired by Bai ca ben canh vong / Duong Truong Son)
-    # Pentatonic scale in D: D, F, G, A, C (Midis: 62, 65, 67, 69, 72, 74, 77)
-    dan_bau_phrases = [
-        # Phrase 1: Dừng chân bên suối võng đưa (0s - 7s)
-        [(0.0, 62), (1.2, 65), (2.4, 67), (3.6, 69), (4.8, 67), (5.8, 65)],
-        # Phrase 2: Nhìn trời cao trong xanh lồng lộng (7s - 14s)
-        [(7.2, 67), (8.4, 69), (9.6, 72), (10.8, 74), (12.2, 72), (13.2, 69)],
-        # Phrase 3: Kỷ niệm quê hương biết mấy thân thương (14s - 21s)
-        [(14.5, 74), (15.8, 77), (17.0, 74), (18.2, 72), (19.4, 69), (20.4, 67)],
-        # Phrase 4: Cho từng chuyến xe anh qua (21s - 27s)
-        [(21.6, 67), (22.8, 69), (24.0, 65), (25.2, 62)]
-    ]
-    
-    for phrase in dan_bau_phrases:
-        times = [p[0] for p in phrase] + [phrase[-1][0] + 1.8]
-        for i, (start, midi) in enumerate(phrase):
-            st_idx = int(start * SR)
-            end_idx = min(int(times[i+1] * SR), len(t))
-            if st_idx >= len(t):
-                break
-            seg_t = t[st_idx:end_idx] - start
-            f = hz(midi)
-            # Smooth vibrato
-            vib = 1.0 + 0.008 * np.sin(2 * np.pi * 5.2 * seg_t)
-            phase = 2 * np.pi * np.cumsum(f * vib) / SR
-            # Monochord harmonic spectrum
-            s = np.sin(phase) + 0.4 * np.sin(2 * phase) + 0.18 * np.sin(3 * phase) + 0.08 * np.sin(5 * phase)
-            env = np.exp(-seg_t * 1.5)
-            att = int(0.03 * SR)
-            if len(env) > att:
-                env[:att] = np.linspace(0, 1, att)
-            sig[st_idx:end_idx] += s * env * 0.4
-            
-    # Add gentle acoustic guitar arpeggios underneath
-    chords = [
-        [50, 57, 62, 65],  # Dm
-        [46, 53, 58, 62],  # Bb
-        [43, 50, 55, 58],  # Gm
-        [45, 52, 57, 60],  # Am
-    ]
-    for b in range(13):
-        chord = chords[b % len(chords)]
-        bar_start = b * 2.0
-        for k, note in enumerate(chord):
-            note_time = bar_start + k * 0.5
-            st_idx = int(note_time * SR)
-            if st_idx >= len(t):
-                break
-            end_idx = min(st_idx + int(1.2 * SR), len(t))
-            seg_t = t[st_idx:end_idx] - note_time
-            f = hz(note)
-            s = (np.sin(2 * np.pi * f * seg_t) + 0.5 * np.sin(4 * np.pi * f * seg_t)) * np.exp(-seg_t * 4.5)
-            sig[st_idx:end_idx] += s * 0.18
-            
-    return sig
-
-def load_mono(filepath):
-    decoded = miniaudio.decode_file(filepath, nchannels=1, sample_rate=SR)
-    return np.frombuffer(decoded.samples, dtype=np.int16).astype(float) / 32768.0
-
-def load_stereo(filepath):
-    decoded = miniaudio.decode_file(filepath, nchannels=2, sample_rate=SR)
+def load_audio(filepath, target_sr=SR, nchannels=2):
+    """Loads any audio file (wav, mp3, ogg) as float numpy array (N, channels)."""
+    decoded = miniaudio.decode_file(filepath, nchannels=nchannels, sample_rate=target_sr)
     samples = np.frombuffer(decoded.samples, dtype=np.int16).astype(float) / 32768.0
-    return samples.reshape(-1, 2)
+    if nchannels == 2:
+        return samples.reshape(-1, 2)
+    return samples
+
+def butter_bandpass_filter(data, lowcut, highcut, fs=SR, order=4):
+    """Clean Butterworth bandpass filter using second-order sections (SOS)."""
+    sos = signal.butter(order, [lowcut, highcut], btype='bandpass', fs=fs, output='sos')
+    if data.ndim == 1:
+        return signal.sosfilt(sos, data)
+    out = np.zeros_like(data)
+    for ch in range(data.shape[1]):
+        out[:, ch] = signal.sosfilt(sos, data[:, ch])
+    return out
+
+def radio_vef206_filter(stereo_audio):
+    """Simulates the iconic 1972 VEF 206 transistor AM radio speaker in the A-frame bunker.
+    Preserves warm chest resonance (180Hz+) for a dignified, solemn, inspirational voice."""
+    mono = np.mean(stereo_audio, axis=1) if stereo_audio.ndim == 2 else stereo_audio
+    # 1. Warm AM radio bandpass: 180Hz to 4200Hz (preserves female vocal fundamental ~200Hz)
+    filtered = butter_bandpass_filter(mono, 180, 4200, fs=SR, order=2)
+    # 2. Warm analog transistor saturation (gentle, no harsh odd-harmonic buzz)
+    sat = np.tanh(filtered * 1.15) * 0.90
+    # 3. Subtle AM carrier hiss / transistor hum
+    np.random.seed(1972)
+    hiss = butter_bandpass_filter(np.random.normal(0, 0.0035, len(mono)), 500, 2600, fs=SR, order=2)
+    t = np.arange(len(mono)) / SR
+    hum = 0.0015 * np.sin(2 * np.pi * 50 * t) + 0.0008 * np.sin(2 * np.pi * 100 * t)
+    radio_out = sat + hiss + hum
+    # 4. Pan slightly to the left (-0.15) where the radio sits on the wooden ammo crate
+    pan = -0.15
+    gain_l = np.cos((pan + 1) * np.pi / 4)
+    gain_r = np.sin((pan + 1) * np.pi / 4)
+    return np.vstack([radio_out * gain_l, radio_out * gain_r]).T
+
+def apply_fade(audio, in_samples=0, out_samples=0):
+    """Applies smooth linear fades."""
+    out = audio.copy()
+    if in_samples > 0 and len(out) >= in_samples:
+        fade_curve = np.linspace(0, 1, in_samples)
+        if out.ndim == 2:
+            out[:in_samples, 0] *= fade_curve
+            out[:in_samples, 1] *= fade_curve
+        else:
+            out[:in_samples] *= fade_curve
+    if out_samples > 0 and len(out) >= out_samples:
+        fade_curve = np.linspace(1, 0, out_samples)
+        if out.ndim == 2:
+            out[-out_samples:, 0] *= fade_curve
+            out[-out_samples:, 1] *= fade_curve
+        else:
+            out[-out_samples:] *= fade_curve
+    return out
+
+def synth_radio_tuning_static(duration_sec=2.5):
+    """Synthesizes authentic analog transistor radio dial search noise (needle sliding, whistles, clicks)."""
+    t = np.arange(int(duration_sec * SR)) / SR
+    # Tactile power switch pop at 0.15s
+    click = np.zeros_like(t)
+    idx_c = int(0.15 * SR)
+    click[idx_c:idx_c + 240] = np.random.normal(0, 0.35, 240) * np.exp(-np.linspace(0, 6, 240))
+    
+    # AM carrier hiss & heterodyne tuning sweep whistles
+    np.random.seed(1972)
+    noise = np.random.normal(0, 0.07, len(t))
+    whistle1 = 0.025 * np.sin(2 * np.pi * (1600 - 650 * t) * t) * (t < 1.8)
+    whistle2 = 0.035 * np.sin(2 * np.pi * (700 + 350 * np.sin(2.5 * t)) * t) * (t > 0.8) * (t < 2.3)
+    
+    raw = click + noise + whistle1 + whistle2
+    sos = signal.butter(3, [350, 3200], btype='bandpass', fs=SR, output='sos')
+    tuner = signal.sosfilt(sos, raw)
+    # Smooth fade out as needle locks onto station at 2.0s - 2.5s
+    fade_start = int(2.0 * SR)
+    tuner[fade_start:] *= np.linspace(1, 0, len(t) - fade_start)
+    return np.vstack([tuner, tuner]).T
+
+def generate_distant_gunfire(total_samples):
+    """Generates authentic distant AK-47 combat gunfire bursts echoing across karst ridges."""
+    shot_path = 'TienTuyen/Assets/_TienTuyen/Audio/Resources/CombatAudio/Rifle_Shot.wav'
+    shot = load_audio(shot_path, SR, 2)
+    
+    sos_dir = signal.butter(3, 1800, btype='lowpass', fs=SR, output='sos')
+    sos_echo = signal.butter(3, 900, btype='lowpass', fs=SR, output='sos')
+    shot_dir = signal.sosfilt(sos_dir, shot, axis=0) * 0.42
+    shot_echo = signal.sosfilt(sos_echo, shot, axis=0) * 0.18
+    
+    gf = np.zeros((total_samples, 2), dtype=float)
+    
+    # Gunfire bursts during the camera crane ascent (101.0s to 111.5s):
+    # (timestamp_sec, num_shots, pan)
+    bursts = [
+        (101.2, 3, -0.30),
+        (103.5, 2,  0.35),
+        (105.7, 3, -0.15),
+        (107.4, 2,  0.25),
+        (109.2, 3,  0.05),
+        (110.8, 2, -0.20),
+    ]
+    
+    for b_time, count, pan in bursts:
+        gain_l = np.cos((pan + 1) * np.pi / 4)
+        gain_r = np.sin((pan + 1) * np.pi / 4)
+        for k in range(count):
+            st = int((b_time + k * 0.105) * SR)
+            ed = st + len(shot_dir)
+            if ed <= total_samples:
+                gf[st:ed, 0] += shot_dir[:, 0] * gain_l
+                gf[st:ed, 1] += shot_dir[:, 1] * gain_r
+            # Distant canyon echo reflection (65ms delay)
+            st_echo = st + int(0.065 * SR)
+            ed_echo = st_echo + len(shot_echo)
+            if ed_echo <= total_samples:
+                gf[st_echo:ed_echo, 0] += shot_echo[:, 0] * gain_r
+                gf[st_echo:ed_echo, 1] += shot_echo[:, 1] * gain_l
+                
+    return gf
+
+def load_and_trim_voice(path, sr=SR):
+    """Trims leading/trailing silence from edge-tts clips and applies micro-fades."""
+    data = load_audio(path, sr, 2)
+    energy = np.max(np.abs(data), axis=1)
+    thresh = np.max(energy) * 0.04
+    active = np.where(energy > thresh)[0]
+    if len(active) == 0:
+        return data
+    st = max(0, active[0] - int(0.04 * sr))
+    ed = min(len(data), active[-1] + int(0.08 * sr))
+    trimmed = data[st:ed].copy()
+    f_in = int(0.02 * sr)
+    f_out = int(0.04 * sr)
+    if len(trimmed) > f_in + f_out:
+        trimmed[:f_in] *= np.linspace(0, 1, f_in)[:, np.newaxis]
+        trimmed[-f_out:] *= np.linspace(1, 0, f_out)[:, np.newaxis]
+    return trimmed
+
+def synth_cinematic_title_impact(duration=2.5, fs=SR):
+    """Synthesizes a thunderous, clean cinematic sub-bass impact for the Title Card.
+    Zero human speech, deep sub-bass pitch drop (55Hz -> 32Hz), mid transient, and stereo rumble tail."""
+    t = np.linspace(0, duration, int(duration * fs), endpoint=False)
+    
+    # 1. Pitch-dropping sub-bass boom (55Hz -> 32Hz)
+    f_inst = 55.0 * np.exp(-t * 1.6) + 32.0 * (1 - np.exp(-t * 1.6))
+    phase = 2 * np.pi * np.cumsum(f_inst) / fs
+    sub = np.sin(phase) * np.exp(-t * 2.5)
+    
+    # 2. Punch transient (115Hz -> 48Hz)
+    f_punch = 115.0 * np.exp(-t * 28.0) + 48.0
+    punch = np.sin(2 * np.pi * np.cumsum(f_punch) / fs) * np.exp(-t * 16.0) * 0.75
+    
+    # 3. Low-frequency stereo rumble burst (filtered < 130Hz)
+    np.random.seed(1972)
+    noise = np.random.normal(0, 1.0, len(t))
+    sos = signal.butter(4, 130, btype='lowpass', fs=fs, output='sos')
+    rumble = signal.sosfilt(sos, noise)
+    rumble = rumble / np.max(np.abs(rumble)) * np.exp(-t * 2.8) * 0.50
+    
+    mono_hit = sub * 0.90 + punch * 0.70 + rumble * 0.45
+    mono_hit = mono_hit / np.max(np.abs(mono_hit)) * 0.95
+    
+    # Stereo spatial width
+    delay_s = int(0.015 * fs)
+    left = mono_hit.copy()
+    right = np.zeros_like(mono_hit)
+    right[delay_s:] = mono_hit[:-delay_s] * 0.96
+    right[:delay_s] = mono_hit[:delay_s] * 0.85
+    return np.vstack([left, right]).T
+
+def clean_and_subtitle_video(ffmpeg_exe, orig_video, output_video):
+    """
+    1. Removes the obsolete American radio subtitle ('...và đây là Đài phát thanh Quân đội Mỹ, phát từ Thái Lan.')
+       at 1.00s - 3.76s by tracking the radio chassis and inpainting the pristine diamond grille from frame 5.
+    2. Renders the authentic VOV broadcast subtitles matching the solemn female narration:
+       - 5.80s - 8.75s: 'Đây là Đài Tiếng nói Việt Nam, phát thanh từ Hà Nội,'
+       - 8.75s - 10.70s: 'thủ đô nước Việt Nam Dân chủ Cộng hòa.'
+    3. Re-encodes seamlessly under 45 MB (< 50MB git/engine limit).
+    """
+    import cv2
+    from PIL import Image, ImageDraw, ImageFont
+    import shutil
+    
+    work_dir = 'tools/intro_video/sub_work_frames'
+    os.makedirs(work_dir, exist_ok=True)
+    
+    print("  Extracting first 12s of video frames...")
+    subprocess.run([
+        ffmpeg_exe, '-y', '-ss', '0', '-t', '12.0',
+        '-i', orig_video, '-r', '25',
+        os.path.join(work_dir, 'frame_%04d.png')
+    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    
+    f5 = cv2.imread(os.path.join(work_dir, 'frame_0005.png'))
+    h, w = f5.shape[:2]
+    
+    font_path = 'TienTuyen/Assets/_TienTuyen/Art/Fonts/SourceSansPro-Semibold.ttf'
+    font = ImageFont.truetype(font_path, 36)
+    
+    pts5 = cv2.goodFeaturesToTrack(
+        cv2.cvtColor(f5[200:900, 200:1700], cv2.COLOR_BGR2GRAY),
+        maxCorners=250, qualityLevel=0.01, minDistance=10
+    )
+    
+    print("  Processing frames: removing old subtitle & stamping VOV subtitles...")
+    for idx in range(1, 301):
+        fpath = os.path.join(work_dir, f'frame_{idx:04d}.png')
+        if not os.path.exists(fpath):
+            continue
+        img = cv2.imread(fpath)
+        
+        # Clean frames 25 to 94 (1.00s to 3.76s)
+        if 25 <= idx <= 94:
+            gray_curr = cv2.cvtColor(img[200:900, 200:1700], cv2.COLOR_BGR2GRAY)
+            pts_curr, status, _ = cv2.calcOpticalFlowPyrLK(
+                cv2.cvtColor(f5[200:900, 200:1700], cv2.COLOR_BGR2GRAY),
+                gray_curr, pts5, None
+            )
+            good5 = pts5[status == 1]
+            good_curr = pts_curr[status == 1]
+            M, _ = cv2.estimateAffinePartial2D(good5, good_curr)
+            
+            M_full = M.copy()
+            M_full[0, 2] += 200 - (M[0, 0]*200 + M[0, 1]*200)
+            M_full[1, 2] += 200 - (M[1, 0]*200 + M[1, 1]*200)
+            
+            warped_clean = cv2.warpAffine(f5, M_full, (w, h), flags=cv2.INTER_LANCZOS4)
+            
+            roi_curr = img[970:1060, 300:1640]
+            roi_clean = warped_clean[970:1060, 300:1640]
+            diff = np.abs(roi_curr.astype(int) - roi_clean.astype(int))
+            mask = np.any(diff > 25, axis=2).astype(np.uint8) * 255
+            
+            kernel = np.ones((3,3), np.uint8)
+            mask = cv2.dilate(mask, kernel, iterations=2)
+            mask_f = cv2.GaussianBlur(mask, (5,5), 0) / 255.0
+            mask_f = np.expand_dims(mask_f, axis=2)
+            
+            img[970:1060, 300:1640] = (roi_clean * mask_f + roi_curr * (1 - mask_f)).astype(np.uint8)
+        
+        # VOV subtitles 5.80s to 10.70s
+        text = None
+        if 145 <= idx <= 218:
+            text = "Đây là Đài Tiếng nói Việt Nam, phát thanh từ Hà Nội,"
+        elif 219 <= idx <= 267:
+            text = "thủ đô nước Việt Nam Dân chủ Cộng hòa."
+            
+        if text:
+            pil_img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+            draw = ImageDraw.Draw(pil_img)
+            tw = draw.textlength(text, font=font)
+            tx = (1920 - tw) // 2
+            ty = 985
+            draw.text((tx, ty), text, font=font, fill=(255,255,255), stroke_width=2, stroke_fill=(0,0,0))
+            img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+            
+        cv2.imwrite(fpath, img)
+        
+    print("  Concatenating frames with rest of film into cleaned video track...")
+    cmd = [
+        ffmpeg_exe, '-y',
+        '-framerate', '25', '-i', os.path.join(work_dir, 'frame_%04d.png'),
+        '-ss', '12.0', '-i', orig_video,
+        '-filter_complex', '[0:v][1:v]concat=n=2:v=1:a=0[v]',
+        '-map', '[v]',
+        '-c:v', 'libx264', '-preset', 'faster',
+        '-b:v', '2700k', '-maxrate', '3300k', '-bufsize', '5500k',
+        '-pix_fmt', 'yuv420p',
+        '-an', output_video
+    ]
+    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    shutil.rmtree(work_dir, ignore_errors=True)
+    print(f"  [OK] Cleaned video with VOV subtitles created: {output_video}")
 
 def main():
-    print("Building Vietnamese Intro Audio Track (120s)...")
-    total_samples = 120 * SR
-    master_l = np.zeros(total_samples, dtype=float)
-    master_r = np.zeros(total_samples, dtype=float)
+    print("========================================================================")
+    print("🇻🇳 Building Fully Synced, Heroic Vietnamese Intro Audio (V4)")
+    print("========================================================================")
     
-    # 1. Load original full audio track
-    print("Loading original video sound effects (blasts, gunfire, timing)...")
-    orig = load_stereo('original_intro_audio.wav')
+    total_samples = 120 * SR
+    master = np.zeros((total_samples, 2), dtype=float)
+    
+    # -------------------------------------------------------------
+    # 1. Load Original Audio STRICTLY for Bomb Blast SFX (42.8s - 49.3s)
+    # -------------------------------------------------------------
+    # IMPORTANT: We DO NOT take original_audio after 49.3s!
+    # - At 50.0s, original_audio has "War." in English -> Cut completely by 49.3s!
+    # - At 113.4s-120s (1:52-2:00), original_audio has English whispers/speech -> Cut completely!
+    # We synthesize a 100% clean, pristine cinematic Title Impact at 113.5s with zero voice!
+    orig_path = 'tools/intro_video/original_audio.wav'
+    print(f"Loading bomb blast SFX from {orig_path}...")
+    orig = load_audio(orig_path, SR, 2)
     if len(orig) < total_samples:
         orig = np.pad(orig, ((0, total_samples - len(orig)), (0, 0)))
     else:
         orig = orig[:total_samples]
         
-    # Keep the sound effects from original:
-    # 42.5s to 50s: The bomb whistle, blast impact, debris, radio cut
-    # 90s to 120s: The camera ascent, distant AK-47 shots, title drop impact
-    fx_mask = np.zeros(total_samples, dtype=float)
-    # Bomb explosion transition: 42.5s to 50s
-    idx_42 = int(42.5 * SR)
-    idx_43 = int(43.5 * SR)
-    idx_50 = int(50.0 * SR)
-    idx_52 = int(52.0 * SR)
-    fx_mask[idx_42:idx_43] = np.linspace(0, 1, idx_43 - idx_42)
-    fx_mask[idx_43:idx_50] = 1.0
-    fx_mask[idx_50:idx_52] = np.linspace(1, 0, idx_52 - idx_50)
+    sfx_mask = np.zeros(total_samples, dtype=float)
     
-    # In-game battle ambient & title hit: 90s to 120s
-    idx_90 = int(90.0 * SR)
-    idx_92 = int(92.0 * SR)
-    fx_mask[idx_90:idx_92] = np.linspace(0, 0.7, idx_92 - idx_90)
-    fx_mask[idx_92:] = 0.7
+    # ONLY take the bomb blast impact and aftermath rubble: 42.8s to 49.3s (ZERO human speech!)
+    i_428 = int(42.8 * SR)
+    i_433 = int(43.3 * SR)
+    i_485 = int(48.5 * SR)
+    i_493 = int(49.3 * SR)
+    sfx_mask[i_428:i_433] = np.linspace(0, 1.0, i_433 - i_428)
+    sfx_mask[i_433:i_485] = 1.0
+    sfx_mask[i_485:i_493] = np.linspace(1.0, 0.0, i_493 - i_485)
+    # Strictly zero from 49.3s to the end of the video! Zero American voice leakage!
     
-    master_l += orig[:, 0] * fx_mask
-    master_r += orig[:, 1] * fx_mask
+    master += orig * sfx_mask[:, np.newaxis]
+    print("  [OK] Bomb blast (42.8s-49.3s) added. Strictly ZERO original audio after 49.3s.")
     
-    # 2. Build Radio Section (0.0s to 43.0s)
-    print("Synthesizing 1972 Radio broadcast in A-frame shelter...")
-    radio_len = int(43.0 * SR)
-    radio_sig = np.zeros(radio_len, dtype=float)
+    # -------------------------------------------------------------
+    # 2. Section 1: Radio Broadcast in Shelter (0.0s - 27.5s)
+    # -------------------------------------------------------------
+    print("Building 1972 Radio broadcast in A-frame shelter...")
+    radio_raw = np.zeros((int(28.0 * SR), 2), dtype=float)
     
-    # A. Radio switch on click & static tuning (0s - 1.8s)
-    t_tune = np.arange(int(1.8 * SR)) / SR
-    np.random.seed(42)
-    crackle = np.random.normal(0, 0.15, len(t_tune)) * np.sin(2 * np.pi * 120 * t_tune)
-    crackle[:int(0.05 * SR)] += np.random.normal(0, 0.8, int(0.05 * SR)) # switch click
-    radio_sig[:len(t_tune)] += crackle * 0.4
+    # A. Radio Tuning Static: 0.0s to 2.2s (dial needle search across frequencies)
+    tuning_static = synth_radio_tuning_static(2.2)
+    radio_raw[:len(tuning_static)] += tuning_static * 0.60
+    print("  [OK] Dial tuning static placed (0.0s - 2.2s, needle moving)")
     
-    # B. VOV Brass Fanfare (1.5s - 5.0s)
-    fanfare = synth_vov_fanfare(3.5)
-    f_start = int(1.5 * SR)
-    f_end = min(f_start + len(fanfare), radio_len)
-    radio_sig[f_start:f_end] += fanfare[:f_end - f_start] * 0.55
+    # Load pure authentic VOV brass fanfare (ZERO speech)
+    pure_fanfare_file = 'tools/intro_video/source_audio/vov_pure_fanfare.wav'
+    pure_fanfare = load_audio(pure_fanfare_file, SR, 2)
     
-    # C. VOV Station ID voice (5.2s - 11.4s)
-    vov_id = load_mono('vov_id.mp3')
-    v_start = int(5.2 * SR)
-    v_end = min(v_start + len(vov_id), radio_len)
-    radio_sig[v_start:v_end] += vov_id[:v_end - v_start] * 0.95
+    # B. Iconic VOV Brass Trumpet Fanfare ("Diệt phát xít" motif): 2.0s to 5.8s
+    # Trumpets play the triumphant opening phrase of "Diệt phát xít" with 100% pure music, ZERO speech
+    fanfare_chunk = pure_fanfare[:int(3.8 * SR)].copy()
+    fanfare_chunk = apply_fade(fanfare_chunk, in_samples=int(0.15 * SR), out_samples=int(0.35 * SR))
+    f_start = int(2.0 * SR)
+    f_end = f_start + len(fanfare_chunk)
+    radio_raw[f_start:f_end] += fanfare_chunk * 0.90
+    print("  [OK] Pure VOV brass fanfare placed (2.0s - 5.8s, 100% pure music, ZERO male speech)")
     
-    # D. Radio announcement (11.6s - 17.6s)
-    radio_ann = load_mono('radio_ann.mp3')
-    a_start = int(11.6 * SR)
-    a_end = min(a_start + len(radio_ann), radio_len)
-    radio_sig[a_start:a_end] += radio_ann[:a_end - a_start] * 0.9
+    # C. STRICTLY ONE UNIFIED FEMALE VOV Announcer: 5.8s to 10.7s (Finishes in 0:02 - 0:11 window!)
+    # "Đây là Đài Tiếng nói Việt Nam, phát thanh từ Hà Nội, thủ đô nước Việt Nam Dân chủ Cộng hòa."
+    # Spoken with solemn, dignified, and moving Hanoi radio cadence (trang nghiêm, truyền cảm).
+    female_voice_file = 'tools/intro_video/voices/vov_female_solemn.mp3'
+    if not os.path.exists(female_voice_file):
+        female_voice_file = 'tools/intro_video/source_audio/vov_female_solemn.mp3'
+    female_voice = load_and_trim_voice(female_voice_file, SR)
+    fv_start = int(5.8 * SR)
+    fv_end = fv_start + len(female_voice)
+    radio_raw[fv_start:fv_end] += female_voice * 1.28
+    print(f"  [OK] STRICTLY ONE unified solemn female announcer placed (5.8s - {fv_end/SR:.2f}s, 'thủ đô nước Việt Nam Dân chủ Cộng hòa')")
     
-    # E. Revolutionary Truong Son song (17.5s - 42.0s)
-    song = synth_truong_son_song(24.5)
-    s_start = int(17.5 * SR)
-    s_end = min(s_start + len(song), radio_len)
-    radio_sig[s_start:s_end] += song[:s_end - s_start] * 0.75
+    # D. "Bài ca bên cánh võng" (NSND Thu Hiền): 10.8s to 27.5s
+    # - 0:10.8 to 0:16.0 (covers 0:11 - 0:15): Bamboo flute (sáo trúc) & acoustic guitar intro
+    #   plays lyrical, nostalgic music as the soldier folds the letter next to his sweetheart's photo.
+    # - 0:16.0 to 0:27.5: NSND Thu Hiền warmly sings: "Dừng chân bên suối võng đưa, một trời xanh ngắt bao la rừng chiều..."
+    canh_vong_file = 'tools/intro_video/source_audio/canh_vong.mp3'
+    canh_vong_full = load_audio(canh_vong_file, SR, 2)
+    cv_start_idx = int(11.10 * SR) # Flute & guitar intro -> singing begins at 16.0s in video
+    cv_dur = int(16.70 * SR)       # 10.8s to 27.5s
+    cv_chunk = canh_vong_full[cv_start_idx:cv_start_idx + cv_dur].copy()
+    cv_chunk = apply_fade(cv_chunk, in_samples=int(0.8 * SR), out_samples=int(1.8 * SR))
+    cv_dest_start = int(10.8 * SR)
+    cv_dest_end = cv_dest_start + len(cv_chunk)
+    radio_raw[cv_dest_start:cv_dest_end] += cv_chunk * 0.95
+    print("  [OK] 'Bài ca bên cánh võng' flute/guitar intro (10.8s-16.0s) & Thu Hiền singing placed (16.0s-27.5s)")
     
-    # Apply 1972 AM Radio Filter to the entire radio signal
-    radio_filtered = radio_filter(radio_sig, noise_gain=0.01)
+    # Apply VEF 206 transistor speaker filter and mix into master
+    radio_filtered = radio_vef206_filter(radio_raw)
+    master[:len(radio_filtered)] += radio_filtered * 0.88
     
-    # Sudden radio cut at 42.8s when bomb explodes
-    cut_idx = int(42.8 * SR)
-    radio_filtered[cut_idx:] = 0.0
-    # Add to master (panned slightly center-left where the radio sits on the crate)
-    master_l[:radio_len] += radio_filtered * 0.85
-    master_r[:radio_len] += radio_filtered * 0.65
+    # -------------------------------------------------------------
+    # 3. Section 2: Air Raid Siren & Soldier Shouting (27.5s - 42.8s)
+    # -------------------------------------------------------------
+    print("Adding Air Raid Siren & Soldier Bunker Alert...")
+    siren_file = 'tools/intro_video/source_audio/bao_dong.mp3'
+    siren_full = load_audio(siren_file, SR, 2)
+    s_start_idx = int(13.0 * SR)
+    s_dur = int(15.3 * SR)
+    siren_chunk = siren_full[s_start_idx:s_start_idx + s_dur].copy()
+    siren_chunk = apply_fade(siren_chunk, in_samples=int(2.5 * SR), out_samples=int(0.8 * SR))
+    s_dest_start = int(27.5 * SR)
+    s_dest_end = s_dest_start + len(siren_chunk)
+    master[s_dest_start:s_dest_end] += siren_chunk * 0.55
+    print("  [OK] 1972 Air raid siren wailing (27.5s - 42.8s)")
     
-    # 3. Combat alert call (40.2s - 42.8s) right before the bomb hit
-    print("Adding bunker alert shout...")
-    alert_voice = load_mono('alert_soldier.mp3')
-    al_start = int(40.2 * SR)
-    al_end = min(al_start + len(alert_voice), total_samples)
-    alert_len = al_end - al_start
-    # Filter with distant echo/bunker acoustics
-    al_filtered = bandpass(alert_voice[:alert_len], 250, 4000) * 0.9
-    master_l[al_start:al_end] += al_filtered * 0.8
-    master_r[al_start:al_end] += al_filtered * 0.8
+    # Soldier urgent shout: 38.0s to 42.5s
+    # "Báo động! Máy bay địch ném bom! Xuống hầm mau!"
+    alert_file = 'tools/intro_video/voices/bunker_alert.mp3'
+    alert_voice = load_audio(alert_file, SR, 2)
+    alert_filtered = butter_bandpass_filter(alert_voice, 250, 4500, fs=SR, order=2)
+    al_start = int(38.0 * SR)
+    al_end = al_start + len(alert_filtered)
+    master[al_start:al_end] += alert_filtered * 1.15
+    print("  [OK] Urgent soldier bunker alert placed (38.0s - 42.5s)")
     
-    # 4. Pristine Adagio for Strings (50.0s to 112.0s)
-    print("Mixing master Adagio for Strings score...")
-    adagio = load_stereo('TienTuyen/Assets/_TienTuyen/Audio/Resources/CombatAudio/Music_Menu_Adagio.ogg')
-    ad_start = int(50.0 * SR)
-    ad_end = int(112.0 * SR)
-    ad_dur = ad_end - ad_start
-    ad_chunk = adagio[:ad_dur].copy()
+    # -------------------------------------------------------------
+    # 4. Section 3: Grand Symphony 'Đường Chúng Ta Đi' (50.0s - 98.0s)
+    # -------------------------------------------------------------
+    print("Mixing Grand Symphony 'Đường Chúng Ta Đi' over the Trường Sơn Archive...")
+    duong_file = 'tools/intro_video/source_audio/duong_chung_ta_di.mp3'
+    duong_full = load_audio(duong_file, SR, 2)
     
-    # Fade in Adagio softly from 50s to 54s
-    fade_in = int(4.0 * SR)
-    ad_chunk[:fade_in, 0] *= np.linspace(0, 1, fade_in)
-    ad_chunk[:fade_in, 1] *= np.linspace(0, 1, fade_in)
+    d_start_idx = int(1.0 * SR)
+    d_dur = int(48.0 * SR) # 50.0s to 98.0s
+    d_chunk = duong_full[d_start_idx:d_start_idx + d_dur].copy()
+    d_chunk = apply_fade(d_chunk, in_samples=int(3.0 * SR), out_samples=int(2.5 * SR))
+    d_dest_start = int(50.0 * SR)
+    d_dest_end = d_dest_start + len(d_chunk)
+    master[d_dest_start:d_dest_end] += d_chunk * 0.75
     
-    # Smooth fade out before title cut at 112s
-    fade_out = int(2.5 * SR)
-    ad_chunk[-fade_out:, 0] *= np.linspace(1, 0, fade_out)
-    ad_chunk[-fade_out:, 1] *= np.linspace(1, 0, fade_out)
+    # -------------------------------------------------------------
+    # 5. Vietnamese Dubbed Narration Following EVERY Burned-in Subtitle
+    # -------------------------------------------------------------
+    # All 18 on-screen subtitles from 0:50 to 1:51 dubbed precisely:
+    subs_timeline = [
+        # (timestamp_sec, filename, gain, description)
+        (50.4,  'tools/intro_video/voices_v3/sub_050.mp3', 1.25), # 50.4s: "Chiến tranh."
+        (52.2,  'tools/intro_video/voices_v3/sub_052.mp3', 1.25), # 52.2s: "Chiến tranh không bao giờ thay đổi."
+        (54.5,  'tools/intro_video/voices_v3/sub_054.mp3', 1.25), # 54.5s: "Ở đây, chiến tranh có một con đường."
+        (58.8,  'tools/intro_video/voices_v3/sub_059.mp3', 1.22), # 58.8s: "Từ năm 1959, nó chạy về Nam qua những dãy núi này:"
+        (64.0,  'tools/intro_video/voices_v3/sub_064.mp3', 1.22), # 64.0s: "đào bằng tay, bị ném bom ban đêm, sửa xong trước sáng."
+        (68.8,  'tools/intro_video/voices_v3/sub_069.mp3', 1.22), # 68.8s: "Năm 1954, cha tôi đẩy xe đạp thồ gạo lên Điện Biên Phủ."
+        (75.0,  'tools/intro_video/voices_v3/sub_075.mp3', 1.22), # 75.0s: "Ông trở về một đất nước bị chia đôi."
+        (77.8,  'tools/intro_video/voices_v3/sub_078.mp3', 1.22), # 77.8s: "Bây giờ là năm 1972."
+        (80.5,  'tools/intro_video/voices_v3/sub_080.mp3', 1.22), # 80.5s: "Đêm nào máy bay ném bom cũng đến."
+        (83.5,  'tools/intro_video/voices_v3/sub_084.mp3', 1.22), # 83.5s: "Hố bom đầy nước mưa, rồi nước mưa đầy xác người."
+        (87.5,  'tools/intro_video/voices_v3/sub_088.mp3', 1.22), # 87.5s: "Cứ vài cây số, lại có một nhóm người giữ cho con đường thông suốt."
+        (92.0,  'tools/intro_video/voices_v3/sub_091.mp3', 1.25), # 92.0s: "Khoảng rừng trống này là của tôi."
+        (94.5,  'tools/intro_video/voices_v3/sub_095.mp3', 1.25), # 94.5s: "Và tôi sợ."
+        (96.0,  'tools/intro_video/voices_v3/sub_096.mp3', 1.25), # 96.0s: "Sợ cho mẹ tôi."
+        (97.8,  'tools/intro_video/voices_v3/sub_098.mp3', 1.25), # 97.8s: "Cho người con gái vẫn viết thư cho tôi."
+        (100.2, 'tools/intro_video/voices_v3/sub_101.mp3', 1.25), # 100.2s: "Cho những người lái xe đêm nay đi không đèn."
+        (103.8, 'tools/intro_video/voices_v3/sub_105.mp3', 1.25), # 103.8s: "Bởi nếu con đường này dạy tôi một điều, thì đó là: chiến tranh..."
+        (108.5, 'tools/intro_video/voices_v3/sub_109.mp3', 1.25), # 108.5s: "chiến tranh không bao giờ thay đổi."
+    ]
     
-    master_l[ad_start:ad_end] += ad_chunk[:, 0] * 0.82
-    master_r[ad_start:ad_end] += ad_chunk[:, 1] * 0.82
+    print("Dubbing Vietnamese narration precisely matching subtitles...")
+    for t_sec, v_path, gain in subs_timeline:
+        voice = load_and_trim_voice(v_path, SR)
+        idx = int(t_sec * SR)
+        ed = idx + len(voice)
+        if ed <= total_samples:
+            master[idx:ed] += voice * gain
+            print(f"  [OK] Placed {os.path.basename(v_path)} at {t_sec:.1f}s ({len(voice)/SR:.2f}s)")
+            
+    # -------------------------------------------------------------
+    # 6. Section 4: Game Climax & Military Brass March (98.5s - 112.0s)
+    # -------------------------------------------------------------
+    print("Building Heroic Climax: 'Tiến Bước Dưới Quân Kỳ' & Distant Firefight...")
     
-    # 5. Vietnamese Narration (54.0s - 72.0s)
-    print("Mixing Vietnamese narration over the Adagio...")
-    narration = load_mono('narration_vn.mp3')
-    n_start = int(54.0 * SR)
-    n_end = min(n_start + len(narration), total_samples)
-    n_len = n_end - n_start
+    # Triumphant Military Brass & Marching Orchestra: "Tiến Bước Dưới Quân Kỳ"
+    qk_file = 'tools/intro_video/source_audio/quan_ky.mp3'
+    qk_full = load_audio(qk_file, SR, 2)
+    qk_chunk = qk_full[:int(13.5 * SR)].copy()
+    qk_chunk = apply_fade(qk_chunk, in_samples=int(1.2 * SR), out_samples=int(0.6 * SR))
+    qk_dest_start = int(98.5 * SR)
+    qk_dest_end = min(qk_dest_start + len(qk_chunk), int(112.0 * SR))
+    qk_len = qk_dest_end - qk_dest_start
+    master[qk_dest_start:qk_dest_end] += qk_chunk[:qk_len] * 0.88
+    print("  [OK] 'Tiến Bước Dưới Quân Kỳ' military brass march placed (98.5s - 112.0s)")
     
-    # Reverb / room acoustics for the narration
-    n_clean = narration[:n_len]
-    # Simple warm stereo diffusion
-    master_l[n_start:n_end] += n_clean * 0.95
-    master_r[n_start:n_end] += n_clean * 0.95
+    # Distant AK-47 combat gunfire echoing in the mountains (101s - 111s)
+    gunfire = generate_distant_gunfire(total_samples)
+    master += gunfire
+    print("  [OK] Clean distant AK-47 combat firefight placed (101.0s - 111.0s)")
     
-    # 6. Normalize and soft clip
-    print("Mastering final 24-bit/48kHz audio...")
-    peak = max(np.max(np.abs(master_l)), np.max(np.abs(master_r)))
-    if peak > 0:
-        master_l = np.tanh((master_l / peak) * 1.3) * 0.92
-        master_r = np.tanh((master_r / peak) * 1.3) * 0.92
+    # Hard cut to black silence at 112.0s
+    master[int(112.0 * SR):int(113.4 * SR)] = 0.0
+    print("  [OK] Hard cut to black silence (112.0s - 113.4s)")
+    
+    # -------------------------------------------------------------
+    # 7. Section 5: Ending Title Music & Cinematic Impact (1:52 to 2:00 / 112.0s - 120.0s)
+    # -------------------------------------------------------------
+    print("Adding Solemn & Heroic Title Score & Clean Impact from 1:52 to 2:00...")
+    
+    # 1. Synthesized Cinematic Sub-Bass Title Impact at 113.48s (100% clean, ZERO human speech!)
+    title_impact = synth_cinematic_title_impact(duration=2.5, fs=SR)
+    t_hit_start = int(113.48 * SR)
+    t_hit_len = min(len(title_impact), total_samples - t_hit_start)
+    master[t_hit_start:t_hit_start + t_hit_len] += title_impact[:t_hit_len] * 1.05
+    print("  [OK] Synthesized cinematic sub-bass Title Impact placed at 113.5s (100% clean, ZERO voice)")
+    
+    # 2. Pure Instrumental String Orchestra (Adagio theme from clean 66.5s to 74.5s section):
+    # - Samuel Barber's Adagio for Strings in its most emotional, majestic crescendo (peak 0.68, RMS 0.12).
+    # - Charlie Sheen's monologue ends completely at 66.0s, so this section is 100% pure music, ZERO speech!
+    # - Fades in smoothly at 112.2s, swelling into full richness right as the title card appears at 113.5s.
+    # - Boosted with warm presence (gain 1.38x) for a rich, epic musical ending as requested ("lồng thêm nhạc").
+    ad_path = 'TienTuyen/Assets/_TienTuyen/Audio/Resources/CombatAudio/Music_Menu_Adagio.ogg'
+    if not os.path.exists(ad_path):
+        ad_path = 'tools/intro_video/source_audio/menu_adagio.wav'
+    ad_data = load_audio(ad_path, SR, 2)
+    st_ad = int(66.5 * SR)
+    ed_ad = int(74.5 * SR)
+    ad_cue = ad_data[st_ad:ed_ad].copy()
+    
+    f_in = int(1.3 * SR)
+    ad_cue[:f_in] *= np.linspace(0.08, 1.0, f_in)[:, np.newaxis]
+    f_out = int(0.6 * SR)
+    ad_cue[-f_out:] *= np.linspace(1.0, 0.75, f_out)[:, np.newaxis]
+    ad_cue *= 1.38
+    
+    ad_dest = int(112.0 * SR)
+    ad_len = min(len(ad_cue), total_samples - ad_dest)
+    master[ad_dest:ad_dest + ad_len] += ad_cue[:ad_len]
+    print("  [OK] Rich pure instrumental Adagio string crescendo placed (112.0s - 120.0s, 100% pure music, ZERO American voice)")
+    
+    # -------------------------------------------------------------
+    # 7. Mastering & Loudness Normalization
+    # -------------------------------------------------------------
+    print("Mastering final 24-bit/48kHz audio track...")
+    peak = np.max(np.abs(master))
+    print(f"  Raw mix peak: {peak:.3f}")
+    if peak > 0.98:
+        master = np.tanh(master / peak * 1.08) * 0.95
+    else:
+        master = master * (0.95 / max(peak, 0.1))
         
-    stereo_out = np.vstack([master_l, master_r]).T
-    out_int16 = (stereo_out * 32767.0).astype(np.int16)
+    out_wav = 'TienTuyenIntro_VN.wav'
+    out_int16 = (master * 32767.0).astype(np.int16)
     
-    wav_out = 'TienTuyenIntro_VN.wav'
     import wave
-    with wave.open(wav_out, 'wb') as wf:
+    with wave.open(out_wav, 'wb') as wf:
         wf.setnchannels(2)
         wf.setsampwidth(2)
         wf.setframerate(SR)
         wf.writeframes(out_int16.tobytes())
-    print(f"Generated clean WAV: {wav_out} ({len(master_l)/SR:.1f}s)")
-    
-    # 7. Use ffmpeg to mux into TienTuyenIntro.mp4 preserving pristine 1080p video
-    print("Muxing into final TienTuyenIntro.mp4 (H.264 + AAC 48kHz stereo)...")
+    print(f"Generated clean WAV: {out_wav} ({len(master)/SR:.2f}s)")
+
+    # -------------------------------------------------------------
+    # 8. Mux into TienTuyenIntro.mp4 using FFmpeg (Loudnorm -14 LUFS)
+    # -------------------------------------------------------------
+    cleaned_video = 'tools/intro_video/original_intro_cleaned.mp4'
+    if not os.path.exists(cleaned_video):
+        print("Cleaning obsolete American subtitles & generating VOV subtitles...")
+        clean_and_subtitle_video(ffmpeg_exe, 'tools/intro_video/original_intro.mp4', cleaned_video)
+
+    video_src = cleaned_video if os.path.exists(cleaned_video) else 'tools/intro_video/original_intro.mp4'
+
+    print("Muxing audio into TienTuyenIntro.mp4 with broadcast loudness (-14 LUFS)...")
     mp4_target = 'TienTuyen/Assets/StreamingAssets/TienTuyenIntro.mp4'
-    temp_mp4 = 'TienTuyenIntro_VN.mp4'
+    temp_mp4 = 'TienTuyenIntro_temp.mp4'
     
     cmd = [
         ffmpeg_exe, '-y',
-        '-i', mp4_target,       # input 0: original 1080p video
-        '-i', wav_out,          # input 1: new Vietnamese audio
-        '-c:v', 'copy',         # copy video stream untouched
-        '-c:a', 'aac', '-b:a', '192k', '-ar', '48000',
-        '-map', '0:v:0',        # take video from 0
-        '-map', '1:a:0',        # take audio from 1
+        '-i', video_src,                              # Cleaned Video source with VOV subtitles
+        '-i', out_wav,                                # New Vietnamese audio
+        '-c:v', 'copy',                               # Copy video untouched
+        '-af', 'loudnorm=I=-14:TP=-1:LRA=11',         # EBU R128 broadcast standard
+        '-c:a', 'aac', '-b:a', '256k', '-ar', '48000',
+        '-map', '0:v:0',
+        '-map', '1:a:0',
         '-shortest',
         temp_mp4
     ]
     res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if res.returncode == 0:
-        # Overwrite in Assets/StreamingAssets
         import shutil
-        shutil.move(temp_mp4, mp4_target)
-        print("Successfully updated TienTuyen/Assets/StreamingAssets/TienTuyenIntro.mp4!")
+        shutil.copy2(temp_mp4, mp4_target)
+        try:
+            os.remove(temp_mp4)
+        except Exception:
+            pass
+        print(f"✅ Successfully updated {mp4_target}!")
         
-        # Also update in Builds/Windows/TienTuyen_Data/StreamingAssets if it exists
+        # Also copy to build directory
         build_target = 'Builds/Windows/TienTuyen_Data/StreamingAssets/TienTuyenIntro.mp4'
         if os.path.exists(os.path.dirname(build_target)):
-            shutil.copy2(mp4_target, build_target)
-            print("Successfully updated Builds/Windows/TienTuyen_Data/StreamingAssets/TienTuyenIntro.mp4!")
+            try:
+                shutil.copy2(mp4_target, build_target)
+                print(f"✅ Successfully updated {build_target}!")
+            except Exception as e:
+                print(f"⚠️ Note: Could not update {build_target} directly (file in use by game/player): {e}")
     else:
         print("FFmpeg error:", res.stderr.decode('utf-8', 'ignore'))
 
