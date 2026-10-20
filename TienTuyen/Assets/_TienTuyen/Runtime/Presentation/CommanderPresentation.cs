@@ -44,7 +44,7 @@ namespace TienTuyen.Presentation
         private void BuildBoss()
         {
             if(Profile==null || !Profile.IsValid || Launcher==null) return;
-            bossRoot=new GameObject("CommanderVisual").transform;bossRoot.SetParent(transform,false);
+            bossRoot=new GameObject("CommanderVisual").transform;bossRoot.SetParent(transform,false);bossRoot.localScale=Vector3.one*1.3f;
             var model=Instantiate(Profile.model,bossRoot,false);bossAnimator=model.GetComponent<Animator>();
             graph=PlayableGraph.Create("CommanderLocomotion");graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
             mixer=AnimationMixerPlayable.Create(graph,2);

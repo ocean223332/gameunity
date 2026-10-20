@@ -29,6 +29,8 @@ namespace TienTuyen.Combat.Tests
    game.BeginRun();game.ExecuteCheat("boss");yield return null;yield return null;
    Assert.That(GameObject.Find("CommanderVisual"),Is.Not.Null);Assert.That(Camera.main.GetComponent<CombatThirdPersonCamera>().enabled,Is.True,"Camera Update must keep handling pause cursor during a cutscene.");
    Assert.That((bool)typeof(CommanderPresentation).GetField("cameraOwned",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).GetValue(presentation),Is.True,"Cutscene must acquire the dynamically created camera controller.");
+   Assert.That(GameObject.Find("CommanderVisual").transform.localScale,Is.EqualTo(Vector3.one*1.3f));
+   Assert.That(GameObject.Find("CommanderRPG18").transform.lossyScale.x,Is.EqualTo(1.3f).Within(.001f));
    Capture("boss-intro");yield return null;
    game.StepSimulation(6.1f,Vector2.zero);yield return null;yield return null;
    Assert.That(Camera.main.GetComponent<CombatThirdPersonCamera>().enabled,Is.True);
