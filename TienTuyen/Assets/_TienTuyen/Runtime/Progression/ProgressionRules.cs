@@ -39,7 +39,7 @@ namespace TienTuyen.Progression
         public float ExperienceFactor;
     }
 
-    public enum UpgradeKind { Health, Damage, AttackSpeed, Armor, Speed, Regen }
+    public enum UpgradeKind { Health, Damage, AttackSpeed, Armor, Speed, Regen, RocketDamage, RocketReload, RocketRadius }
 
     /// <summary>Pure progression prices, upgrade effects, and bounded stat aggregation.</summary>
     public static class ProgressionRules
@@ -68,6 +68,9 @@ namespace TienTuyen.Progression
         {
             switch (kind)
             {
+                case UpgradeKind.RocketDamage:
+                case UpgradeKind.RocketReload:
+                case UpgradeKind.RocketRadius: return default(StatModifier);
                 case UpgradeKind.Health: return new StatModifier { MaxHealth = 10f };
                 case UpgradeKind.Damage: return new StatModifier { Damage = 0.05f };
                 case UpgradeKind.AttackSpeed: return new StatModifier { AttackSpeed = 0.05f };

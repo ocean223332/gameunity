@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using TienTuyen.Content;
 
@@ -61,7 +62,9 @@ namespace TienTuyen.Progression
         private ShopOffer RollWeapon(int wave, Random random)
         {
             if (weapons.Weapons.Count == 0) throw new InvalidOperationException("No weapons available for shop");
-            WeaponDefinition weapon = weapons.Weapons[random.Next(weapons.Weapons.Count)];
+            var available=weapons.Weapons.Where(w=>w.Id!=ContentIds.Rpg18).ToArray();
+            if(available.Length==0) throw new InvalidOperationException("No shop weapons available");
+            WeaponDefinition weapon = available[random.Next(available.Length)];
             int roll = random.Next(100);
             int tier = wave < 5 ? 1 : wave < 9 ? (roll < 75 ? 1 : 2) :
                 (roll < 55 ? 1 : roll < 90 ? 2 : 3);
