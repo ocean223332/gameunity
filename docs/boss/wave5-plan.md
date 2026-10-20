@@ -33,3 +33,11 @@ Rulings: RPG is a game interpretation with 1-round capacity and reload, not a si
 - 66/66 EditMode; 56/56 selected PlayMode regression tests (commander, sniper, lifecycle, manual aim, interface).
 - Static whole-branch review: two reported correctness issues resolved; follow-up found no further important defects.
 - UI composition screenshots captured and inspected in Builds/CommanderReview. Synthetic voice is a placeholder performance, replaceable via the two CommanderVoice WAV files.
+
+## Final build evidence
+
+Code/assets commit: 34a0fbd (feature branch codex/commander-boss). Windows batch build finished 2026-10-20 13:10:51 Asia/Saigon, exit 0: Succeeded, 965,470,116 bytes total, 144.8s, 0 errors, 6 warnings. Output: Builds/Windows/TienTuyen.exe. Player launch remained running for 15s; startup log showed no exception or shader error. This smoke check covers startup, while boss lifecycle/visuals/rewards are covered by the PlayMode tests.
+
+Final UI check: 4/4 selected tests passed after moving the boss bar below the normal wave clock, suppressing the duplicate wave-intro banner for the boss and separating the debug hint from normal controls. Other validation remains 66/66 EditMode and 56/56 selected PlayMode.
+
+Unity's post-build settings/review-file changes were inspected and contained only line-ending churn; restored rather than committed. Existing unrelated Pistol_Shot_M1911A1.wav and its meta remain untracked and untouched. No push or merge was performed.
