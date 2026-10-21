@@ -184,7 +184,8 @@ def synth_cinematic_title_impact(duration=2.5, fs=SR):
 def clean_and_subtitle_video(ffmpeg_exe, orig_video, output_video):
     """
     1. Removes the obsolete American radio subtitle ('...và đây là Đài phát thanh Quân đội Mỹ, phát từ Thái Lan.')
-       at 1.00s - 3.76s by tracking the radio chassis and inpainting the pristine diamond grille from frame 5.
+       at 1.00s - 3.76s (frames 25 to 94) by frame-by-frame backward propagation from the pristine frame 95.
+       Restores natural radio speaker diamond grille texture seamlessly with ZERO black box or smearing.
     2. Renders the authentic VOV broadcast subtitles matching the solemn female narration:
        - 5.80s - 8.75s: 'Đây là Đài Tiếng nói Việt Nam, phát thanh từ Hà Nội,'
        - 8.75s - 10.70s: 'thủ đô nước Việt Nam Dân chủ Cộng hòa.'
@@ -204,54 +205,68 @@ def clean_and_subtitle_video(ffmpeg_exe, orig_video, output_video):
         os.path.join(work_dir, 'frame_%04d.png')
     ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     
-    f5 = cv2.imread(os.path.join(work_dir, 'frame_0005.png'))
-    h, w = f5.shape[:2]
-    
     font_path = 'TienTuyen/Assets/_TienTuyen/Art/Fonts/SourceSansPro-Semibold.ttf'
     font = ImageFont.truetype(font_path, 36)
     
-    pts5 = cv2.goodFeaturesToTrack(
-        cv2.cvtColor(f5[200:900, 200:1700], cv2.COLOR_BGR2GRAY),
-        maxCorners=250, qualityLevel=0.01, minDistance=10
-    )
+    print("  Processing frames: clean radio grille (frames 25 to 94) & stamp VOV subtitles...")
     
-    print("  Processing frames: removing old subtitle & stamping VOV subtitles...")
-    for idx in range(1, 301):
+    # 1. Clean obsolete American radio subtitle (frames 25 to 94) using backward propagation from clean frame 95
+    f95_path = os.path.join(work_dir, 'frame_0095.png')
+    if os.path.exists(f95_path):
+        prev_clean = cv2.imread(f95_path)
+        h, w = prev_clean.shape[:2]
+        
+        for idx in range(94, 24, -1):
+            fpath = os.path.join(work_dir, f'frame_{idx:04d}.png')
+            if not os.path.exists(fpath):
+                continue
+            curr = cv2.imread(fpath)
+            
+            # Optical flow tracking between curr and clean successor
+            gray_curr = cv2.cvtColor(curr[200:900, 200:1700], cv2.COLOR_BGR2GRAY)
+            gray_prev = cv2.cvtColor(prev_clean[200:900, 200:1700], cv2.COLOR_BGR2GRAY)
+            
+            pts_prev = cv2.goodFeaturesToTrack(gray_prev, maxCorners=300, qualityLevel=0.01, minDistance=10)
+            if pts_prev is not None and len(pts_prev) > 10:
+                pts_curr, status, _ = cv2.calcOpticalFlowPyrLK(gray_prev, gray_curr, pts_prev, None)
+                good_prev = pts_prev[status == 1]
+                good_curr = pts_curr[status == 1]
+                M, _ = cv2.estimateAffinePartial2D(good_prev, good_curr)
+            else:
+                M = None
+                
+            if M is not None:
+                M_full = M.copy()
+                M_full[0, 2] += 200 - (M[0, 0]*200 + M[0, 1]*200)
+                M_full[1, 2] += 200 - (M[1, 0]*200 + M[1, 1]*200)
+                warped_prev = cv2.warpAffine(prev_clean, M_full, (w, h), flags=cv2.INTER_LANCZOS4)
+            else:
+                warped_prev = prev_clean
+                
+            roi_curr = curr[970:1060, 300:1640]
+            roi_prev = warped_prev[970:1060, 300:1640]
+            
+            diff = np.abs(roi_curr.astype(float) - roi_prev.astype(float))
+            diff_val = np.max(diff, axis=2)
+            
+            mask = (diff_val > 18).astype(np.uint8) * 255
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+            mask = cv2.dilate(mask, kernel, iterations=2)
+            mask_f = cv2.GaussianBlur(mask, (5, 5), 0) / 255.0
+            mask_f = np.expand_dims(mask_f, axis=2)
+            
+            cleaned = curr.copy()
+            cleaned[970:1060, 300:1640] = (roi_prev * mask_f + roi_curr * (1 - mask_f)).astype(np.uint8)
+            
+            cv2.imwrite(fpath, cleaned)
+            prev_clean = cleaned
+
+    # 2. Stamp VOV subtitles (frames 145 to 267)
+    for idx in range(145, 268):
         fpath = os.path.join(work_dir, f'frame_{idx:04d}.png')
         if not os.path.exists(fpath):
             continue
         img = cv2.imread(fpath)
-        
-        # Clean frames 25 to 94 (1.00s to 3.76s)
-        if 25 <= idx <= 94:
-            gray_curr = cv2.cvtColor(img[200:900, 200:1700], cv2.COLOR_BGR2GRAY)
-            pts_curr, status, _ = cv2.calcOpticalFlowPyrLK(
-                cv2.cvtColor(f5[200:900, 200:1700], cv2.COLOR_BGR2GRAY),
-                gray_curr, pts5, None
-            )
-            good5 = pts5[status == 1]
-            good_curr = pts_curr[status == 1]
-            M, _ = cv2.estimateAffinePartial2D(good5, good_curr)
-            
-            M_full = M.copy()
-            M_full[0, 2] += 200 - (M[0, 0]*200 + M[0, 1]*200)
-            M_full[1, 2] += 200 - (M[1, 0]*200 + M[1, 1]*200)
-            
-            warped_clean = cv2.warpAffine(f5, M_full, (w, h), flags=cv2.INTER_LANCZOS4)
-            
-            roi_curr = img[970:1060, 300:1640]
-            roi_clean = warped_clean[970:1060, 300:1640]
-            diff = np.abs(roi_curr.astype(int) - roi_clean.astype(int))
-            mask = np.any(diff > 25, axis=2).astype(np.uint8) * 255
-            
-            kernel = np.ones((3,3), np.uint8)
-            mask = cv2.dilate(mask, kernel, iterations=2)
-            mask_f = cv2.GaussianBlur(mask, (5,5), 0) / 255.0
-            mask_f = np.expand_dims(mask_f, axis=2)
-            
-            img[970:1060, 300:1640] = (roi_clean * mask_f + roi_curr * (1 - mask_f)).astype(np.uint8)
-        
-        # VOV subtitles 5.80s to 10.70s
         text = None
         if 145 <= idx <= 218:
             text = "Đây là Đài Tiếng nói Việt Nam, phát thanh từ Hà Nội,"
@@ -266,9 +281,8 @@ def clean_and_subtitle_video(ffmpeg_exe, orig_video, output_video):
             ty = 985
             draw.text((tx, ty), text, font=font, fill=(255,255,255), stroke_width=2, stroke_fill=(0,0,0))
             img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+            cv2.imwrite(fpath, img)
             
-        cv2.imwrite(fpath, img)
-        
     print("  Concatenating frames with rest of film into cleaned video track...")
     cmd = [
         ffmpeg_exe, '-y',
