@@ -857,6 +857,7 @@ namespace TienTuyen.Presentation
             public StationSource(CombatGame game, CombatThirdPersonCamera view) { this.game = game; this.view = view; }
 
             public CombatState State => game.State;
+            public bool LauncherEquipped => game.LauncherEquipped;
             public WeaponDefinition ActiveWeapon => game.ActiveWeapon;
             public WeaponDefinition WeaponAt(int slot) => game.WeaponAt(slot);
             public int SelectedEntry => game.SelectedEntry;
@@ -886,6 +887,7 @@ namespace TienTuyen.Presentation
     internal interface IFirstPersonSource
     {
         CombatState State { get; }
+        bool LauncherEquipped { get; }
         WeaponDefinition ActiveWeapon { get; }
         WeaponDefinition WeaponAt(int slot);
         /// <summary>Equal to <see cref="WeaponCount"/> while the knife is in hand.</summary>

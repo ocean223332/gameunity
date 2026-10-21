@@ -175,6 +175,7 @@ namespace TienTuyen.Duel.Presentation
         private int lastGun;
 
         public CombatState State => pose.Dead ? CombatState.Menu : CombatState.Playing;
+        public bool LauncherEquipped => false;
         public WeaponDefinition ActiveWeapon
         {
             get
