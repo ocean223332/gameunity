@@ -27,6 +27,8 @@ namespace TienTuyen.Combat
         public event Action<Vector3, bool> ShotImpact;
         /// <summary>Enemy actor, damage applied, critical hit, killed.</summary>
         public event Action<Transform, float, bool, bool> EnemyDamaged;
+        /// <summary>World hit position, actual HP removed, headshot, random critical.</summary>
+        public event Action<Vector3, float, bool, bool> DamageFeedback;
         /// <summary>World position of the attacker and the damage the player took.</summary>
         public event Action<Vector3, float> PlayerDamaged;
         /// <summary>A melee enemy swung: raised on every attack, also when invulnerability absorbs the damage.</summary>
@@ -1357,7 +1359,22 @@ namespace TienTuyen.Combat
             WeaponFired?.Invoke(slot, start, end);
             ShotImpact?.Invoke(end, target >= 0);
             if (surfaceHit) SurfaceImpact?.Invoke(end, hitCover);
-            if (target >= 0) ApplyShotDamage(enemies[target], ShotDamage(slot, weapon, out bool critical), critical);
+            if (target >= 0)
+            {
+                var enemy = enemies[target];
+                bool headshot = false;
+                if (hasViewRay)
+                {
+                    Vector3 position = enemy.body.transform.position;
+                    var planar = new Vector2(viewRayDirection.x, viewRayDirection.z);
+                    float alongRay = Vector2.Dot(new Vector2(position.x - viewRayOrigin.x,
+                        position.z - viewRayOrigin.z), planar) / Mathf.Max(.000001f, planar.sqrMagnitude);
+                    float height = viewRayOrigin.y + viewRayDirection.y * alongRay - (position.y - .8f);
+                    headshot = CombatRules.IsHeadshot(height, enemy.elite ? EliteBodyHeight : BodyHeight);
+                }
+                float damage = ShotDamage(slot, weapon, out bool critical);
+                ApplyDetailedShotDamage(enemy, damage * (headshot ? CombatRules.HeadshotMultiplier : 1f), critical, headshot, end);
+            }
             if (weaponAmmo[slot] == 0) StartReload(slot);
         }
 
@@ -1485,12 +1502,17 @@ namespace TienTuyen.Combat
 
         private void DamageEnemy(Enemy enemy, float damage) => ApplyShotDamage(enemy, damage, false);
 
-        private void ApplyShotDamage(Enemy enemy, float damage, bool critical)
+        private void ApplyShotDamage(Enemy enemy, float damage, bool critical) =>
+            ApplyDetailedShotDamage(enemy, damage, critical, false, null);
+
+        private void ApplyDetailedShotDamage(Enemy enemy, float damage, bool critical, bool headshot, Vector3? hitPoint)
         {
             if (CommanderCinematic || !enemy.active || enemy.definition == null || damage <= 0 || float.IsNaN(damage) || float.IsInfinity(damage)) return;
             float applied = Mathf.Min(damage, enemy.hp);
             enemy.hp -= damage;
             DamageDealt += applied;
+            DamageFeedback?.Invoke(hitPoint ?? enemy.body.transform.position + Vector3.up * .65f,
+                applied, headshot, critical);
             EnemyDamaged?.Invoke(enemy.body.transform, applied, critical, enemy.hp <= 0);
             if (enemy.hp > 0) return;
             if(ReferenceEquals(enemy,commander)) {CommanderDefeated();return;}

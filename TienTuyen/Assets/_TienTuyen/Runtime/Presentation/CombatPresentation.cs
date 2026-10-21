@@ -50,6 +50,7 @@ namespace TienTuyen.Presentation
                 new Vector2(-30, -30), new Vector2(180, 46));
             settings = new SettingsView(root, CloseSettings);
             debugLabel = UiKit.Text("DebugCheats", root, "", UiTheme.Body, 15, UiTheme.Gold, TextAlignmentOptions.BottomLeft);
+            gameObject.AddComponent<DamageNumbers>().Initialize(game, root);
             UiKit.Place(debugLabel, UiKit.BottomLeft, UiKit.BottomLeft, new Vector2(24, 165), new Vector2(650, 26));
             Refresh(0f);
             foreach (var screen in Screens) screen.Snap();
