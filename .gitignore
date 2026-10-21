@@ -56,6 +56,17 @@ Desktop.ini
 # Shell compilation outputs belong outside the repository.
 /TienTuyen*.dll
 
+# Temporary build logs and intro video scratch files
+*.log
+/*.wav
+/tools/intro_video/*.wav
+/tools/intro_video/*.mp4
+/tools/intro_video/source_audio/
+/tools/intro_video/all_subs/
+/tools/intro_video/exact_subs/
+/tools/intro_video/frames/
+/tools/intro_video/check_*/
+
 # Scratch scripts and the scenes the Unity Test Framework writes next to Assets on every PlayMode run.
 /tmp/
 /TienTuyen/Assets/InitTestScene*.unity
