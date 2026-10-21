@@ -16,6 +16,7 @@ namespace TienTuyen.Presentation.Interface
 
         public static Sprite Weapon(string weaponId)
         {
+            if (weaponId == ContentIds.Rpg18) return Get("rpg18",512,160,s=>s.Poly(4,10,96,10,96,23,4,23));
             if (weaponId == ContentIds.Smg) return Get("smg", 512, 160, Smg);
             if (weaponId == ContentIds.Shotgun) return Get("shotgun", 512, 160, Shotgun);
             return Get("rifle", 512, 160, Rifle);
@@ -42,6 +43,9 @@ namespace TienTuyen.Presentation.Interface
         {
             switch (kind)
             {
+                case UpgradeKind.RocketDamage: return Get("bullet",128,128,Bullet);
+                case UpgradeKind.RocketReload: return Get("chevrons",128,128,Chevrons);
+                case UpgradeKind.RocketRadius: return Get("bolt",128,128,Bolt);
                 case UpgradeKind.Health: return Get("heart", 128, 128, Heart);
                 case UpgradeKind.Damage: return Get("bullet", 128, 128, Bullet);
                 case UpgradeKind.AttackSpeed: return Get("chevrons", 128, 128, Chevrons);

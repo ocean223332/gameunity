@@ -289,6 +289,7 @@ namespace TienTuyen.Presentation
 
         private void OnWeaponFired(int slot, Vector3 start, Vector3 end)
         {
+            if(game.WeaponAt(slot)?.Id==TienTuyen.Content.ContentIds.Rpg18)return;
             string id = game.WeaponAt(slot)?.Id;
             string clip = id == ContentIds.Smg
                 ? "SMG_Shot__mp5_01"

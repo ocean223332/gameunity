@@ -210,7 +210,7 @@ namespace TienTuyen.Presentation
         private void LateUpdate()
         {
             if (game == null || view == null) return;
-            bool active = view.FirstPersonWeight > .5f && game.State != CombatState.Menu && game.ActiveWeapon != null;
+            bool active = view.FirstPersonWeight > .5f && game.State != CombatState.Menu && game.ActiveWeapon != null && !game.LauncherEquipped;
             HideBody(active);
             Active = active;
             if (overlay.enabled != active) Stack(active);

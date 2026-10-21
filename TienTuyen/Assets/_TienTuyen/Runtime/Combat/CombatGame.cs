@@ -8,7 +8,7 @@ using UnityEngine.InputSystem;
 namespace TienTuyen.Combat
 {
     /// <summary>Self-contained graybox combat loop for the three-wave P1 milestone.</summary>
-    public sealed class CombatGame : MonoBehaviour
+    public sealed partial class CombatGame : MonoBehaviour
     {
         private const float GroundY = 0.8f;
         private const float JumpHeight = 1.2f;
@@ -85,7 +85,7 @@ namespace TienTuyen.Combat
         public float DamageDealt { get; private set; }
         public int Seed { get; private set; }
         public int AliveEnemies { get; private set; }
-        public int MagazineSize => ProgressionRules.MagazineSize(CurrentWeaponDefinition.MagazineSize, Stats);
+        public int MagazineSize => CurrentWeaponDefinition.Id==ContentIds.Rpg18 ? 1 : ProgressionRules.MagazineSize(CurrentWeaponDefinition.MagazineSize, Stats);
         /// <summary>Length of the reload in progress on the weapon in hand, else of an empty-magazine reload.</summary>
         public float ReloadDuration => weaponReload[ActiveWeaponSlot] > 0 ? weaponReloadTotal[ActiveWeaponSlot] :
             CurrentWeaponDefinition.ReloadSeconds * Stats.ReloadFactor;
@@ -314,10 +314,18 @@ namespace TienTuyen.Combat
                 if (debugKeyboard.f6Key.wasPressedThisFrame) ExecuteCheat("god");
                 if (debugKeyboard.f7Key.wasPressedThisFrame) ExecuteCheat("nextwave");
                 if (debugKeyboard.f8Key.wasPressedThisFrame) ExecuteCheat("sniper");
+                if (debugKeyboard.f9Key.wasPressedThisFrame) ExecuteCheat("boss");
+                if (debugKeyboard.f10Key.wasPressedThisFrame) ExecuteCheat("money");
             }
             if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
                 TogglePause();
             if (State != CombatState.Playing) return;
+            if(CommanderCinematic)
+            {
+                skipCommanderHold=debugKeyboard!=null && debugKeyboard.spaceKey.isPressed ? skipCommanderHold+Time.deltaTime : 0;
+                if(skipCommanderHold>=.6f) commanderClock=10;
+                StepSimulation(Time.deltaTime,Vector2.zero);return;
+            }
             Vector2 movement = Vector2.zero;
             var keyboard = Keyboard.current;
             if (keyboard != null)
@@ -397,7 +405,7 @@ namespace TienTuyen.Combat
         /// <summary>Its length is fixed now, from the rounds missing now; the magazine fills when it ends.</summary>
         private void StartReload(int slot)
         {
-            float seconds = WeaponAt(slot).ReloadSecondsFor(MagazineSizeAt(slot) - weaponAmmo[slot]) * Stats.ReloadFactor;
+            float seconds = WeaponAt(slot).ReloadSecondsFor(MagazineSizeAt(slot) - weaponAmmo[slot]) * Stats.ReloadFactor * (WeaponAt(slot).Id==ContentIds.Rpg18 ? Run.RocketReloadFactor : 1f);
             weaponReload[slot] = weaponReloadTotal[slot] = seconds;
             ReloadStarted?.Invoke(slot, seconds, MagazineSizeAt(slot) - weaponAmmo[slot]);
         }
@@ -642,7 +650,7 @@ namespace TienTuyen.Combat
 
         private void DamagePlayer(float rawDamage, Vector3 source)
         {
-            if (State != CombatState.Playing || DebugInvulnerable || rawDamage <= 0 || invulnerability > 0) return;
+            if (CommanderCinematic || State != CombatState.Playing || DebugInvulnerable || rawDamage <= 0 || invulnerability > 0) return;
             float reduced = rawDamage * 100f / (100f + Stats.Armor);
             Health = Mathf.Max(0, Health - Mathf.Max(1f, reduced));
             invulnerability = 0.35f;
@@ -661,10 +669,12 @@ namespace TienTuyen.Combat
         {
             if (State != CombatState.Playing || deltaTime <= 0) return;
             // Bound long frame stalls without dropping elapsed time during deterministic tests.
+            if(CommanderCinematic) {AdvanceCommanderCinematic(deltaTime);return;}
             while (deltaTime > 0 && State == CombatState.Playing)
             {
                 float step = Mathf.Min(deltaTime, 1f / 30f);
                 Simulate(step, movement);
+                if(CommanderCinematic) break;
                 deltaTime -= step;
             }
         }
@@ -693,6 +703,9 @@ namespace TienTuyen.Combat
             MovePlayer(dt, movement);
             UpdateNavigation();
             UpdateSpawn(dt);
+            UpdateCommander(dt);
+            UpdateRockets(dt);
+            if(State!=CombatState.Playing || CommanderCinematic) return;
             UpdateEnemies(dt);
             if (State != CombatState.Playing) return;
             UpdateBullets(dt);
@@ -704,7 +717,7 @@ namespace TienTuyen.Combat
             RunElapsed += dt;
             WaveRemaining = Mathf.Max(0, WaveRemaining - dt);
             UpdateSupply(dt, WaveRemaining <= 0);
-            if (WaveRemaining <= 0) FinishWave();
+            if (WaveRemaining <= 0 && !CommanderActive) FinishWave();
         }
 
         private void ResetWave()
@@ -729,6 +742,7 @@ namespace TienTuyen.Combat
             targetIndex = -1;
             AimOnTarget = false;
             UpdateNavigation();
+            if(Wave==5) StartCommander();
         }
 
         /// <summary>Drops a removed slot's ammo and timers so later slots keep their own state as they move down.</summary>
@@ -761,7 +775,7 @@ namespace TienTuyen.Combat
         private void FinishWave()
         {
             // Death has already been handled earlier in the same step.
-            if (State != CombatState.Playing) return;
+            if (State != CombatState.Playing || CommanderActive) return;
             long remaining = 0;
             foreach (var pickup in pickups) if (pickup.active) remaining += pickup.valueMinor;
             Run.TryResolveWave(Wave, remaining, out _);
@@ -911,11 +925,17 @@ namespace TienTuyen.Combat
         /// <summary>Local test controls: F6 god, F7 nextwave, F8 sniper. No rewards are granted by skipping.</summary>
         public void ExecuteCheat(string command)
         {
+            if(command=="boss" && State!=CombatState.Playing && State!=CombatState.Paused) BeginRun();
             if (State != CombatState.Playing && State != CombatState.Paused) return;
             switch (command)
             {
+                case "boss":
+                    if(CommanderActive) return;
+                    Wave=5;ResetWave();State=CombatState.Playing;break;
+                case "money": Run.AddCurrency(100000);break;
                 case "god": DebugInvulnerable = !DebugInvulnerable; break;
                 case "nextwave":
+                    if(CommanderActive) return;
                     SniperTutorialVisible = false;
                     if (Wave >= MaxWave) { State = CombatState.Victory; HideTransientObjects(); AliveEnemies = 0; }
                     else { Wave++; ResetWave(); State = CombatState.Playing; }
@@ -952,7 +972,7 @@ namespace TienTuyen.Combat
             foreach (var enemy in enemies) if (enemy != null && enemy.active && enemy.shooter && enemy.aiming) activeShooters++;
             foreach (var enemy in enemies)
             {
-                if (enemy == null) continue;
+                if (enemy == null || ReferenceEquals(enemy,commander)) continue;
                 if (enemy.pending)
                 {
                     enemy.warningTimer -= dt;
@@ -1238,6 +1258,7 @@ namespace TienTuyen.Combat
 
         private void FireWeapon()
         {
+            if(LauncherEquipped) {FireLauncher();return;}
             if (KnifeOut || KnifeSwinging)
             {
                 AimOnTarget = false;
@@ -1438,7 +1459,7 @@ namespace TienTuyen.Combat
         public float ReloadAt(int slot) => slot >= 0 && slot < WeaponCount ? weaponReload[slot] : 0;
         /// <summary>Length of the reload in progress in a slot (0 when it is not reloading).</summary>
         public float ReloadDurationAt(int slot) => ReloadAt(slot) > 0 ? weaponReloadTotal[slot] : 0;
-        private int MagazineSizeAt(int slot) => ProgressionRules.MagazineSize(WeaponAt(slot).MagazineSize, Stats);
+        private int MagazineSizeAt(int slot) => WeaponAt(slot).Id==ContentIds.Rpg18 ? 1 : ProgressionRules.MagazineSize(WeaponAt(slot).MagazineSize, Stats);
 
         private int FindTarget(float range)
         {
@@ -1466,12 +1487,13 @@ namespace TienTuyen.Combat
 
         private void ApplyShotDamage(Enemy enemy, float damage, bool critical)
         {
-            if (!enemy.active || enemy.definition == null || damage <= 0 || float.IsNaN(damage) || float.IsInfinity(damage)) return;
+            if (CommanderCinematic || !enemy.active || enemy.definition == null || damage <= 0 || float.IsNaN(damage) || float.IsInfinity(damage)) return;
             float applied = Mathf.Min(damage, enemy.hp);
             enemy.hp -= damage;
             DamageDealt += applied;
             EnemyDamaged?.Invoke(enemy.body.transform, applied, critical, enemy.hp <= 0);
             if (enemy.hp > 0) return;
+            if(ReferenceEquals(enemy,commander)) {CommanderDefeated();return;}
             enemy.active = false;
             enemy.aiming = false;
             enemy.body.SetActive(false);
@@ -1692,6 +1714,7 @@ namespace TienTuyen.Combat
 
         private void HideTransientObjects()
         {
+            ResetCommander();
             SniperTutorialVisible = false;
             TransientsCleared?.Invoke();
             foreach (var enemy in enemies)

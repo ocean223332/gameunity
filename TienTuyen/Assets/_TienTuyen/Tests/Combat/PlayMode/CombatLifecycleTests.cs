@@ -467,7 +467,15 @@ namespace TienTuyen.Combat.Tests
                     break;
                 }
 
-                FinishWave();
+                if(completedWave==5)
+                {
+                    Assert.That(game.CommanderActive,Is.True);
+                    game.StepSimulation(6.1f,Vector2.zero);
+                    Assert.That(game.State,Is.EqualTo(CombatState.Playing));
+                    game.DamageCommander(100000);game.StepSimulation(5.1f,Vector2.zero);
+                    Assert.That(game.Run.CommanderRewardClaimed,Is.True);
+                }
+                else FinishWave();
 
                 // A wave can expose more than one level-up choice. Consume all
                 // pending choices before asserting that the shop is available.
