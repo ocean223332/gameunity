@@ -208,15 +208,15 @@ def clean_and_subtitle_video(ffmpeg_exe, orig_video, output_video):
     font_path = 'TienTuyen/Assets/_TienTuyen/Art/Fonts/SourceSansPro-Semibold.ttf'
     font = ImageFont.truetype(font_path, 36)
     
-    print("  Processing frames: clean radio grille (frames 25 to 94) & stamp VOV subtitles...")
+    print("  Processing frames: clean radio grille (frames 25 to 95) & stamp VOV subtitles...")
     
-    # 1. Clean obsolete American radio subtitle (frames 25 to 94) using backward propagation from clean frame 95
-    f95_path = os.path.join(work_dir, 'frame_0095.png')
-    if os.path.exists(f95_path):
-        prev_clean = cv2.imread(f95_path)
+    # 1. Clean obsolete American radio subtitle (frames 25 to 95) using backward propagation from clean frame 96
+    f96_path = os.path.join(work_dir, 'frame_0096.png')
+    if os.path.exists(f96_path):
+        prev_clean = cv2.imread(f96_path)
         h, w = prev_clean.shape[:2]
         
-        for idx in range(94, 24, -1):
+        for idx in range(95, 24, -1):
             fpath = os.path.join(work_dir, f'frame_{idx:04d}.png')
             if not os.path.exists(fpath):
                 continue
