@@ -396,6 +396,7 @@ GameObject:
   - component: {fileID: 1544200476}
   - component: {fileID: 1544200480}
   - component: {fileID: 1544200479}
+  - component: {fileID: 1544200481}
   m_Layer: 0
   m_Name: CombatSpike
   m_TagString: Untagged
@@ -466,6 +467,7 @@ MonoBehaviour:
   Mixer: {fileID: 24100000, guid: 04679990bd66b684da5f857ad29dccca, type: 2}
   MasterVolume: 0.88
   MusicVolume: 0.26
+  PlayingMusicVolume: 0.19
   SfxVolume: 0.75
   UiVolume: 0.72
   AmbienceVolume: 0.32
@@ -473,6 +475,7 @@ MonoBehaviour:
   MuteSfx: 0
   MuteUi: 0
   MuteAmbience: 0
+  AutoStartMusic: 1
 --- !u!114 &1544200480
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -485,6 +488,20 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 775c7fb5ab6c83742a2a8f3abe544628, type: 3}
   m_Name: 
   m_EditorClassIdentifier: TienTuyen.Presentation::TienTuyen.Presentation.CombatArtDirector
+--- !u!114 &1544200481
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1544200475}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d5b024fa31f34044487345386da4d0b6, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: TienTuyen.Presentation::TienTuyen.Presentation.CommanderPresentation
+  Profile: {fileID: 11400000, guid: c879236a2aacb1f41bbb4db2efd1ee5d, type: 2}
+  Launcher: {fileID: 1323013465021098802, guid: 61e2a7f44a56528428207bb1b685ae68, type: 3}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

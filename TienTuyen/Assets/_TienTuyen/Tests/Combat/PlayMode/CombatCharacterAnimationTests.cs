@@ -85,6 +85,35 @@ namespace TienTuyen.Combat.Tests
             Assert.That(Vector3.Distance(hero.PoseRoot.InverseTransformPoint(hero.RightFoot.position), initialRight), Is.LessThan(.04f));
         }
 
+        [UnityTest]
+        public IEnumerator FilmCaptureAnimatesOnTheFilmClockNotWallTime()
+        {
+            // A film captures at a fixed 60 fps however long each frame takes to render; the body must keep to that
+            // clock, or slow frames play its clips several times too fast.
+            Time.captureFramerate = 60;
+            try
+            {
+                float fast = 0, slow = 0, previous = hero.GaitPhase;
+                for (int frame = 0; frame < 90; frame++)
+                {
+                    if (frame >= 60) System.Threading.Thread.Sleep(50);
+                    game.StepSimulation(Time.deltaTime, Vector2.right);
+                    yield return null;
+                    float step = Mathf.Repeat(hero.GaitPhase - previous, Mathf.PI * 2f);
+                    previous = hero.GaitPhase;
+                    if (frame >= 30 && frame < 60) fast += step;
+                    else if (frame >= 60) slow += step;
+                }
+                Assert.That(slow / Mathf.Max(fast, .001f), Is.InRange(.8f, 1.25f),
+                    $"Slow frames must not change the gait's pace under capture (fast {fast:F2}, slow {slow:F2} rad).");
+                Assert.That(fast, Is.GreaterThan(.5f), "The hero must be walking through his gait.");
+            }
+            finally
+            {
+                Time.captureFramerate = 0;
+            }
+        }
+
         [Test]
         public void SkinnedStrafeReversalKeepsAnklesContinuous()
         {
@@ -124,8 +153,11 @@ namespace TienTuyen.Combat.Tests
         public void HeldWeaponAimsAtRealTargetsAndBothHandsFollowTheirGrips()
         {
             var target = CreateTarget();
+            // Standing, then crouched on the crouched clips.
+            foreach (float crouch in new[] { 0f, 1f })
             foreach (var direction in new[] { Vector3.right, Vector3.forward, Vector3.left, Vector3.back })
             {
+                hero.Crouch = crouch;
                 target.position = game.transform.Find("Player").position + direction * 4f;
                 FireReadyWeapon();
                 Assert.That(Vector3.Dot(game.PlayerAimDirection.normalized, direction), Is.GreaterThan(.99f));
@@ -137,10 +169,9 @@ namespace TienTuyen.Combat.Tests
                 Assert.That(Vector3.Dot(hero.MuzzleTransform.forward.normalized, direction), Is.GreaterThan(.97f));
                 AssertHandsAttached(hero);
             }
+            hero.Crouch = 0f;
         }
 
-        // The right cheek in the hero's bind pose (body mesh space, metres).
-        private static readonly Vector3 CheekBind = new Vector3(.035f, -.088f, 1.49f);
         private const float ProbeRadius = .01f;
 
         [Test]
@@ -152,9 +183,20 @@ namespace TienTuyen.Combat.Tests
             SkinnedMeshRenderer skin = null;
             foreach (var s in hero.GetComponentsInChildren<SkinnedMeshRenderer>())
                 if (skin == null || s.sharedMesh.vertexCount > skin.sharedMesh.vertexCount) skin = s;
-            Vector3 cheek = skin.sharedMesh.bindposes[Array.IndexOf(skin.bones, head)].MultiplyPoint(CheekBind);
+            int headIndex = Array.IndexOf(skin.bones, head);
+            var face = new List<int>();
+            // These arrays are read-only views owned by the mesh.
+            var counts = skin.sharedMesh.GetBonesPerVertex();
+            var weights = skin.sharedMesh.GetAllBoneWeights();
+            int offset = 0;
+            for (int i = 0; i < counts.Length; i++)
+            {
+                // Weights are sorted descending; the first influence is the dominant bone.
+                if (counts[i] > 0 && weights[offset].boneIndex == headIndex) face.Add(i);
+                offset += counts[i];
+            }
+            Assert.That(face, Is.Not.Empty, "The cheek probe must sample vertices dominated by the Avatar's Head bone.");
             var baked = new Mesh();
-            List<int> face = null;
             var drifts = new List<string>();
             // Level, then the clamps of the shouldered pitch (+10 up, -15 down).
             foreach (float pitch in new[] { 0f, 10f, -15f })
@@ -171,34 +213,47 @@ namespace TienTuyen.Combat.Tests
                 }
                 skin.BakeMesh(baked, false);
                 var posed = baked.vertices;
-                if (face == null)
-                {
-                    // The face over the comb: skin within 5 cm of the cheek (renderer-local, the body's metres).
-                    face = new List<int>();
-                    Vector3 centre = skin.transform.InverseTransformPoint(head.TransformPoint(cheek));
-                    for (int i = 0; i < posed.Length; i++)
-                        if ((posed[i] - centre).sqrMagnitude < .05f * .05f) face.Add(i);
-                }
-                // The gap: the face's nearest distance to the weapon, from a probe sphere's overlap (negative inside it).
-                var root = hero.CurrentWeaponRoot;
+                // Keep the calibrated penetration metric for the assertion. The unbounded triangle distance
+                // is diagnostic until its agreement with that metric has been measured in the contact region.
+                var surface = WeaponSurface(WornModel(hero), skin.transform, false);
                 var colliders = new List<MeshCollider>();
-                foreach (var part in root.GetComponentsInChildren<MeshFilter>())
+                foreach (var part in hero.CurrentWeaponRoot.GetComponentsInChildren<MeshFilter>())
                     colliders.Add(part.gameObject.AddComponent<MeshCollider>());
-                float scale = skin.transform.lossyScale.y, gap = float.MaxValue;
+                float scale = skin.transform.lossyScale.y, gap = float.MaxValue, nearest = float.MaxValue;
+                float maxMetricDifference = 0;
+                int comparable = 0, signDisagreements = 0;
+                int contact = -1, nearestVertex = -1;
+                float contactDistance = float.MaxValue;
                 var probe = new GameObject("Face probe").AddComponent<SphereCollider>();
                 probe.radius = ProbeRadius * scale;
                 Physics.SyncTransforms();
                 foreach (int i in face)
                 {
+                    float triangleGap = NearestSurfaceGap(posed[i], surface);
+                    float distance = Mathf.Abs(triangleGap);
+                    if (distance < nearest) { nearest = distance; nearestVertex = i; }
+                    float pointGap = float.MaxValue;
                     Vector3 p = skin.transform.TransformPoint(posed[i]);
                     foreach (var collider in colliders)
-                        if (Physics.ComputePenetration(probe, p, Quaternion.identity, collider, collider.transform.position, collider.transform.rotation, out _, out float depth))
-                            gap = Mathf.Min(gap, ProbeRadius - depth / scale);
+                        if (Physics.ComputePenetration(probe, p, Quaternion.identity, collider, collider.transform.position,
+                            collider.transform.rotation, out _, out float depth))
+                            pointGap = Mathf.Min(pointGap, ProbeRadius - depth / scale);
+                    if (pointGap < gap) { gap = pointGap; contact = i; contactDistance = distance; }
+                    if (pointGap == float.MaxValue || Mathf.Abs(triangleGap) > ProbeRadius) continue;
+                    comparable++;
+                    maxMetricDifference = Mathf.Max(maxMetricDifference, Mathf.Abs(pointGap - triangleGap));
+                    if (pointGap * triangleGap < 0) signDisagreements++;
                 }
                 Object.DestroyImmediate(probe.gameObject);
                 foreach (var collider in colliders) Object.DestroyImmediate(collider);
-                TestContext.WriteLine("pitch " + pitch + ": cheek " + (gap * 1000f).ToString("F1") + " mm over the comb");
-                if (gap < -.003f || gap > .005f) drifts.Add(pitch + " deg: " + (gap * 1000f).ToString("F1") + " mm");
+                // If the bounded probe finds no overlap, locate the nearest head vertex instead.
+                if (contact < 0) { contact = nearestVertex; contactDistance = nearest; }
+                Vector3 headLocal = head.InverseTransformPoint(skin.transform.TransformPoint(posed[contact]));
+                string diagnostic = $"pitch {pitch}: penetration {gap * 1000:F1} mm, nearest rendered surface {nearest * 1000:F1} mm; " +
+                    $"contact v{contact} head-local {headLocal.ToString("F4")} m, contact rendered surface {contactDistance * 1000:F1} mm; " +
+                    $"head samples {face.Count}, comparable samples {comparable}, maximum metric difference {maxMetricDifference * 1000:F3} mm, sign disagreements {signDisagreements}";
+                TestContext.WriteLine(diagnostic);
+                if (gap < -.003f || gap > .005f) drifts.Add(diagnostic);
             }
             hero.AimPoint = null;
             Object.Destroy(baked);
@@ -215,10 +270,14 @@ namespace TienTuyen.Combat.Tests
             var shooter = actor.GetComponentInChildren<CombatCharacterRig>();
             Assert.That(shooter.IsSkinned, Is.True);
             var failures = new List<string>();
-            foreach (var (rig, weapon) in new[] { (hero, 0), (hero, 1), (hero, 2), (shooter, 0) })
+            // The hero's guns standing, crouched (its crouched clips, reloads on the standing reloads' hand tracks) and walking.
+            foreach (var (rig, weapon, crouch, walk) in new[] { (hero, 0, 0f, 0f), (hero, 1, 0f, 0f), (hero, 2, 0f, 0f), (shooter, 0, 0f, 0f),
+                         (hero, 0, 1f, 0f), (hero, 1, 1f, 0f), (hero, 2, 1f, 0f), (hero, 0, 0f, 1f), (hero, 1, 0f, 1f), (hero, 2, 0f, 1f) })
             {
                 rig.ResetPose();
                 rig.SelectWeapon(weapon);
+                rig.Crouch = crouch;
+                rig.Walk = walk;
                 // The hero's reload timed as the game times it (CombatArtDirector): a reload by the round plays the shell clips.
                 var definition = rig == hero ? TienTuyen.Content.ContentCatalog.P2.Weapons[weapon] : null;
                 var rounds = definition?.RoundReload;
@@ -231,11 +290,13 @@ namespace TienTuyen.Combat.Tests
                     // Idle, run, strafe both ways, run back with a hit, shots, then a full reload.
                     var velocity = frame < 40 ? Vector3.zero : frame < 80 ? Vector3.forward * 4f : frame < 110 ? Vector3.right * 3f :
                         frame < 140 ? Vector3.left * 3f : frame < 170 ? Vector3.back * 2f : Vector3.zero;
+                    // Crouched or walking, the game moves at its crouch or walk speed.
+                    velocity *= Mathf.Lerp(1f, CombatRules.CrouchSpeedFactor, crouch) * Mathf.Lerp(1f, CombatRules.WalkSpeedFactor, walk);
                     float hit = frame >= 150 && frame < 155 ? 1f : 0f;
                     float reload = frame >= 200 ? (frame - 200) / 59f : -1f;
                     if (frame == 175 || frame == 185) rig.Fire(weapon);
                     rig.Tick(1f / 60f, velocity, Vector3.forward, reload, hit);
-                    string state = rig.Profile.name + " weapon " + weapon + " frame " + frame + ": ";
+                    string state = rig.Profile.name + (crouch > 0f ? " crouched" : walk > 0f ? " walking" : "") + " weapon " + weapon + " frame " + frame + ": ";
                     var set = CarriedSet(rig);
                     HandGaps(rig, out float grip, out float support);
                     if (grip > .02f) failures.Add(state + "grip hand off its grip");
@@ -247,12 +308,35 @@ namespace TienTuyen.Combat.Tests
                         failures.Add(state + "support hand off the fore-end " + (support * 1000f).ToString("F0") + " mm");
                     left.Check(state, 70f, failures);
                 }
+                rig.Crouch = rig.Walk = 0f;
             }
             // The wrist limits sit past the approved hands' worst (bend 70 degrees): they catch broken data (a flipped or wrongly
             // framed hand turns 90 degrees and more), not the look of a wrist, which is judged by eye.
             Assert.That(failures, Is.Empty, "Hands must stay on their grips and no wrist may break past the approved hands " +
                 "(bend off the forearm <= 75 deg, twist <= 40 grip / 70 support, elbow a hinge when a roll bone takes the twist): " +
                 string.Join("; ", failures.GetRange(0, Mathf.Min(12, failures.Count))) + (failures.Count > 12 ? " ... " + failures.Count : ""));
+        }
+
+        [Test]
+        public void AimOrAShotAlwaysBringsTheWeaponUpFromAtEase()
+        {
+            foreach (bool shot in new[] { false, true })
+            {
+                hero.ResetPose();
+                hero.Relaxed = false;
+                hero.AimWeight = 0f;
+                hero.SelectWeapon(0);
+                for (int frame = 0; frame < 180; frame++) hero.Tick(1f / 60f, Vector3.zero, Vector3.forward);
+                Assert.That(hero.AtEaseWeight, Is.EqualTo(1f), "Standing still and unaimed lowers the hero's weapon to at-ease");
+                HandGaps(hero, out float grip, out float support);
+                Assert.That(Mathf.Max(grip, support), Is.LessThan(.02f), "Both hands stay on the weapon at ease");
+                if (shot) hero.Fire(0);
+                else hero.AimWeight = 1f;
+                // No slower than the shoulder rises to the sights (.15 s).
+                for (int frame = 0; frame < 9; frame++) hero.Tick(1f / 60f, Vector3.zero, Vector3.forward);
+                Assert.That(hero.AtEaseWeight, Is.Zero, (shot ? "A shot" : "Aim") + " must bring the weapon up from at-ease at once");
+            }
+            hero.AimWeight = 0f;
         }
 
         private static Transform Bone(CombatCharacterRig rig, HumanBodyBones bone) => rig.GetComponentInChildren<Animator>().GetBoneTransform(bone);
@@ -532,35 +616,99 @@ namespace TienTuyen.Combat.Tests
         }
 
         [Test]
-        public void HeroFingertipsKeepTheirBindInEveryGripPose()
+        public void HeroFingersBendAsCleanChainsInEveryGripPose()
         {
-            // The approved hands bend two joints per finger: each tip, ring and little included, keeps its bind turn on its
-            // middle phalanx in the static grips and in every frame of every track.
-            var bind = new Dictionary<string, Quaternion>();
-            foreach (var t in hero.Profile.model.GetComponentsInChildren<Transform>(true)) bind[t.name] = t.localRotation;
-            var tip = new System.Text.RegularExpressions.Regex(@"_Finger\d2$");
-            var failures = new List<string>();
-            int checkedTips = 0;
-            void Check(string bone, Quaternion rotation, string where)
+            // The approved hands pose fingers 1-4 as clean chains: the base swings from bind and may roll the whole finger; the
+            // mid and tip then bend in the one plane the base's hinge sets, with no roll of their own. A clip's crumpled finger
+            // (a mid bone rolled 100 degrees and more) breaks this in the static grips or any track frame. The approved data's
+            // worst whole-finger roll is 59.8 degrees (right little finger mid-reload); its segments hold under 0.05.
+            const float MaxFingerRoll = 62f, MaxSegmentRoll = .5f, MaxOffHinge = .5f;
+            var bindRotation = new Dictionary<string, Quaternion>();
+            var bindPosition = new Dictionary<string, Vector3>();
+            foreach (var t in hero.Profile.model.GetComponentsInChildren<Transform>(true))
             {
-                if (!tip.IsMatch(bone)) return;
-                checkedTips++;
-                float angle = Quaternion.Angle(bind[bone], rotation);
-                if (angle > .5f) failures.Add(where + " " + bone + " " + angle.ToString("F1") + " deg off bind");
+                bindRotation[t.name] = t.localRotation;
+                bindPosition[t.name] = t.localPosition;
+            }
+            // A tip's long axis runs to its farthest skinned vertex (the hand solve measured it so); the base and mid run to
+            // their child joints.
+            var tip = new System.Text.RegularExpressions.Regex(@"_[LR]_Finger[1-4]2$");
+            var tipAxis = new Dictionary<string, Vector3>();
+            foreach (var skin in hero.Profile.model.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                var mesh = skin.sharedMesh;
+                var vertices = mesh.vertices;
+                var weights = mesh.boneWeights;
+                var bindposes = mesh.bindposes;
+                for (int v = 0; v < vertices.Length; v++)
+                {
+                    var w = weights[v];
+                    int bone = w.weight0 >= w.weight1 && w.weight0 >= w.weight2 && w.weight0 >= w.weight3 ? w.boneIndex0 :
+                        w.weight1 >= w.weight2 && w.weight1 >= w.weight3 ? w.boneIndex1 : w.weight2 >= w.weight3 ? w.boneIndex2 : w.boneIndex3;
+                    string name = skin.bones[bone].name;
+                    if (!tip.IsMatch(name)) continue;
+                    Vector3 p = bindposes[bone].MultiplyPoint3x4(vertices[v]);
+                    if (!tipAxis.TryGetValue(name, out var far) || p.sqrMagnitude > far.sqrMagnitude) tipAxis[name] = p;
+                }
+            }
+            Assert.That(tipAxis.Count, Is.EqualTo(8), "a skinned tip on fingers 1-4 of both hands");
+            static float Twist(Quaternion q, Vector3 axis) =>
+                Mathf.Abs(Mathf.DeltaAngle(0f, 2f * Mathf.Atan2(Vector3.Dot(new Vector3(q.x, q.y, q.z), axis), q.w) * Mathf.Rad2Deg));
+            var failures = new List<string>();
+            var worst = new float[3];
+            var worstAt = new string[3];
+            int chains = 0;
+            void Note(int metric, float value, float limit, string what)
+            {
+                if (value > worst[metric]) { worst[metric] = value; worstAt[metric] = what; }
+                if (value > limit) failures.Add(what + " " + value.ToString("F1"));
+            }
+            void Check(Dictionary<string, Quaternion> pose, char side, string where)
+            {
+                string hand = "ValveBiped.Bip01_" + side + "_Finger";
+                Vector3 Knuckle(int f) => bindPosition[hand + f];
+                Vector3 palm = Vector3.Cross((Knuckle(1) + Knuckle(2) + Knuckle(3) + Knuckle(4)) / 4f, Knuckle(4) - Knuckle(1)).normalized;
+                for (int f = 1; f <= 4; f++)
+                {
+                    var bones = new[] { hand + f, hand + f + "1", hand + f + "2" };
+                    var local = bones.Select(b => pose.TryGetValue(b, out var r) ? r : bindRotation[b]).ToArray();
+                    var axis = new[] { bindPosition[bones[1]].normalized, bindPosition[bones[2]].normalized, tipAxis[bones[2]].normalized };
+                    string what = where + " " + side + f;
+                    Note(0, Twist(Quaternion.Inverse(bindRotation[bones[0]]) * local[0], axis[0]), MaxFingerRoll, what + " finger roll");
+                    for (int k = 1; k < 3; k++)
+                        Note(1, Twist(Quaternion.Inverse(bindRotation[bones[k]]) * local[k], axis[k]), MaxSegmentRoll, what + " segment " + k + " roll");
+                    // In the hand's frame: the base's bind hinge (across the bind finger and the palm normal), carried by its turn.
+                    Vector3 hinge = (local[0] * Quaternion.Inverse(bindRotation[bones[0]]) * Vector3.Cross(bindRotation[bones[0]] * axis[0], palm)).normalized;
+                    Quaternion frame = local[0];
+                    for (int k = 1; k < 3; k++)
+                    {
+                        frame *= local[k];
+                        Note(2, Mathf.Asin(Mathf.Min(1f, Mathf.Abs(Vector3.Dot(frame * axis[k], hinge)))) * Mathf.Rad2Deg, MaxOffHinge, what + " segment " + k + " off the hinge");
+                    }
+                    chains++;
+                }
             }
             foreach (var set in hero.Profile.weaponSets)
             {
                 var data = set.grip;
                 Assert.That(data, Is.Not.Null, set.weapon + " has no grip data");
-                var grip = data.rightFingers.Concat(data.leftFingers).ToArray();
-                Assert.That(grip.Count(f => tip.IsMatch(f.bone)), Is.EqualTo(10), data.gun + ": every finger of both hands, ring and little included");
-                foreach (var f in grip) Check(f.bone, f.rotation, data.gun + " grip");
+                var grip = data.rightFingers.Concat(data.leftFingers).ToDictionary(f => f.bone, f => f.rotation);
+                Check(grip, 'R', data.gun + " grip");
+                Check(grip, 'L', data.gun + " grip");
                 foreach (var track in data.tracks)
-                    foreach (var (names, rows) in new[] { (track.rightBones, track.rightFingers), (track.leftBones, track.leftFingers) })
-                        for (int i = 0; i < rows.Length; i++) Check(names[i % names.Length], rows[i], data.gun + " " + track.clip.name + " frame " + i / names.Length);
+                    foreach (var (side, names, rows) in new[] { ('R', track.rightBones, track.rightFingers), ('L', track.leftBones, track.leftFingers) })
+                        for (int i = 0; i + names.Length <= rows.Length; i += names.Length)
+                        {
+                            var pose = new Dictionary<string, Quaternion>();
+                            for (int j = 0; j < names.Length; j++) pose[names[j]] = rows[i + j];
+                            Check(pose, side, data.gun + " " + track.clip.name + " frame " + i / names.Length);
+                        }
             }
-            Assert.That(checkedTips, Is.GreaterThan(30));
-            Assert.That(failures, Is.Empty, string.Join("; ", failures.Take(12)) + (failures.Count > 12 ? " ... " + failures.Count : ""));
+            Assert.That(chains, Is.GreaterThan(100));
+            Assert.That(failures, Is.Empty, "Fingers 1-4 must stay clean chains (whole-finger roll <= " + MaxFingerRoll + ", segment roll <= " +
+                MaxSegmentRoll + ", mid and tip off the base's hinge plane <= " + MaxOffHinge + " deg). Worst: " +
+                string.Join("; ", Enumerable.Range(0, 3).Select(m => worstAt[m] + " " + worst[m].ToString("F1"))) + ". " +
+                string.Join("; ", failures.Take(8)) + (failures.Count > 8 ? " ... " + failures.Count : ""));
         }
 
         [Test]
@@ -606,7 +754,7 @@ namespace TienTuyen.Combat.Tests
             Invoke(art, "UpdateEnemies");
             var visual = actor.Find("EnemyVisual");
             var rigs = visual.GetComponentsInChildren<CombatCharacterRig>(true);
-            Assert.That(rigs.Length, Is.EqualTo(4));
+            Assert.That(rigs.Length, Is.EqualTo(5));
             int count = visual.GetComponentsInChildren<Transform>(true).Length;
             var graphs = new List<PlayableGraph>();
             for (var reuse = 0; reuse < 20; reuse++)
@@ -621,7 +769,7 @@ namespace TienTuyen.Combat.Tests
                 Assert.That(activeRig.MovementBlend, Is.EqualTo(0f));
                 Assert.That(activeRig.RecoilAmount, Is.EqualTo(0f));
                 Assert.That(visual.GetComponentsInChildren<Transform>(true).Length, Is.EqualTo(count));
-                Assert.That(visual.GetComponentsInChildren<CombatCharacterRig>(true).Length, Is.EqualTo(4));
+                Assert.That(visual.GetComponentsInChildren<CombatCharacterRig>(true).Length, Is.EqualTo(5));
             }
 
             foreach (var rig in game.GetComponentsInChildren<CombatCharacterRig>(true))
@@ -640,6 +788,39 @@ namespace TienTuyen.Combat.Tests
             TestContext.WriteLine($"Scene unload: {graphs.Count} graphs captured, {surviving} still valid.");
             LogAssert.NoUnexpectedReceived();
             Assert.That(surviving, Is.Zero, "Every graph must be destroyed, including rigs that were never active.");
+        }
+
+        [UnityTest]
+        public IEnumerator HeroKnifeLeftHandKeepsTheCsgoWrist()
+        {
+            // The knife takes reach the hero through Humanoid retargeting from the xdR avatar, whose reference left hand is turned
+            // 67 degrees from the hero's: uncorrected, the guard hand bent back (+12 degrees) and turned palm-out. The takes' own
+            // forearm and hand rotations, given to the hero, bend its knuckles 9.1 degrees toward the palm in the stance (17.8 on
+            // the xdR body, whose knuckles sit elsewhere on the hand); mid-slash the take bends them 10 to 25 degrees that way.
+            const float SourceFlex = -9.1f, MaxOff = 5f;
+            var animator = hero.GetComponentInChildren<Animator>();
+            float Flex()
+            {
+                Vector3 forearm = animator.GetBoneTransform(HumanBodyBones.LeftLowerArm).position, wrist = animator.GetBoneTransform(HumanBodyBones.LeftHand).position;
+                Vector3 index = animator.GetBoneTransform(HumanBodyBones.LeftIndexProximal).position, middle = animator.GetBoneTransform(HumanBodyBones.LeftMiddleProximal).position;
+                Vector3 along = wrist - forearm;
+                return Vector3.SignedAngle(along, middle - wrist, Vector3.Cross(along, index - middle));
+            }
+            Assert.That(game.DrawKnife(), Is.True);
+            SetField(game, "switchRemaining", 0f);
+            yield return new WaitForSecondsRealtime(1f);
+            float stance = Flex();
+            Assert.That(game.Slash(), Is.True);
+            var swing = typeof(CombatGame).GetProperty(nameof(CombatGame.KnifeSwingTime));
+            for (int frame = 0; frame < 20; frame++)
+            {
+                swing.SetValue(game, .3f);
+                yield return null;
+            }
+            float slash = Flex();
+            swing.SetValue(game, -1f);
+            Assert.That(stance, Is.EqualTo(SourceFlex).Within(MaxOff), "stance wrist flex");
+            Assert.That(slash, Is.InRange(-25f, -5f), "slash wrist flex");
         }
 
         [Test]
@@ -805,6 +986,8 @@ namespace TienTuyen.Combat.Tests
             ((int[])GetField(game, "weaponAmmo"))[0] = 0;
             game.RequestReload();
             float duration = game.ReloadDuration;
+            // The body animates on the clock the simulation steps on (1/60 a frame), not on however fast frames run.
+            Time.captureFramerate = 60;
             var start = game.transform.Find("Player").position;
             var foot = hero.PoseRoot.InverseTransformPoint(hero.LeftFoot.position);
             float motion = 0;
@@ -814,6 +997,7 @@ namespace TienTuyen.Combat.Tests
                 yield return null;
                 motion = Mathf.Max(motion, Vector3.Distance(foot, hero.PoseRoot.InverseTransformPoint(hero.LeftFoot.position)));
             }
+            Time.captureFramerate = 0;
             Assert.That(game.ReloadRemaining, Is.Zero);
             Assert.That(game.Ammo, Is.EqualTo(game.MagazineSize));
             Assert.That(Vector3.Distance(start, game.transform.Find("Player").position), Is.GreaterThan(1f));
@@ -841,14 +1025,25 @@ namespace TienTuyen.Combat.Tests
         public void ActualWeaponMeshesAgreeWithShotDirectionAcrossPoses(int weapon)
         {
             hero.SelectWeapon(weapon);
-            var weaponRoot = hero.WeaponGrip.parent;
-            var parts = weaponRoot.GetComponentsInChildren<MeshRenderer>(false);
-            var barrel = FindMeshPart(parts, "barrel");
-            var receiver = FindMeshPart(parts, "receiver");
-            var muzzle = FindMeshPart(parts, "muzzle");
-            Assert.That(barrel, Is.Not.Null);
-            Assert.That(receiver, Is.Not.Null);
-            Assert.That(muzzle, Is.Not.Null);
+            var model = WornModel(hero);
+            var surface = WeaponSurface(model, model);
+            var bounds = new Bounds(surface[0].a, Vector3.zero);
+            foreach (var triangle in surface)
+            {
+                bounds.Encapsulate(triangle.a); bounds.Encapsulate(triangle.b); bounds.Encapsulate(triangle.c);
+            }
+            Vector3 axis = bounds.size.z > bounds.size.x && bounds.size.z > bounds.size.y ? Vector3.forward :
+                bounds.size.x > bounds.size.y ? Vector3.right : Vector3.up;
+            if (Vector3.Dot(model.Find("Muzzle").localPosition - bounds.center, axis) < 0) axis = -axis;
+            float front = Vector3.Dot(bounds.center, axis) + Vector3.Dot(bounds.extents, Abs(axis));
+            float capDepth = Vector3.Dot(bounds.size, Abs(axis)) * .02f;
+            Vector3 tip = Vector3.zero;
+            int points = 0;
+            // The leading 2% of visible body geometry is the physical muzzle; no vendor part names are needed.
+            foreach (var triangle in surface)
+            foreach (var vertex in new[] { triangle.a, triangle.b, triangle.c })
+                if (Vector3.Dot(vertex, axis) >= front - capDepth) { tip += vertex; points++; }
+            tip /= points;
 
             for (var frame = 0; frame < 240; frame++)
             {
@@ -863,71 +1058,107 @@ namespace TienTuyen.Combat.Tests
 
                 // Body/stock clearance is reviewed on the deformed skinned mesh in
                 // Play mode. Static bounds of old rigid tunic pieces cannot prove it.
-                Vector3 geometryDirection = (MeshCenter(muzzle) - MeshCenter(receiver)).normalized;
+                Vector3 physicalMuzzle = model.TransformPoint(tip);
+                Vector3 geometryDirection = (physicalMuzzle - model.TransformPoint(bounds.center)).normalized;
                 Assert.That(Vector3.Dot(geometryDirection, hero.MuzzleTransform.forward), Is.GreaterThan(.8f),
                     "The physical muzzle must be ahead of the receiver along the aim socket: " + context);
-                Assert.That(Mathf.Abs(Vector3.Dot(LongestMeshAxis(barrel), hero.MuzzleTransform.forward)), Is.GreaterThan(.97f),
+                Assert.That(Mathf.Abs(Vector3.Dot(model.TransformVector(axis).normalized, hero.MuzzleTransform.forward)), Is.GreaterThan(.97f),
                     "The real barrel axis must agree with the aim socket: " + context);
-                Assert.That(Vector3.Distance(MeshCenter(muzzle), hero.MuzzleTransform.position), Is.LessThan(.12f),
+                Assert.That(Vector3.Distance(physicalMuzzle, hero.MuzzleTransform.position), Is.LessThan(.12f),
                     "A correctly oriented socket cannot hide a displaced mesh muzzle: " + context);
             }
         }
 
         [Test]
-        public void HeroCarriesAWavingVietnameseFlagAndEnemiesCarryTheUsFlag()
+        public void NoCharacterCarriesAFlag()
         {
-            Assert.That(hero.Banner, Is.Not.Null, "The hero model must carry its back banner.");
-            var heroColours = MaterialNames(hero.Banner.Materials);
-            Assert.That(heroColours, Does.Contain("vn_red").And.Contain("vn_star"), heroColours);
-            Assert.That(heroColours, Does.Not.Contain("us_"), heroColours);
-
-            hero.Banner.CullWhenHidden = false;
-            var before = hero.Banner.Mesh.vertices;
-            for (var frame = 0; frame < 12; frame++) hero.Tick(1f / 60f, Vector3.forward * 4f, Vector3.forward);
-            var after = hero.Banner.Mesh.vertices;
-            float ripple = 0;
-            for (var i = 0; i < before.Length; i++) ripple = Mathf.Max(ripple, Vector3.Distance(before[i], after[i]));
-            Assert.That(ripple, Is.GreaterThan(.005f), "The flag cloth must wave as the hero runs.");
-            Assert.That(ripple, Is.LessThan(.25f), "The ripple must not tear the cloth away from its pole.");
-
-            foreach (var model in new[] { "enemy_infantry", "enemy_shooter", "enemy_charger", "enemy_elite" })
-            {
-                var prefab = Resources.Load<GameObject>("Models/" + model);
-                Assert.That(prefab, Is.Not.Null, model);
-                var colours = new List<Material>();
-                foreach (var part in prefab.GetComponentsInChildren<MeshRenderer>(true))
-                    if (part.name.StartsWith("banner cloth", StringComparison.Ordinal)) colours.Add(part.sharedMaterial);
-                string names = MaterialNames(colours.ToArray());
-                Assert.That(names, Does.Contain("us_red").And.Contain("us_white").And.Contain("us_blue"), model + ": " + names);
-                Assert.That(names, Does.Not.Contain("vn_"), model + ": " + names);
-            }
+            // The faction flags ("banner pole", "BannerCloth") are a film prop; none may show in combat.
+            foreach (var renderer in UnityEngine.Object.FindObjectsByType<Renderer>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+                Assert.That(renderer.enabled && renderer.gameObject.activeInHierarchy &&
+                    renderer.name.StartsWith("banner", StringComparison.OrdinalIgnoreCase), Is.False,
+                    renderer.name + " under " + renderer.transform.root.name);
         }
 
-        private static string MaterialNames(Material[] materials)
+        private static Transform WornModel(CombatCharacterRig rig)
         {
-            var names = new List<string>();
-            foreach (var material in materials) names.Add(material != null ? material.name : "null");
-            return string.Join(", ", names);
-        }
-
-        private static MeshRenderer FindMeshPart(MeshRenderer[] parts, string name, bool exact = false)
-        {
-            foreach (var part in parts)
-                if (exact ? part.name == name : part.name.IndexOf(name, StringComparison.OrdinalIgnoreCase) >= 0)
-                    return part;
+            // The importer/runtime own this node convention; CS:GO mesh names are deliberately irrelevant.
+            foreach (Transform child in rig.CurrentWeaponRoot)
+                if (child.gameObject.activeInHierarchy && child.Find("Muzzle") != null) return child;
+            Assert.Fail("The active worn weapon must expose its Muzzle node.");
             return null;
         }
 
-        private static Vector3 MeshCenter(MeshRenderer renderer) =>
-            renderer.transform.TransformPoint(renderer.GetComponent<MeshFilter>().sharedMesh.bounds.center);
-
-        private static Vector3 LongestMeshAxis(MeshRenderer renderer)
+        private readonly struct SurfaceTriangle
         {
-            var size = renderer.GetComponent<MeshFilter>().sharedMesh.bounds.size;
-            var x = renderer.transform.TransformVector(Vector3.right * size.x);
-            var y = renderer.transform.TransformVector(Vector3.up * size.y);
-            var z = renderer.transform.TransformVector(Vector3.forward * size.z);
-            return (x.sqrMagnitude > y.sqrMagnitude ? x.sqrMagnitude > z.sqrMagnitude ? x : z : y.sqrMagnitude > z.sqrMagnitude ? y : z).normalized;
+            internal readonly Vector3 a, b, c, normal;
+            internal SurfaceTriangle(Vector3 a, Vector3 b, Vector3 c, Vector3 normal)
+            { this.a = a; this.b = b; this.c = c; this.normal = normal; }
+        }
+
+        private static List<SurfaceTriangle> WeaponSurface(Transform model, Transform coordinates, bool excludeMagazine = true)
+        {
+            var surface = new List<SurfaceTriangle>();
+            var magazine = model.Find(MagazineSplit.MountName);
+            foreach (var filter in model.GetComponentsInChildren<MeshFilter>())
+            {
+                var renderer = filter.GetComponent<MeshRenderer>();
+                if (renderer == null || !renderer.enabled || excludeMagazine && magazine != null && filter.transform.IsChildOf(magazine)) continue;
+                var mesh = filter.sharedMesh;
+                Assert.That(mesh, Is.Not.Null);
+                var vertices = mesh.vertices;
+                var normals = mesh.normals;
+                var indices = mesh.triangles;
+                var toCoordinates = coordinates.worldToLocalMatrix * filter.transform.localToWorldMatrix;
+                var toNormal = toCoordinates.inverse.transpose;
+                for (int i = 0; i < vertices.Length; i++) vertices[i] = toCoordinates.MultiplyPoint3x4(vertices[i]);
+                for (int i = 0; i < indices.Length; i += 3)
+                {
+                    int a = indices[i], b = indices[i + 1], c = indices[i + 2];
+                    if (Vector3.Cross(vertices[b] - vertices[a], vertices[c] - vertices[a]).sqrMagnitude < 1e-20f) continue;
+                    Vector3 normal = normals.Length == vertices.Length ? toNormal.MultiplyVector(normals[a] + normals[b] + normals[c]).normalized :
+                        Vector3.Cross(vertices[b] - vertices[a], vertices[c] - vertices[a]).normalized;
+                    surface.Add(new SurfaceTriangle(vertices[a], vertices[b], vertices[c], normal));
+                }
+            }
+            Assert.That(surface, Is.Not.Empty, "The worn gun must have active rendered body triangles.");
+            return surface;
+        }
+
+        private static Vector3 Abs(Vector3 value) => new Vector3(Mathf.Abs(value.x), Mathf.Abs(value.y), Mathf.Abs(value.z));
+
+        private static float NearestSurfaceGap(Vector3 point, List<SurfaceTriangle> surface)
+        {
+            float nearest = float.MaxValue, side = 1;
+            foreach (var triangle in surface)
+            {
+                Vector3 delta = point - ClosestPoint(point, triangle.a, triangle.b, triangle.c);
+                if (delta.sqrMagnitude >= nearest) continue;
+                nearest = delta.sqrMagnitude;
+                side = Vector3.Dot(delta, triangle.normal) < 0 ? -1 : 1;
+            }
+            return Mathf.Sqrt(nearest) * side;
+        }
+
+        private static Vector3 ClosestPoint(Vector3 p, Vector3 a, Vector3 b, Vector3 c)
+        {
+            Vector3 ab = b - a, ac = c - a, ap = p - a;
+            float d1 = Vector3.Dot(ab, ap), d2 = Vector3.Dot(ac, ap);
+            if (d1 <= 0 && d2 <= 0) return a;
+            Vector3 bp = p - b;
+            float d3 = Vector3.Dot(ab, bp), d4 = Vector3.Dot(ac, bp);
+            if (d3 >= 0 && d4 <= d3) return b;
+            float vc = d1 * d4 - d3 * d2;
+            if (vc <= 0 && d1 >= 0 && d3 <= 0) return a + ab * (d1 / (d1 - d3));
+            Vector3 cp = p - c;
+            float d5 = Vector3.Dot(ab, cp), d6 = Vector3.Dot(ac, cp);
+            if (d6 >= 0 && d5 <= d6) return c;
+            float vb = d5 * d2 - d1 * d6;
+            if (vb <= 0 && d2 >= 0 && d6 <= 0) return a + ac * (d2 / (d2 - d6));
+            float va = d3 * d6 - d5 * d4;
+            if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0)
+                return b + (c - b) * ((d4 - d3) / (d4 - d3 + d5 - d6));
+            float inverse = 1 / (va + vb + vc);
+            return a + ab * (vb * inverse) + ac * (vc * inverse);
         }
 
         private Transform CreateTarget()

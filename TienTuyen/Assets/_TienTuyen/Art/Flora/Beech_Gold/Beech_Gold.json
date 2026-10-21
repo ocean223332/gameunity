@@ -1,0 +1,33 @@
+{
+ "name": "Beech_Gold",
+ "materials": [
+  {
+   "name": "Beech_Gold_rest",
+   "leaf": false,
+   "cutout": true,
+   "normal": true
+  },
+  {
+   "name": "Beech_Gold_M1",
+   "leaf": true,
+   "cutout": true,
+   "normal": true
+  },
+  {
+   "name": "Beech_Gold_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "height": 15.8,
+ "radius": 5.78,
+ "tris": [
+  7460,
+  1001,
+  4
+ ],
+ "cutoff": 0.32,
+ "smoothness": 0.3
+}

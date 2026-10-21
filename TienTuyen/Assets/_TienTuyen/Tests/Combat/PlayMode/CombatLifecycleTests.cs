@@ -3,6 +3,7 @@ using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
 using TienTuyen.Content;
+using TienTuyen.Presentation;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
@@ -49,6 +50,63 @@ namespace TienTuyen.Combat.Tests
         }
 
         [Test]
+        public void MusicCrossfadeCanReverseAndPauseOrMuteBothTracks()
+        {
+            var audio = game.GetComponent<CombatAudio>();
+            var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            var tick = typeof(CombatAudio).GetMethod("TickMusic", flags);
+            var menu = (AudioSource)typeof(CombatAudio).GetField("menuMusic", flags).GetValue(audio);
+            var playing = (AudioSource)typeof(CombatAudio).GetField("playingMusic", flags).GetValue(audio);
+            float menuLevel = audio.MasterVolume * audio.MusicVolume;
+            float playingLevel = audio.MasterVolume * audio.PlayingMusicVolume;
+            game.ReturnToMenu();
+            var ambience = (AudioSource)typeof(CombatAudio).GetField("ambience", flags).GetValue(audio);
+            audio.SetIntroPlaying(true);
+            Assert.That(ambience.isPlaying, Is.False);
+            Assert.That(audio.GetComponentsInChildren<AudioSource>().All(source => source.volume == 0f), Is.True);
+            audio.SetIntroPlaying(false);
+            Assert.That(ambience.isPlaying, Is.True);
+            Assert.That(ambience.volume, Is.EqualTo(audio.MasterVolume * audio.AmbienceVolume).Within(.001f));
+            audio.StartMusic(IntroVideoGate.HandoffMenuOffsetSeconds, .25f);
+            Assert.That(menu.time, Is.EqualTo(IntroVideoGate.HandoffMenuOffsetSeconds).Within(.05f));
+            Assert.That(menu.volume + playing.volume, Is.Zero);
+            tick.Invoke(audio, new object[] { .125f });
+            Assert.That(menu.volume, Is.EqualTo(menuLevel * .5f).Within(.001f));
+            tick.Invoke(audio, new object[] { .125f });
+            Assert.That(menu.volume, Is.EqualTo(menuLevel).Within(.001f));
+            audio.StartMusic();
+            Assert.That(menu.time, Is.Zero.Within(.05f));
+            Assert.That(menu.volume, Is.EqualTo(menuLevel).Within(.001f));
+            Assert.That(playing.volume, Is.Zero);
+
+            game.BeginRun();
+            tick.Invoke(audio, new object[] { .5f });
+            Assert.That(menu.volume, Is.GreaterThan(0f).And.LessThan(menuLevel));
+            Assert.That(playing.volume, Is.GreaterThan(0f).And.LessThan(playingLevel));
+            float menuHalf = menu.volume;
+            float playingHalf = playing.volume;
+            game.TogglePause();
+            tick.Invoke(audio, new object[] { 0f });
+            Assert.That(menu.volume, Is.EqualTo(menuHalf * .06f).Within(.001f));
+            Assert.That(playing.volume, Is.EqualTo(playingHalf * .06f).Within(.001f));
+            audio.MuteMusic = true;
+            tick.Invoke(audio, new object[] { 0f });
+            Assert.That(menu.volume + playing.volume, Is.Zero);
+            audio.MuteMusic = false;
+            game.ReturnToMenu();
+            tick.Invoke(audio, new object[] { .25f });
+            Assert.That(menu.volume, Is.GreaterThan(menuHalf));
+            Assert.That(playing.volume, Is.LessThan(playingHalf));
+            tick.Invoke(audio, new object[] { 1f });
+            Assert.That(menu.volume, Is.EqualTo(menuLevel).Within(.001f));
+            Assert.That(playing.volume, Is.Zero);
+            game.BeginRun();
+            tick.Invoke(audio, new object[] { 1f });
+            Assert.That(menu.volume, Is.Zero);
+            Assert.That(playing.volume, Is.EqualTo(playingLevel).Within(.001f));
+        }
+
+        [Test]
         public void ShotgunIsAvailableAsThirdP2Weapon()
         {
             game.ReturnToMenu();
@@ -89,12 +147,16 @@ namespace TienTuyen.Combat.Tests
             // The run seed is random; keep the idle, unarmed player alive so melee
             // hits cannot end the run before a charger is rolled.
             SetPrivateField("invulnerability", 999f);
+            // Squads are small; make the first spawn the charger rather than wait on the roll.
+            SetPrivateField("forcedEnemyDefinition", ContentCatalog.P2.GetEnemy(ContentIds.Charger));
             var sawCharger = false;
             var sawTelegraph = false;
             var sawDash = false;
             for (var frame = 0; frame < 60 * 24; frame++)
             {
                 game.StepSimulation(1f / 60f, Vector2.zero);
+                // Encounter tutorials pause the real run; acknowledge them before continuing this lifecycle probe.
+                if (game.SniperTutorialVisible) game.TogglePause();
                 sawCharger |= game.ActiveChargerCount > 0 || game.PendingChargerCount > 0;
                 sawTelegraph |= game.ChargerTelegraphVisible;
                 sawDash |= game.ChargerDashActive;
@@ -135,6 +197,8 @@ namespace TienTuyen.Combat.Tests
                 while (elapsed < game.WaveLength - .1f && game.State == CombatState.Playing)
                 {
                     game.StepSimulation(1f / 60f, Vector2.zero);
+                // Encounter tutorials pause the real run; acknowledge them before continuing this lifecycle probe.
+                if (game.SniperTutorialVisible) game.TogglePause();
                     elapsed += 1f / 60f;
                     var inPlay = 0;
                     for (var i = 0; i < entries.Length; i++)
@@ -155,6 +219,56 @@ namespace TienTuyen.Combat.Tests
                 Assert.That(fielded, Is.EqualTo(CombatGame.EliteQuota(wave)), "Elites fielded in wave " + wave);
                 Assert.That(first, Is.GreaterThanOrEqualTo(8f), "First Elite of wave " + wave);
                 Assert.That(peak, Is.LessThanOrEqualTo(CombatGame.MaxElitesInPlay(wave)), "Elites in play at once in wave " + wave);
+            }
+        }
+
+        [Test]
+        public void WavesSendSquadsWithLullsAndNeverPassTheAliveCap()
+        {
+            // Nobody dies here, so wave 2 shows the bare squad schedule until the cap holds it, and wave 6 fills up to the cap.
+            var flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+            var entries = ((System.Array)typeof(CombatGame).GetField("enemies", flags).GetValue(game)).Cast<object>().ToArray();
+            var fireTimers = new float[TienTuyen.Progression.ProgressionRun.MaxWeaponSlots];
+            for (var wave = 2; wave <= 6; wave += 4)
+            {
+                SetAutoPropertyBackingField("<Wave>k__BackingField", wave);
+                InvokePrivate("ResetWave");
+                for (var i = 0; i < fireTimers.Length; i++) fireTimers[i] = 999f;
+                SetPrivateField("weaponFireTimer", fireTimers);
+                SetPrivateField("invulnerability", 999f);
+                var announced = new bool[entries.Length];
+                var spawns = new System.Collections.Generic.List<float>();
+                int peak = 0;
+                float elapsed = 0f;
+                while (elapsed < game.WaveLength - .1f && game.State == CombatState.Playing)
+                {
+                    SimulatePastTutorials(1f / 60f);
+                    elapsed += 1f / 60f;
+                    for (var i = 0; i < entries.Length; i++)
+                    {
+                        bool pending = (bool)entries[i].GetType().GetField("pending", flags).GetValue(entries[i]);
+                        if (pending && !announced[i]) spawns.Add(elapsed);
+                        announced[i] = pending;
+                    }
+                    Assert.That(game.AliveEnemies, Is.LessThanOrEqualTo(CombatRules.EnemyCap), "Alive in wave " + wave);
+                    peak = Mathf.Max(peak, game.AliveEnemies);
+                }
+                if (wave == 6)
+                {
+                    Assert.That(peak, Is.EqualTo(CombatRules.EnemyCap), "Wave 6 sends more than the cap and must fill it");
+                    continue;
+                }
+                int size = CombatRules.SquadSize(wave);
+                float lull = CombatRules.SquadIntervalSeconds(wave) - (size - 1) * CombatRules.SquadSpacingSeconds;
+                int squads = Mathf.CeilToInt((game.WaveLength - .1f - CombatRules.FirstSquadSeconds) / CombatRules.SquadIntervalSeconds(wave));
+                Assert.That(spawns.Count, Is.EqualTo(Mathf.Min(squads * size, CombatRules.EnemyCap)), "Spawns in wave " + wave + ": " + string.Join(", ", spawns));
+                Assert.That(spawns[0], Is.EqualTo(CombatRules.FirstSquadSeconds).Within(.05f));
+                for (var i = 1; i < spawns.Count; i++)
+                {
+                    float gap = spawns[i] - spawns[i - 1];
+                    if (i % size == 0) Assert.That(gap, Is.EqualTo(lull).Within(.05f), "Lull before spawn " + i);
+                    else Assert.That(gap, Is.EqualTo(CombatRules.SquadSpacingSeconds).Within(.05f), "Squad spacing at spawn " + i);
+                }
             }
         }
 
@@ -247,6 +361,29 @@ namespace TienTuyen.Combat.Tests
         }
 
         [Test]
+        public void BulletNearMissIsAnnouncedOnceAfterPassingThePlayer()
+        {
+            var player = (Transform)typeof(CombatGame).GetField("player", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(game);
+            var bullets = (System.Array)typeof(CombatGame).GetField("bullets", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(game);
+            var bullet = bullets.GetValue(0);
+            var type = bullet.GetType();
+            type.GetField("active", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic).SetValue(bullet, true);
+            type.GetField("velocity", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic).SetValue(bullet, Vector3.left * 18f);
+            type.GetField("remaining", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic).SetValue(bullet, 3f);
+            type.GetField("nearMissPlayed", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic).SetValue(bullet, false);
+            var body = (GameObject)type.GetField("body", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic).GetValue(bullet);
+            body.SetActive(true);
+            body.transform.position = player.position + new Vector3(.8f, 0, .7f);
+            var announcements = 0;
+            System.Action<Vector3> onNearMiss = _ => announcements++;
+            game.BulletNearMiss += onNearMiss;
+            game.StepSimulation(.1f, Vector2.zero);
+            game.StepSimulation(.1f, Vector2.zero);
+            game.BulletNearMiss -= onNearMiss;
+            Assert.That(announcements, Is.EqualTo(1));
+        }
+
+        [Test]
         public void DeathStopsClockAndDoesNotPaySurvivalReward()
         {
             var currency = game.Currency;
@@ -319,13 +456,26 @@ namespace TienTuyen.Combat.Tests
                 Assert.That(game.State, Is.EqualTo(CombatState.Playing));
                 Assert.That(game.Wave, Is.EqualTo(completedWave));
 
-                FinishWave();
-
                 if (completedWave == game.MaxWave)
                 {
+                    // There is no boss: the last wave ends the run on its own clock, surviving it wins.
+                    SetPrivateField("invulnerability", 999f);
+                    SimulatePastTutorials(game.WaveRemaining - .1f);
+                    Assert.That(game.State, Is.EqualTo(CombatState.Playing));
+                    SimulatePastTutorials(.2f);
                     Assert.That(game.State, Is.EqualTo(CombatState.Victory));
                     break;
                 }
+
+                if(completedWave==5)
+                {
+                    Assert.That(game.CommanderActive,Is.True);
+                    game.StepSimulation(6.1f,Vector2.zero);
+                    Assert.That(game.State,Is.EqualTo(CombatState.Playing));
+                    game.DamageCommander(100000);game.StepSimulation(5.1f,Vector2.zero);
+                    Assert.That(game.Run.CommanderRewardClaimed,Is.True);
+                }
+                else FinishWave();
 
                 // A wave can expose more than one level-up choice. Consume all
                 // pending choices before asserting that the shop is available.
@@ -370,10 +520,59 @@ namespace TienTuyen.Combat.Tests
             Assert.That(game.SellWeapon(0, out _), Is.False);
         }
 
+        [Test]
+        public void HoldingCrouchOrWalkSlowsThePlayerUntilReleased()
+        {
+            var player = game.transform.Find("Player");
+            float Walk()
+            {
+                float start = player.position.x;
+                Simulate(0.5f, Vector2.right);
+                return player.position.x - start;
+            }
+            float standing = Walk();
+
+            game.SetCrouchInput(true);
+            Simulate(CombatRules.CrouchSeconds, Vector2.zero);
+            Assert.That(game.Crouch, Is.EqualTo(1f).Within(1e-4f));
+            Assert.That(game.PlayerHeight, Is.EqualTo(CombatRules.PlayerCrouchHeight).Within(1e-4f));
+            Assert.That(Walk(), Is.EqualTo(standing * CombatRules.CrouchSpeedFactor).Within(1e-3f));
+
+            game.SetCrouchInput(false);
+            Simulate(CombatRules.CrouchSeconds, Vector2.zero);
+            Assert.That(game.Crouch, Is.EqualTo(0f).Within(1e-4f));
+            Assert.That(game.PlayerHeight, Is.EqualTo(CombatRules.PlayerStandHeight).Within(1e-4f));
+            Assert.That(Walk(), Is.EqualTo(standing).Within(1e-3f));
+
+            game.SetWalkInput(true);
+            Simulate(CombatRules.WalkSeconds, Vector2.zero);
+            Assert.That(Walk(), Is.EqualTo(standing * CombatRules.WalkSpeedFactor).Within(1e-3f));
+            // Crouching while walking moves at the crouch speed, as in CS:GO.
+            game.SetCrouchInput(true);
+            Simulate(CombatRules.CrouchSeconds, Vector2.zero);
+            Assert.That(Walk(), Is.EqualTo(standing * CombatRules.CrouchSpeedFactor).Within(1e-3f));
+
+            game.SetCrouchInput(false);
+            game.SetWalkInput(false);
+            Simulate(Mathf.Max(CombatRules.CrouchSeconds, CombatRules.WalkSeconds), Vector2.zero);
+            Assert.That(Walk(), Is.EqualTo(standing).Within(1e-3f));
+        }
+
         private void FinishWave()
         {
             typeof(CombatGame).GetMethod("FinishWave", BindingFlags.Instance | BindingFlags.NonPublic)
                 .Invoke(game, null);
+        }
+
+        /// <summary>Steps the run, acknowledging the sniper's first-encounter tutorial pause as a player would.</summary>
+        private void SimulatePastTutorials(float seconds)
+        {
+            var frames = Mathf.Max(1, Mathf.RoundToInt(seconds * 60f));
+            for (var frame = 0; frame < frames; frame++)
+            {
+                game.StepSimulation(1f / 60f, Vector2.zero);
+                if (game.SniperTutorialVisible) game.TogglePause();
+            }
         }
 
         private void Simulate(float seconds, Vector2 movement)

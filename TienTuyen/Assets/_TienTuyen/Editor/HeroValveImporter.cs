@@ -10,9 +10,9 @@ namespace TienTuyen.Editor
 {
     /// <summary>
     /// Installs the PAVN hero on the ValveBiped skeleton (output/hero-valve: the Tripo body with its own finger rest, ring and
-    /// little fingers included, scale 1) as the player profile PAVN_ValveProfile. It keeps the locomotion, hit and death clips
-    /// of PAVN_HeroProfile (left as it is) with speeds rescaled to the new body, and carries all three CS:GO guns on clips
-    /// baked for its own body, each with the hero's hand correction (<see cref="Correction"/>).
+    /// little fingers included, scale 1) as the player profile PAVN_ValveProfile, from PAVN_HeroProfile (left as it is). It
+    /// moves on the CS:GO AK takes (<see cref="ValveBipedCharacterImporter.GunLocomotion"/>) and carries all three CS:GO guns
+    /// on clips baked for its own body, each with the hero's hand correction (<see cref="Correction"/>).
     /// Batch: Unity -batchmode -projectPath TienTuyen -executeMethod TienTuyen.Editor.HeroValveImporter.Import -quit
     /// </summary>
     public static class HeroValveImporter
@@ -40,32 +40,91 @@ namespace TienTuyen.Editor
             if (profile == null) { profile = ScriptableObject.CreateInstance<SkinnedCharacterProfile>(); AssetDatabase.CreateAsset(profile, ProfilePath); }
             EditorUtility.CopySerialized(source, profile);
             profile.name = Path.GetFileNameWithoutExtension(ProfilePath);
-            // Planted-foot speeds scale with the human size of the body that plays the clips.
-            float k = HumanScale(model, avatar) / HumanScale(source.model, source.avatar) / Mathf.Max(.01f, source.modelScale);
-            profile.runForwardSpeed *= k; profile.runBackwardSpeed *= k;
-            profile.strafeLeftSpeed *= k; profile.strafeRightSpeed *= k;
             profile.model = model;
             profile.avatar = avatar;
             profile.modelScale = 1f;
             profile.upperBodyMask = null;
             profile.weaponSets = new WeaponClipSet[0];
+            var knife = WeaponClipImporter.ImportKnifeTakes();
+            // The knife: the CS:GO knife takes' slash, which meets its target on frame 8 of 30, and their idle.
+            profile.meleeAttack = knife.clips["attack"];
+            profile.meleeContactTime = 8f / 30f;
+            profile.knifeIdle = knife.clips["stand_idle"];
+            var sets = WeaponClipImporter.BakeSets(profile, ClipPrefix, crouch: true, walk: true);
+            // Planted-foot speeds scale with the human size of the body that plays the takes.
+            float k = HumanScale(model, avatar) / HumanScale(knife.model, knife.avatar);
+            ValveBipedCharacterImporter.GunLocomotion(profile, k, knife.clips["death"]);
+            ValveBipedCharacterImporter.CrouchLocomotion(profile, k);
+            ValveBipedCharacterImporter.WalkLocomotion(profile, k);
             profile.deathFloorLift = SkinnedCharacterProfileBaker.MeasureDeathFloorLift(profile);
             SkinnedCharacterProfileBaker.MeasureSoles(profile);
-            SkinnedCharacterProfileBaker.MeasureBack(profile);
-            var sets = WeaponClipImporter.BakeSets(profile, ClipPrefix);
-            string json = Path.Combine(Repo, Correction);
             profile.weaponSets = Guns.Select(g =>
             {
                 var set = sets.First(s => s.weapon == g.weapon);
-                var takes = new[] { set.fire, set.reload, set.reloadStart, set.reloadInsert, set.reloadEnd }.Where(c => c != null)
-                    .ToDictionary(c => c.name.Substring(c.name.IndexOf('@') + 1), c => c);
-                set.grip = HandGripImporter.Import(json, g.gun, ArtDir + "/HeroGrip_" + g.gun + ".asset", takes, model);
+                // The committed grip is the hero's hands, hand edits included; only a missing one is solved from the correction.
+                set.grip = AssetDatabase.LoadAssetAtPath<HandGripData>(GripPath(g.gun)) ?? SolveGrip(set, g.gun, model);
                 return set;
             }).ToArray();
             EditorUtility.SetDirty(profile);
             AssetDatabase.SaveAssets();
             if (!profile.IsValid) throw new InvalidOperationException("PAVN ValveBiped profile is invalid: " + ProfilePath);
             Debug.Log("PAVN ValveBiped hero profile imported: " + ProfilePath + ", speed scale " + k.ToString("0.000"));
+        }
+
+        private static string GripPath(string gun) => ArtDir + "/HeroGrip_" + gun + ".asset";
+
+        private static HandGripData SolveGrip(WeaponClipSet set, string gun, GameObject model)
+        {
+            var takes = new[] { set.fire, set.reload, set.reloadStart, set.reloadInsert, set.reloadEnd }.Where(c => c != null)
+                .ToDictionary(c => c.name.Substring(c.name.IndexOf('@') + 1), c => c);
+            return HandGripImporter.Import(Path.Combine(Repo, Correction), gun, GripPath(gun), takes, model);
+        }
+
+        /// <summary>
+        /// Re-solves the hero's three grips from <see cref="Correction"/> over the committed ones: the step after editing the
+        /// correction (the Blender grip loop), never part of <see cref="Import"/>.
+        /// </summary>
+        [MenuItem("Tien Tuyen/Characters/Re-solve PAVN Hero Grips")]
+        public static void ResolveGrips()
+        {
+            var profile = AssetDatabase.LoadAssetAtPath<SkinnedCharacterProfile>(ProfilePath)
+                ?? throw new InvalidOperationException("Missing " + ProfilePath);
+            var before = profile.weaponSets.Where(s => s.grip != null).ToDictionary(s => s.grip, s => EditorJsonUtility.ToJson(s.grip, true));
+            foreach (var set in profile.weaponSets)
+                set.grip = SolveGrip(set, Guns.First(g => g.weapon == set.weapon).gun, profile.model);
+            // The committed grips can hold hand edits the correction lacks: name what changed, and keep the committed grips
+            // unless the change is confirmed (in batch, with -overwriteGrips).
+            var changed = before.Select(b => (grip: b.Key, lines: Changed(b.Value, EditorJsonUtility.ToJson(b.Key, true))))
+                .Where(c => c.lines.Length > 0).ToArray();
+            if (changed.Length > 0)
+            {
+                string report = string.Join("\n", changed.Select(c => c.grip.name + ": " + c.lines.Length + " lines differ, first:\n  " +
+                    string.Join("\n  ", c.lines.Take(6))));
+                bool overwrite = Application.isBatchMode ? Environment.GetCommandLineArgs().Contains("-overwriteGrips")
+                    : EditorUtility.DisplayDialog("Re-solve hero grips", "The correction differs from the committed grips:\n" + report, "Overwrite", "Keep committed");
+                if (!overwrite)
+                {
+                    foreach (var c in changed)
+                    {
+                        EditorJsonUtility.FromJsonOverwrite(before[c.grip], c.grip);
+                        EditorUtility.SetDirty(c.grip);
+                    }
+                    AssetDatabase.SaveAssets();
+                    Debug.LogWarning("Hero grips kept; the correction would change:\n" + report);
+                    return;
+                }
+                Debug.LogWarning("Hero grips overwritten from the correction:\n" + report);
+            }
+            EditorUtility.SetDirty(profile);
+            AssetDatabase.SaveAssets();
+        }
+
+        /// <summary>The lines of <paramref name="after"/> that differ from <paramref name="before"/> at the same index.</summary>
+        private static string[] Changed(string before, string after)
+        {
+            string[] a = before.Split('\n'), b = after.Split('\n');
+            return Enumerable.Range(0, Math.Max(a.Length, b.Length))
+                .Where(i => i >= a.Length || i >= b.Length || a[i] != b[i]).Select(i => i < b.Length ? b[i].Trim() : "(removed)").ToArray();
         }
 
         private static string Repo => Path.GetFullPath(Path.Combine(Application.dataPath, "..", ".."));
@@ -86,20 +145,22 @@ namespace TienTuyen.Editor
         }
 
         /// <summary>
-        /// The body's material (ImportBody's) made matte: the base colour at its full 4K, metallic 0 and the smoothness the
+        /// The body's material (ImportBody's) made matte: the base colour at 2048 (4K looked the same at the closest film camera), metallic 0 and the smoothness the
         /// MetalSmooth map's alpha holds (output/hero-valve: the helmet about .15, cloth and skin about .1).
         /// </summary>
         private static void Matte(GameObject model)
         {
             var material = model.GetComponentInChildren<SkinnedMeshRenderer>().sharedMaterial;
             var color = (TextureImporter)AssetImporter.GetAtPath(ArtDir + "/" + Type + "Valve_BaseColor.png");
-            if (color.maxTextureSize != 4096) { color.maxTextureSize = 4096; color.SaveAndReimport(); }
+            if (color.maxTextureSize != 2048) { color.maxTextureSize = 2048; color.SaveAndReimport(); }
             string mapPath = ArtDir + "/" + Type + "Valve_MetalSmooth.png";
             var map = (TextureImporter)AssetImporter.GetAtPath(mapPath);
-            if (map.sRGBTexture || map.textureCompression != TextureImporterCompression.Uncompressed)
+            // Two smoothness values over flat areas: compressed at 1024 it reads the same at a sixteenth of the memory.
+            if (map.sRGBTexture || map.textureCompression != TextureImporterCompression.Compressed || map.maxTextureSize != 1024)
             {
                 map.sRGBTexture = false;
-                map.textureCompression = TextureImporterCompression.Uncompressed;
+                map.textureCompression = TextureImporterCompression.Compressed;
+                map.maxTextureSize = 1024;
                 map.SaveAndReimport();
             }
             material.SetTexture("_MetallicGlossMap", AssetDatabase.LoadAssetAtPath<Texture2D>(mapPath));

@@ -1,62 +1,76 @@
-// Distant mountains built from real elevation data (EnvironmentBackdrop). Meshes are authored at their
-// virtual size, kilometres out; the vertex stage pulls every point towards the camera along its own view
-// ray with a logarithmic squeeze past _Squeeze.x metres, so the silhouette and parallax are unchanged but
-// everything fits inside the gameplay camera's far plane. Shading and haze use the unsqueezed position.
-// Vertex colour: R baked sun visibility, G sky visibility, B cavity (0.5 flat, lower in ravines), A unused.
+// The far landscape (EnvironmentBackdrop): forested ranges from real elevation data and the limestone towers in front
+// of them. Meshes are authored at their virtual size, kilometres out; the vertex stage pulls every point towards the
+// camera along its own view ray with a logarithmic squeeze (EnvSqueeze.hlsl), so the silhouette and parallax are
+// unchanged but everything fits inside the gameplay camera's far plane. Shading and haze use the unsqueezed position.
+// Surface, light and air are in EnvKarst.hlsl. Vertex colour: R baked sun visibility, G sky visibility, B cavity (0.5
+// flat, lower in ravines and grooves), A height up a tower's wall (towers, _Tower = 1) or, on the river corridor, the distance
+// to the river in quarter metres (KarstWater under 14 m; 255 elsewhere); UV0.x: degrees of elevation
+// above the level the ranges in front reach, where the valley cloud lies (EnvKarstCloud.hlsl).
+// The near rings of the ranges continue the terrain mesh: there the colour is EnvGround's far meadow (EnvTerrain.hlsl,
+// from the ground layers EnvironmentGround publishes) under the same lighting, fading into the forested ranges past ~1 km.
 Shader "TienTuyen/Environment/Mountains"
 {
     Properties
     {
-        _CanopyDark ("Canopy dark", Color) = (0.09, 0.14, 0.06, 1)
-        _CanopyLight ("Canopy light", Color) = (0.2, 0.28, 0.11, 1)
-        _Rock ("Limestone", Color) = (0.7, 0.67, 0.58, 1)
-        _RockDark ("Limestone water stains", Color) = (0.27, 0.27, 0.25, 1)
-        _CliffSlope ("Bare rock from slope (1 - normal.y)", Range(0, 1)) = 0.6
-        _CliffHeight ("Bare rock above height (m)", Float) = 90
-        _Ledges ("Forest ledges on cliffs: band height (m), cover", Vector) = (40, 0.6, 0, 0)
-        _Rim ("Backlit ridge rim", Range(0, 4)) = 0.9
-        _Aerial ("Aerial perspective: distance (m), strength", Vector) = (3200, 0.8, 0, 0)
-        _AerialTint ("Aerial perspective tint (x horizon luminance)", Color) = (0.78, 0.88, 1.0, 1)
-        _MistColor ("Valley mist", Color) = (0.86, 0.85, 0.8, 1)
-        _MistHeight ("Mist thickness (m)", Float) = 110
-        _MistStrength ("Mist strength", Range(0, 1)) = 0.6
-        _Squeeze ("Squeeze start (m), scale (m)", Vector) = (300, 15, 0, 0)
+        _Tower ("Tower meshes (1) or ranges (0)", Float) = 0
+        _CanopyDark ("Canopy dark", Color) = (0.08, 0.15, 0.05, 1)
+        _CanopyLight ("Canopy light", Color) = (0.21, 0.34, 0.1, 1)
+        _Rock ("Limestone", Color) = (0.82, 0.8, 0.74, 1)
+        _RockWarm ("Limestone, cream wash", Color) = (0.88, 0.8, 0.66, 1)
+        _RockDark ("Limestone water streaks", Color) = (0.3, 0.3, 0.29, 1)
+        _CliffSlope ("Bare rock from slope (1 - normal.y), feather", Vector) = (0.52, 0.1, 0, 0)
+        _Canopy ("Canopy: crown relief (m), tone in the gaps", Vector) = (4, 0.4, 0, 0)
+        _Flutes ("Grooves: depth (m), width (m), length (m)", Vector) = (7, 16, 240, 0)
+        _Strata ("Beds: thickness (m), overhang depth (m), warp (m), bench forest", Vector) = (60, 4, 40, 0.9)
+        _KarstRock ("Rock texture (rgb albedo, a height)", 2D) = "grey" {}
+        _RockTex ("Rock texture: tile (m), relief (m), contrast", Vector) = (140, 10, 1.15, 0)
+        _Light ("Light: sun gain, shadow coolness, sunward rim", Vector) = (1.15, 0.8, 1, 0)
+        _Rim ("Backlit ridge rim", Range(0, 4)) = 2
+        _Translucency ("Backlit forest", Range(0, 1)) = 0.5
+        _Aerial ("Aerial perspective: distance (m), strength, near-layer darkening", Vector) = (3000, 0.85, 0.25, 0)
+        _AerialTint ("Aerial perspective tint (x horizon luminance)", Color) = (0.7, 0.82, 1.06, 1)
+        _MistColor ("Valley mist", Color) = (0.88, 0.88, 0.84, 1)
+        _MistHeight ("Mist thickness (m)", Float) = 140
+        _MistStrength ("Mist strength", Range(0, 1)) = 0.7
+        _CloudSea ("Valley cloud: thickness over the nearer ridge (deg), billow, start (m), strength", Vector) = (3, 1.0, 2200, 1)
+        _Squeeze ("Squeeze start (m), scale (m), 30 km at (m), terrain half size (m)", Vector) = (300, 15, 414, 340)
     }
 
     SubShader
     {
-        Tags { "RenderType" = "Opaque" "RenderPipeline" = "UniversalPipeline" "Queue" = "Geometry+20" }
+        Tags { "RenderType" = "Opaque" "RenderPipeline" = "UniversalPipeline" "Queue" = "AlphaTest+40" }   // last of the opaques: drawn only where the near ground, grass and leaves leave it showing
 
         HLSLINCLUDE
         #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
         #include "EnvCommon.hlsl"
+        #include "EnvSqueeze.hlsl"
 
         CBUFFER_START(UnityPerMaterial)
+            half _Tower;
             half4 _CanopyDark;
             half4 _CanopyLight;
             half4 _Rock;
+            half4 _RockWarm;
             half4 _RockDark;
-            half _CliffSlope;
-            float _CliffHeight;
-            float4 _Ledges;
+            float4 _CliffSlope;
+            float4 _Flutes;
+            float4 _Canopy;
+            float4 _Strata;
+            float4 _RockTex;
+            float4 _Light;
             half _Rim;
+            half _Translucency;
             float4 _Aerial;
             half4 _AerialTint;
             half4 _MistColor;
             float _MistHeight;
             half _MistStrength;
+            float4 _CloudSea;
             float4 _Squeeze;
         CBUFFER_END
 
-        // Where a virtual point is drawn: same direction from the camera, distance squeezed past _Squeeze.x.
-        float3 MountainSqueeze(float3 virtualWS)
-        {
-            float3 camera = GetCameraPositionWS();
-            float3 view = virtualWS - camera;
-            float distance = max(length(view), 1e-3);
-            float squeezed = distance <= _Squeeze.x ? distance : _Squeeze.x + _Squeeze.y * log(1.0 + (distance - _Squeeze.x) / _Squeeze.y);
-            return camera + view * (squeezed / distance);
-        }
+        // Where a virtual point is drawn (EnvSqueeze.hlsl).
+        float3 MountainSqueeze(float3 virtualWS) { return EnvSqueeze(virtualWS, GetCameraPositionWS(), _Squeeze); }
         ENDHLSL
 
         Pass
@@ -69,14 +83,30 @@ Shader "TienTuyen/Environment/Mountains"
             #pragma vertex Vert
             #pragma fragment Frag
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
+            #include "EnvTerrain.hlsl"
+            TEXTURE2D(_KarstRock); SAMPLER(sampler_KarstRock);
+            #define KARST_ROCK(uv) SAMPLE_TEXTURE2D(_KarstRock, sampler_KarstRock, uv)
+            // The sky's photo, blurred (EnvironmentBackdrop's mipmapped copy; level 3 ~ 11 deg a texel), and its globals.
+            TEXTURE2D(_KarstSky); SAMPLER(sampler_KarstSky);
+            float4 _KarstSkyParams;
+            #define KARST_SKY(uv) SAMPLE_TEXTURE2D_LOD(_KarstSky, sampler_KarstSky, uv, 3).rgb
+            #include "EnvKarst.hlsl"
 
-            struct Attributes { float4 positionOS : POSITION; float3 normalOS : NORMAL; half4 color : COLOR; };
+            TEXTURE2D(_EnvFarGrass); SAMPLER(sampler_EnvFarGrass);
+            TEXTURE2D(_EnvFarNeedles);
+            TEXTURE2D(_EnvFarSoil);
+            TEXTURE2D(_EnvFarRock);
+            half4 _EnvFarGrassTint, _EnvFarNeedlesTint, _EnvFarSoilTint, _EnvFarRockTint;
+            float4 _EnvFarRockSlope;
+
+            struct Attributes { float4 positionOS : POSITION; float3 normalOS : NORMAL; half4 color : COLOR; float2 uv : TEXCOORD0; };
             struct Varyings
             {
                 float4 positionCS : SV_POSITION;
                 float3 virtualWS : TEXCOORD0;
                 float3 normalWS : TEXCOORD1;
                 half4 color : TEXCOORD2;
+                float rise : TEXCOORD3;
             };
 
             Varyings Vert(Attributes input)
@@ -86,6 +116,7 @@ Shader "TienTuyen/Environment/Mountains"
                 output.positionCS = TransformWorldToHClip(MountainSqueeze(output.virtualWS));
                 output.normalWS = TransformObjectToWorldNormal(input.normalOS);
                 output.color = input.color;
+                output.rise = input.uv.x;
                 return output;
             }
 
@@ -96,54 +127,40 @@ Shader "TienTuyen/Environment/Mountains"
                 float3 view = p - GetCameraPositionWS();
                 float distance = length(view);
                 float3 viewDir = view / distance;
-                half slope = 1.0 - normal.y;
                 half cavity = input.color.b * 2.0 - 1.0;
-
-                // Forest covers every slope and ledge up to about 60 degrees, as on the Phong Nha karst: kilometre
-                // patches of lighter and darker canopy, crowns of emergent trees, darker wet ravines.
-                half patches = EnvFbm(p.xz / 420.0);
-                half crowns = EnvValueNoise(p.xz / 38.0) * 0.6 + EnvValueNoise(p.xz / 11.0) * 0.4;
-                half3 canopy = lerp(_CanopyDark.rgb, _CanopyLight.rgb, saturate(patches * 1.3 - 0.15));
-                canopy *= 0.78 + 0.44 * crowns;
-                canopy *= 1.0 + 0.45 * clamp(cavity, -1.0, 0.6);
-                // Bare limestone only on the cliff bands: pale grey-cream, with dark water stains running straight
-                // down the face (noise stretched vertically, projected on the two vertical planes).
-                half2 facing = abs(normal.xz) / max(abs(normal.x) + abs(normal.z), 1e-3);
-                half stain = EnvFbm(float2(p.z / 9.0, p.y / 140.0)) * facing.x + EnvFbm(float2(p.x / 9.0, p.y / 140.0)) * facing.y;
-                half3 rock = _Rock.rgb * (0.82 + 0.3 * EnvValueNoise(float2(p.x + p.z, p.y) / 35.0));
-                rock = lerp(rock, _RockDark.rgb, smoothstep(0.48, 0.72, stain) * 0.9);
-                // Only tall relief bares its rock (the low jungle ridges stay green however steep), and trees cling to
-                // broken ledges across every cliff face: horizontal bands a few tens of metres high, too fine for the mesh.
-                half cliff = smoothstep(_CliffSlope - 0.06, _CliffSlope + 0.06, slope + (EnvFbm(p.xz / 150.0) - 0.5) * 0.24);
-                cliff *= smoothstep(_CliffHeight - 30.0, _CliffHeight + 30.0, p.y + (EnvValueNoise(p.xz / 90.0) - 0.5) * 60.0);
-                half ledge = EnvValueNoise(float2((p.x + p.z) / 240.0, p.y / _Ledges.x)) * 0.7 + EnvValueNoise(p.xz / 60.0) * 0.3;
-                cliff *= 1.0 - smoothstep(1.0 - _Ledges.y, 1.0 - _Ledges.y + 0.08, ledge);
-                half3 albedo = lerp(canopy, rock, cliff);
+                // Near rings: the meadow hills of the terrain mesh, lit like EnvGround (no baked visibility, which was
+                // computed for the real relief, not GroundHeight's). No branch round the karst surface: its relief
+                // takes screen derivatives, which a branch breaks along every silhouette.
+                half nearField = (1.0 - smoothstep(300.0, 800.0, distance)) * (1.0 - _Tower);
+                half vegetation;
+                half3 albedo = KarstSurface(p, normal, cavity, _Tower, input.color.a, distance, vegetation);
+                half sunVisible = input.color.r;
+                half skyVisible = input.color.g;
+                UNITY_BRANCH if (nearField > 0.001)
+                {
+                    half3 grass = SAMPLE_TEXTURE2D_LOD(_EnvFarGrass, sampler_EnvFarGrass, 0.5, 12).rgb * _EnvFarGrassTint.rgb;
+                    half3 needles = SAMPLE_TEXTURE2D_LOD(_EnvFarNeedles, sampler_EnvFarGrass, 0.5, 12).rgb * _EnvFarNeedlesTint.rgb;
+                    half3 soil = SAMPLE_TEXTURE2D_LOD(_EnvFarSoil, sampler_EnvFarGrass, 0.5, 12).rgb * _EnvFarSoilTint.rgb;
+                    half3 bare = SAMPLE_TEXTURE2D_LOD(_EnvFarRock, sampler_EnvFarGrass, 0.5, 12).rgb * _EnvFarRockTint.rgb;
+                    half3 ground = EnvFarGround(p, normal, grass, needles, soil, bare, _EnvFarRockSlope.xy);
+                    albedo = lerp(albedo, ground, nearField);
+                    normal = normalize(lerp(normal, EnvHillNormal(p.xz, normal, 0.9), nearField));
+                    sunVisible = lerp(sunVisible, 1.0, nearField);
+                    skyVisible = lerp(skyVisible, 0.9, nearField);
+                    vegetation *= 1.0 - nearField;
+                }
 
                 Light sun = GetMainLight();
-                half sunVisible = input.color.r;
-                half3 direct = sun.color * saturate(dot(normal, sun.direction)) * sunVisible;
-                half3 ambient = SampleSH(normal) * input.color.g;
-                half3 color = albedo * (direct + ambient);
-
-                // Looking into the low sun: ridge lines and grazing slopes catch a bright rim of scattered light.
-                // Only near-silhouette, convex faces (ridges), so whole slopes never wash out.
-                half towards = pow(saturate(dot(viewDir, _EnvSunDir.xyz)), 4.0);
-                half grazing = pow(1.0 - saturate(dot(normal, -viewDir)), 7.0);
-                color += _EnvSkyGlow.rgb * grazing * towards * _Rim * (0.35 + 0.65 * sunVisible) * saturate(cavity * 3.0 + 0.2);
-
-                // Valley mist pools between the ranges. Then aerial perspective over the true (unsqueezed) distance, so
-                // each range steps paler: green-grey ridges at a kilometre, blue-grey towers at three, the far ranges
-                // close to the horizon sky. The air is cooler than the horizon at middle distances and becomes the
-                // horizon colour as it thickens; the atmosphere term finally swallows the farthest ranges.
-                half3 haze = EnvHazeColor(viewDir);
-                half mist = exp(-max(p.y, 0.0) / _MistHeight) * (1.0 - exp(-distance / 3500.0)) * _MistStrength;
-                color = lerp(color, lerp(_MistColor.rgb, haze, 0.45), saturate(mist));
-                half aerial = (1.0 - exp(-distance / _Aerial.x)) * _Aerial.y;
-                half3 air = lerp(dot(haze, half3(0.2126, 0.7152, 0.0722)) * _AerialTint.rgb, haze, aerial * aerial);
-                color = lerp(color, air, aerial);
-                color = lerp(color, haze, EnvHazeAmount(distance, p.y));
-                return half4(color, 1);
+                half3 color = KarstLight(albedo, normal, viewDir, sun.color, SampleSH(normal), sunVisible, skyVisible, cavity, vegetation, nearField);
+                // The river corridor carries the distance to the river in alpha (x 4 m); everything else is 255.
+                half fromRiver = input.color.a * 63.75;
+                half water = (1.0 - smoothstep(13.0, 14.5, fromRiver)) * (1.0 - _Tower);
+                UNITY_BRANCH if (water > 0.001)
+                    color = KarstWater(color, p, viewDir, distance, water, 14.0 - fromRiver, sun.color, SampleSH(half3(0, 1, 0)), _Time.y);
+                // The gorge mouth's forest caps keep half their own colour through the air: green jungle on the nearest
+                // crowns, while the rock and every farther layer recede.
+                half clear = _Tower * (1.0 - smoothstep(1600.0, 2800.0, distance)) * vegetation * 0.5;
+                return half4(lerp(KarstAir(color, p, viewDir, distance, nearField, input.rise, sun.color, _Time.y), color * 1.3, clear), 1);
             }
             ENDHLSL
         }

@@ -33,6 +33,8 @@ namespace TienTuyen.Presentation
         public AnimationClip meleeAttack;
         [Tooltip("Seconds into meleeAttack where the blow lands (the gameplay damage tick).")]
         public float meleeContactTime;
+        [Tooltip("The hero's knife: its ready stance in the right fist, upper body, looping; meleeAttack is its slash.")]
+        public AnimationClip knifeIdle;
         [Tooltip("Melee-only enemies: the weapon is a one-handed blade in the right fist (see fistChannel), never shouldered, and aim is the guard clip.")]
         public bool guardHold;
         [Tooltip("runForward carries its own upper body (lean and weapon carry): the aim/guard layer fades out over the forward run.")]
@@ -60,15 +62,21 @@ namespace TienTuyen.Presentation
         [Tooltip("Locomotion never plays faster than this; beyond it the hips turn toward travel.")]
         public float maxPlaybackRate = 1.3f;
 
-        [Header("Faction flag")]
-        [Tooltip("Catalog model whose 'banner pole' / 'banner cloth*' meshes become the back flag.")]
-        public GameObject bannerSource;
-        [Tooltip("Body-space offset (metres, +Z forward) applied to the flag after it is fitted to the back.")]
-        public Vector3 bannerOffset;
-        [Tooltip("Point on the back surface in chest-bone space (measured by the importer); zero keeps the catalog placement.")]
-        public Vector3 chestBack;
+        [Header("Crouched locomotion (optional; an empty clip keeps the standing one)")]
+        public AnimationClip crouchIdle;
+        public AnimationClip crouchForward, crouchBackward, crouchLeft, crouchRight;
+        [Tooltip("Planted-foot speed of each crouched locomotion clip at 1x (m/s).")]
+        public float crouchForwardSpeed, crouchBackwardSpeed, crouchLeftSpeed, crouchRightSpeed;
+
+        [Header("Walking locomotion (optional; an empty clip keeps the run; idle keeps the standing one)")]
+        public AnimationClip walkForward, walkBackward, walkLeft, walkRight;
+        [Tooltip("Planted-foot speed of each walking locomotion clip at 1x (m/s).")]
+        public float walkForwardSpeed, walkBackwardSpeed, walkLeftSpeed, walkRightSpeed;
 
         public float modelScale = 1f;
+
+        [Tooltip("This body's own hands in first person: the viewmodels' Arms_<name> renderer (ViewmodelArmsPostprocessor). Empty keeps the viewmodels' Arms (the hero's).")]
+        public string firstPersonArms;
 
         [Header("Hand-carried weapons (optional)")]
         [Tooltip("Per-weapon world model and upper-body clips. A weapon listed here rides the model's Weapon bone with both " +
@@ -106,6 +114,11 @@ namespace TienTuyen.Presentation
         [Tooltip("Shell-by-shell reload, used instead of reload when all three are set and the game reloads by the round: " +
                  "start and end fitted to the game's start and end phases, the insert looping at its own speed between them.")]
         public AnimationClip reloadStart, reloadInsert, reloadEnd;
+        [Tooltip("The same slots crouched, blended in by the crouch; an empty one keeps its standing clip. A crouched reload " +
+                 "or fire clip without its own grip track takes its standing clip's.")]
+        public AnimationClip crouchHold, crouchAim, crouchRun, crouchFire, crouchReload, crouchReloadStart, crouchReloadInsert, crouchReloadEnd;
+        [Tooltip("The moving carry while walking, blended in by the walk; empty keeps run. Every other walking slot is the standing one.")]
+        public AnimationClip walkRun;
         [Tooltip("This body's hands on this gun: grip frames, reload tracks and finger corrections. Empty: the hands follow " +
                  "the clips' wrist targets.")]
         public HandGripData grip;

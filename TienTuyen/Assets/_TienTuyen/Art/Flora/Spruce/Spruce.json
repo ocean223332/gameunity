@@ -1,0 +1,34 @@
+{
+ "name": "Spruce",
+ "materials": [
+  {
+   "name": "Spruce_rest",
+   "leaf": false,
+   "cutout": true,
+   "normal": true
+  },
+  {
+   "name": "Spruce_M1",
+   "leaf": true,
+   "cutout": true,
+   "normal": true
+  },
+  {
+   "name": "Spruce_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "noCard": false,
+ "height": 21.8,
+ "radius": 8.478,
+ "tris": [
+  2968,
+  917,
+  4
+ ],
+ "cutoff": 0.32,
+ "smoothness": 0.3
+}

@@ -13,6 +13,7 @@ Material:
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords:
   - _ALPHATEST_ON
+  - _NORMALMAP
   m_InvalidKeywords: []
   m_LightmapFlags: 4
   m_EnableInstancingVariants: 1
@@ -29,21 +30,26 @@ Material:
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _BumpMap:
-        m_Texture: {fileID: 0}
+        m_Texture: {fileID: 2800000, guid: 77a4f72aa80265741abf3ec988af7e06, type: 3}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
     - _AlphaClip: 1
+    - _AlphaToMask: 0
     - _BumpScale: 1
     - _Cull: 0
     - _Cutoff: 0.45
     - _Flutter: 0.04
     - _Occlusion: 0.8
+    - _RockMoss: 0.6
+    - _RockSink: 0.35
+    - _RockTopBlend: 0
+    - _Saturation: 0.85
     - _Smoothness: 0.25
     - _TintVariation: 0.18
     - _Translucency: 0.8
-    - _UseNormalMap: 0
+    - _UseNormalMap: 1
     - _WindScale: 1
     m_Colors:
     - _BaseColor: {r: 1, g: 1, b: 1, a: 1}

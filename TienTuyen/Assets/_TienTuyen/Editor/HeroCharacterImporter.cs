@@ -18,7 +18,7 @@ namespace TienTuyen.Editor
     {
         public const string Art = "Assets/_TienTuyen/Art/Characters/PAVN";
         public const string ResourceDir = "Assets/_TienTuyen/Art/Resources/Characters/PAVN";
-        public const string ProfilePath = ResourceDir + "/PAVN_HeroProfile.asset";
+        public const string ProfilePath = Art + "/PAVN_HeroProfile.asset"; // outside Resources: the source of PAVN_ValveProfile, not shipped
         public const string RigPath = Art + "/PAVN_Hero_Rig.fbx";
         public const string PrefabPath = Art + "/PAVN_Hero.prefab";
         public const string MaterialPath = Art + "/PAVN_Hero.mat";
@@ -75,8 +75,6 @@ namespace TienTuyen.Editor
             profile.modelScale = 1f;
             profile.deathFloorLift = SkinnedCharacterProfileBaker.MeasureDeathFloorLift(profile);
             SkinnedCharacterProfileBaker.MeasureSoles(profile);
-            SkinnedCharacterProfileBaker.MeasureBack(profile);
-            profile.bannerSource = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/_TienTuyen/Art/Resources/Models/hero.fbx");
             EditorUtility.SetDirty(profile);
             AssetDatabase.SaveAssets();
             if (!profile.IsValid) throw new InvalidOperationException("PAVN hero profile is not valid: " + ProfilePath);

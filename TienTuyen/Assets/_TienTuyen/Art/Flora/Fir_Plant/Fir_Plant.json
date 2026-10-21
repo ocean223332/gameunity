@@ -1,0 +1,1 @@
+{"name": "Fir_Plant", "materials": [{"name": "Fir_Plant_rest", "leaf": false, "cutout": false, "normal": true}, {"name": "Fir_Plant_M1", "leaf": true, "cutout": true, "normal": true}, {"name": "Fir_Plant_Card", "leaf": true, "cutout": true, "normal": false, "card": true}], "height": 1.55, "radius": 0.691, "tris": [757, 361, 4], "cutoff": 0.4, "smoothness": 0.2, "noCard": true}

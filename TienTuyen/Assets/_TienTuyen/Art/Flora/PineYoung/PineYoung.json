@@ -1,0 +1,31 @@
+{
+ "name": "PineYoung",
+ "materials": [
+  {
+   "name": "PineYoung_M0",
+   "leaf": false,
+   "cutout": false,
+   "normal": true
+  },
+  {
+   "name": "PineYoung_M1",
+   "leaf": true,
+   "cutout": true,
+   "normal": true
+  },
+  {
+   "name": "PineYoung_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "height": 4.1,
+ "radius": 1.918,
+ "tris": [
+  2136,
+  847,
+  4
+ ]
+}

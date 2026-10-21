@@ -1,5 +1,6 @@
 using TMPro;
 using TienTuyen.Combat;
+using TienTuyen.Progression;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -13,7 +14,8 @@ namespace TienTuyen.Presentation.Interface
     /// </summary>
     public sealed class HudView : UiScreen
     {
-        private const int MaxPips = 48, SecondarySlots = 3;
+        private const int MaxPips = 48, SecondarySlots = 4, KnifeEntry = ProgressionRun.MaxWeaponSlots;
+        private const string KnifeId = "knife";
         private readonly CombatGame game;
 
         private TMP_Text supplyValue, levelValue, experienceText, supplyDropText;
@@ -290,6 +292,21 @@ namespace TienTuyen.Presentation.Interface
         {
             var weapon = game.ActiveWeapon;
             if (weapon == null) return;
+            bool knife = game.SelectedEntry == game.WeaponCount;
+            pipRow.gameObject.SetActive(!knife);
+            if (knife)
+            {
+                if (lastWeaponId != KnifeId)
+                {
+                    lastWeaponId = KnifeId;
+                    weaponIcon.sprite = UiGlyphs.Knife;
+                    weaponName.text = "DAO GĂM";
+                    ammoText.text = "";
+                    lastAmmo = lastMagazine = lastReloadTenths = -1;
+                }
+                reloadHint.alpha = 0f;
+                return;
+            }
             if (weapon.Id != lastWeaponId)
             {
                 lastWeaponId = weapon.Id;
@@ -340,13 +357,22 @@ namespace TienTuyen.Presentation.Interface
 
         private void RefreshSecondarySlots()
         {
-            // The chips list every slot but the one in hand, labelled with the key that draws it.
-            int active = game.ActiveWeaponSlot;
+            // The chips list every entry but the one in hand, labelled with the key that draws it: the four gun
+            // slots, then the knife on 5.
+            int active = game.SelectedEntry == game.WeaponCount ? KnifeEntry : game.ActiveWeaponSlot;
             for (int i = 0; i < chips.Length; i++)
             {
                 int slot = i < active ? i : i + 1;
                 var chip = chips[i];
                 chip.number.text = (slot + 1).ToString();
+                if (slot == KnifeEntry)
+                {
+                    chip.group.alpha = 1f;
+                    chip.icon.enabled = true;
+                    chip.icon.sprite = UiGlyphs.Knife;
+                    chip.ammo.text = "";
+                    continue;
+                }
                 bool owned = slot < game.WeaponCount;
                 chip.group.alpha = owned ? 1f : .3f;
                 chip.icon.enabled = owned;
@@ -371,7 +397,7 @@ namespace TienTuyen.Presentation.Interface
             if (game.State == CombatState.Menu) bannerWave = -1;
             bannerAge += deltaTime;
             float fadeIn = Mathf.Clamp01(bannerAge / .25f), fadeOut = Mathf.Clamp01((2.6f - bannerAge) / .6f);
-            banner.alpha = game.State == CombatState.Playing ? Mathf.Min(fadeIn, fadeOut) : 0f;
+            banner.alpha = game.State == CombatState.Playing && !game.CommanderActive ? Mathf.Min(fadeIn, fadeOut) : 0f;
             float scale = 1f + (1f - fadeIn) * .12f;
             banner.transform.localScale = new Vector3(scale, scale, 1f);
         }

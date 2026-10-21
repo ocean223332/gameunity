@@ -1,0 +1,25 @@
+{
+ "name": "Stump",
+ "materials": [
+  {
+   "name": "Stump_M0",
+   "leaf": false,
+   "cutout": false,
+   "normal": true
+  },
+  {
+   "name": "Stump_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "height": 0.85,
+ "radius": 0.512,
+ "tris": [
+  602,
+  302,
+  4
+ ]
+}

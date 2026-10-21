@@ -15,12 +15,19 @@ namespace TienTuyen.Presentation
     [RequireComponent(typeof(CombatGame))]
     public sealed class CombatArtDirector : MonoBehaviour
     {
+        /// <summary>
+        /// Seconds the presentation animates this frame: real time in play, but the game's fixed step while a film
+        /// captures (Time.captureDeltaTime), so bodies keep pace with the simulation however slowly frames render.
+        /// </summary>
+        public static float FrameSeconds => Time.captureDeltaTime > 0f ? Time.deltaTime : Time.unscaledDeltaTime;
+
         private static readonly Color Olive = Hex("#728064");
         private static readonly Color OliveDark = Hex("#3F5143");
         private static readonly Color Cloth = Hex("#53634C");
         private static readonly Color Skin = Hex("#B98966");
         private static readonly Color Metal = Hex("#39433E");
         private static readonly Color Wood = Hex("#79553D");
+        private static readonly Color Leather = Hex("#3B2E22"), LeatherEdge = Hex("#2C2219");
         private static readonly Color Sand = Hex("#9D8A67");
         private static readonly Color Enemy = Hex("#666158");
         private static readonly Color EnemyDark = Hex("#454A45");
@@ -51,6 +58,8 @@ namespace TienTuyen.Presentation
         private LineRenderer tracerBeam;
         private Transform tracer, heroMarker;
         private CombatCharacterRig playerRig;
+        private Transform menuStep;
+        private float menuStepTop;
         private Vector3 lastShotDirection = Vector3.forward, presentationTracerEnd;
         private float shotAimRemaining;
         private readonly List<Transform> bulletTransforms = new List<Transform>();
@@ -68,11 +77,11 @@ namespace TienTuyen.Presentation
         private sealed class EnemyVisual
         {
             public Transform root;
-            public GameObject infantry, shooter, charger, elite;
+            public GameObject infantry, shooter, charger, elite, sniper;
             public GameObject ring;
             public Renderer bodyRenderer;
             public Transform chargerMarker;
-            public CombatCharacterRig infantryRig, shooterRig, chargerRig, eliteRig;
+            public CombatCharacterRig infantryRig, shooterRig, chargerRig, eliteRig, sniperRig;
             // Swish on the knife tip of the melee bodies, emitting through the strike.
             public TrailRenderer infantrySwish, chargerSwish;
             public Vector3 shotDirection;
@@ -118,7 +127,21 @@ namespace TienTuyen.Presentation
         private void LateUpdate()
         {
             if (!arenaBuilt) return;
-            if (game != null && game.State == CombatState.Paused) return;
+            if (game != null && game.State == CombatState.Paused)
+            {
+                // A first encounter pauses on the activation tick; reveal its variant without advancing animation.
+                foreach (var pair in enemyVisuals)
+                {
+                    bool active = pair.Key.gameObject.activeSelf;
+                    if (!game.TryGetEnemyAction(pair.Key, out var state)) active = false;
+                    pair.Value.infantry.SetActive(active && state.Role == TienTuyen.Content.EnemyRole.Infantry);
+                    pair.Value.charger.SetActive(active && state.Role == TienTuyen.Content.EnemyRole.Charger);
+                    pair.Value.shooter.SetActive(active && state.Role == TienTuyen.Content.EnemyRole.Shooter);
+                    pair.Value.elite.SetActive(active && state.Role == TienTuyen.Content.EnemyRole.Elite);
+                    pair.Value.sniper.SetActive(active && state.Role == TienTuyen.Content.EnemyRole.Sniper);
+                }
+                return;
+            }
             if (!ReferenceEquals(presentedRun, game.Run))
             {
                 presentedRun = game.Run;
@@ -128,7 +151,7 @@ namespace TienTuyen.Presentation
                 lastHealth = game.Health;
                 if (player != null) lastPlayerPosition = player.position;
             }
-            time += Time.unscaledDeltaTime;
+            time += FrameSeconds;
             if (game != null && game.State != lastState)
             {
                 if (game.State == CombatState.Victory && player != null) SpawnBurst(player.position, Gold);
@@ -140,7 +163,7 @@ namespace TienTuyen.Presentation
             if (game != null) lastChargerDash = game.ChargerDashActive;
             UpdatePlayer();
             UpdateEnemies();
-            corpses?.Tick(Time.unscaledDeltaTime);
+            corpses?.Tick(FrameSeconds);
             UpdateWarnings();
             UpdateSupply();
             UpdateTracerAndBullets();
@@ -272,11 +295,15 @@ namespace TienTuyen.Presentation
             {
                 root.Find("RifleVisual"), root.Find("SmgVisual"), root.Find("ShotgunVisual")
             };
-            // The hero on the ValveBiped bind (HeroValveImporter); the older hand-rig hero until it is imported.
-            var profile = Resources.Load<SkinnedCharacterProfile>("Characters/PAVN/PAVN_ValveProfile")
-                ?? Resources.Load<SkinnedCharacterProfile>("Characters/PAVN/PAVN_HeroProfile");
+            // The hero on the ValveBiped bind (HeroValveImporter); the plain hero model until it is imported.
+            var profile = Resources.Load<SkinnedCharacterProfile>("Characters/PAVN/PAVN_ValveProfile");
+            playerRig.StandAtEase = true;
             if (playerRig.InitializeSkinned(profile, weapons, new Vector3(0, -.8f, 0)))
+            {
                 DisableChildren(root, "Torso", "Backpack", "Head", "Helmet", "LegL", "LegR");
+                BuildHeroKnife(root);
+                BuildMenuStep(root);
+            }
             else
             {
                 if (AttachImportedModel(root, "hero", "HeroBlenderModel", new Vector3(0, -.8f, 0), Vector3.one))
@@ -284,6 +311,73 @@ namespace TienTuyen.Presentation
                 playerRig.Initialize(root.Find("HeroBlenderModel"), weapons);
             }
             return root.gameObject;
+        }
+
+        /// <summary>The knife's slash clip runs faster than authored so its blow lands on the game's contact.</summary>
+        private static float KnifeClipRate(SkinnedCharacterProfile profile) =>
+            profile != null && profile.meleeContactTime > 0f ? profile.meleeContactTime / CombatRules.KnifeContactSeconds : 1f;
+
+        /// <summary>The hero's CS2 knife and its sheath on the hip (the rig places both every frame).</summary>
+        private void BuildHeroKnife(Transform root)
+        {
+            var model = Resources.Load<GameObject>("Models/hero_knife");
+            if (model == null) return;
+            var knife = UnityEngine.Object.Instantiate(model, root);
+            knife.name = "HeroKnife";
+            var steel = Resources.Load<Material>("Models/hero_knife_mat");
+            foreach (var renderer in knife.GetComponentsInChildren<Renderer>())
+            {
+                if (steel != null) renderer.sharedMaterial = steel;
+                renderer.shadowCastingMode = ShadowCastingMode.On;
+            }
+            // A leather scabbard round the blade, from the guard to past the tip (knife frame: +X the blade, +Y its edge).
+            var sheath = new GameObject("HeroSheath").transform;
+            sheath.SetParent(root, false);
+            MakeCube("Scabbard", sheath, new Vector3(.155f, -.004f, 0f), new Vector3(.19f, .052f, .022f), Leather, .008f);
+            MakeCube("Throat", sheath, new Vector3(.068f, -.004f, 0f), new Vector3(.018f, .058f, .028f), LeatherEdge, .004f);
+            playerRig.AttachKnife(knife.transform, sheath);
+        }
+
+        /// <summary>The sandbags the menu hero sets his raised foot on: two bags stacked along his foot, its
+        /// crown at the step's top (the rig turns it with the hero and shows it only while the foot is up).</summary>
+        private void BuildMenuStep(Transform root)
+        {
+            var parts = new List<CombineInstance>();
+            var materials = new List<Material>();
+            void Bag(string part, Vector3 at, float yaw, Vector3 size)
+            {
+                var bag = PropLibrary.Get("sandbag", part);
+                if (bag == null) return;
+                var frame = Matrix4x4.TRS(at, Quaternion.Euler(0f, yaw, 0f), new Vector3(size.x / .62f, size.y / .2f, size.z / .37f)) * bag.Local;
+                for (int i = 0; i < bag.Mesh.subMeshCount; i++)
+                {
+                    parts.Add(new CombineInstance { mesh = bag.Mesh, subMeshIndex = i, transform = frame });
+                    materials.Add(bag.Materials[Mathf.Min(i, bag.Materials.Length - 1)]);
+                }
+            }
+            Bag("bag_a_ground", new Vector3(0f, -.01f, 0f), 92f, new Vector3(.62f, .2f, .38f));
+            Bag("bag_b", new Vector3(.01f, .17f, -.01f), 86f, new Vector3(.56f, .2f, .36f));
+            if (parts.Count == 0) return;
+            var mesh = new Mesh { name = "MenuStep" };
+            var merged = new CombineInstance[parts.Count];
+            for (int i = 0; i < parts.Count; i++)
+            {
+                var single = new Mesh();
+                single.CombineMeshes(new[] { parts[i] }, true, true);
+                merged[i] = new CombineInstance { mesh = single };
+            }
+            mesh.CombineMeshes(merged, false, false);
+            mesh.RecalculateBounds();
+            var step = new GameObject("MenuStep");
+            step.transform.SetParent(root, false);
+            step.AddComponent<MeshFilter>().sharedMesh = mesh;
+            var renderer = step.AddComponent<MeshRenderer>();
+            renderer.sharedMaterials = materials.ToArray();
+            renderer.shadowCastingMode = ShadowCastingMode.On;
+            // The top bag's crown takes the sole, pressed in a few millimetres.
+            menuStepTop = mesh.bounds.max.y - .018f;
+            menuStep = step.transform;
+            step.SetActive(false);
         }
 
         private void BuildWeapon(Transform parent, string name, Vector3 localPosition, Vector3 scale, Color color, float bevel)
@@ -297,6 +391,29 @@ namespace TienTuyen.Presentation
             MakeCube("Sight", group, new Vector3(scale.x * .03f, scale.y * 1.1f, 0), new Vector3(scale.x * .08f, scale.y * .8f, scale.z * .8f), Gold, .02f);
         }
 
+        /// <summary>Reuse the existing rifle geometry, adding a scope and extended barrel for a readable sniper silhouette.</summary>
+        private void BuildSniper(Transform parent)
+        {
+            var weapon = new GameObject("Weapon").transform;
+            weapon.SetParent(parent, false);
+            weapon.localPosition = new Vector3(.28f, .65f, .13f);
+            var model = new GameObject("ScopedSniperRifle").transform;
+            model.SetParent(weapon, false);
+            if (!AttachImportedModel(model, "rifle", "ScopedRifleGeometry", Vector3.zero,
+                    Quaternion.Euler(0, -90, 0), Vector3.one * .58f))
+                BuildWeapon(model, "RifleGeometry", Vector3.zero, new Vector3(.85f, .08f, .08f), Metal, .04f);
+            var steel = Hex("#343B3F");
+            MakeCube("ScopeRearMount", model, new Vector3(-.07f, .11f, 0), new Vector3(.035f, .10f, .045f), steel, .005f);
+            MakeCube("ScopeFrontMount", model, new Vector3(.12f, .11f, 0), new Vector3(.035f, .10f, .045f), steel, .005f);
+            var scope = MakeCylinder("Scope", model, new Vector3(.03f, .19f, 0), new Vector3(.07f, .34f, .07f), steel, 12);
+            scope.transform.localRotation = Quaternion.Euler(0, 0, 90);
+            var lens = MakeCylinder("ScopeLens", model, new Vector3(.205f, .19f, 0), new Vector3(.065f, .012f, .065f), Hex("#365B5C"), 12);
+            lens.transform.localRotation = Quaternion.Euler(0, 0, 90);
+            var barrel = MakeCylinder("ExtendedBarrel", model, new Vector3(.68f, .035f, 0), new Vector3(.025f, .32f, .025f), steel, 10);
+            barrel.transform.localRotation = Quaternion.Euler(0, 0, 90);
+            MakeCube("SniperMuzzle", model, new Vector3(.85f, .035f, 0), new Vector3(.018f, .03f, .03f), Hex("#101719"), .003f);
+        }
+
         private void RegisterEnemy(Transform actor)
         {
             var old = actor.GetComponent<Renderer>();
@@ -307,6 +424,8 @@ namespace TienTuyen.Presentation
             var visual = new EnemyVisual { root = root, bodyRenderer = old };
             visual.infantry = BuildEnemyVariant(root, "Infantry", Enemy, true, false);
             visual.shooter = BuildEnemyVariant(root, "Shooter", shooterMaterial.color, true, false);
+            visual.sniper = BuildEnemyVariant(root, "Sniper", Hex("#827354"), true, false);
+            visual.sniperRig = visual.sniper.GetComponent<CombatCharacterRig>();
             visual.charger = BuildEnemyVariant(root, "Charger", Hex("#6E6350"), true, true);
             visual.elite = BuildEnemyVariant(root, "Elite", EnemyDark, true, true);
             visual.infantryRig = visual.infantry.GetComponent<CombatCharacterRig>();
@@ -326,7 +445,8 @@ namespace TienTuyen.Presentation
 
         private GameObject BuildEnemyVariant(Transform parent, string name, Color clothColor, bool weapon, bool accent)
         {
-            bool ranged = name == "Shooter" || name == "Elite";
+            bool sniper = name == "Sniper";
+            bool ranged = name != "Infantry" && name != "Charger";
             var group = new GameObject(name);
             group.transform.SetParent(parent, false);
             MakeCapsule("Body", group.transform, new Vector3(0, .50f, 0), accent ? new Vector3(.52f, .72f, .40f) : new Vector3(.44f, .62f, .34f), clothColor);
@@ -336,7 +456,8 @@ namespace TienTuyen.Presentation
             MakeCube("LegR", group.transform, new Vector3(.13f, .12f, 0), new Vector3(.13f, .34f, .16f), EnemyDark, .04f);
             if (weapon)
             {
-                if (ranged) BuildWeapon(group.transform, "Weapon", new Vector3(.28f, .65f, .13f), new Vector3(.62f, .08f, .08f), Metal, .10f);
+                if (sniper) BuildSniper(group.transform);
+                else if (ranged) BuildWeapon(group.transform, "Weapon", new Vector3(.28f, .65f, .13f), new Vector3(.62f, .08f, .08f), Metal, .10f);
                 else BuildDagger(group.transform, "Weapon", new Vector3(.27f, .61f, .12f));
             }
             if (accent)
@@ -344,15 +465,16 @@ namespace TienTuyen.Presentation
                 MakeCube("Shoulder", group.transform, new Vector3(.34f, .66f, 0), new Vector3(.18f, .18f, .42f), Coral, .05f);
                 MakeCube("ChestPlate", group.transform, new Vector3(0, .63f, .18f), new Vector3(.42f, .24f, .08f), EnemyDark, .03f);
             }
-            string modelName = name == "Infantry" ? "enemy_infantry" : name == "Shooter" ? "enemy_shooter" : name == "Charger" ? "enemy_charger" : "enemy_elite";
+            string modelName = name == "Infantry" ? "enemy_infantry" : (name == "Shooter" || sniper) ? "enemy_shooter" : name == "Charger" ? "enemy_charger" : "enemy_elite";
             // The Shooter carries the SMG (its profile's MP5-SD clip set), the Elite the rifle (the AK).
             string gun = name == "Shooter" ? "smg" : "rifle";
-            if (weapon && ranged && AttachImportedModel(group.transform.Find("Weapon"), gun, name == "Shooter" ? "SmgWeaponBlenderModel" : "RifleWeaponBlenderModel",
+            if (weapon && ranged && !sniper && AttachImportedModel(group.transform.Find("Weapon"), gun, name == "Shooter" ? "SmgWeaponBlenderModel" : "RifleWeaponBlenderModel",
                     Vector3.zero, Quaternion.Euler(0, -90, 0), Vector3.one * .58f))
                 DisableChildren(group.transform.Find("Weapon"), "Stock", "Barrel", "Sight");
             var rig = group.AddComponent<CombatCharacterRig>();
             var weapons = weapon ? new[] { group.transform.Find("Weapon") } : Array.Empty<Transform>();
-            var profile = Resources.Load<SkinnedCharacterProfile>("Characters/Enemies/" + name + "ValveProfile");
+            // Reuse the existing shooter body and animation; the sniper keeps its own geometry and fitted hand sockets.
+            var profile = Resources.Load<SkinnedCharacterProfile>("Characters/Enemies/" + (sniper ? "Shooter" : name) + "ValveProfile");
             if (rig.InitializeSkinned(profile, weapons, new Vector3(0, -.8f, 0)))
                 DisableChildren(group.transform, "Body", "Head", "Cap", "LegL", "LegR", "Shoulder", "ChestPlate");
             else
@@ -416,7 +538,7 @@ namespace TienTuyen.Presentation
         private void UpdatePlayer()
         {
             if (player == null || playerVisual == null) return;
-            float dt = Mathf.Max(Time.unscaledDeltaTime, .0001f);
+            float dt = Mathf.Max(FrameSeconds, .0001f);
             Vector3 velocity = (player.position - lastPlayerPosition) / dt;
             lastPlayerPosition = player.position;
             if (game != null && game.Health < lastHealth - .01f) hitTimer = .18f;
@@ -429,11 +551,20 @@ namespace TienTuyen.Presentation
             int weaponIndex = WeaponVisualIndex(slot);
             if (playerRig != null)
             {
+                playerRig.ExternalLauncher=game.LauncherEquipped;
                 playerRig.SelectWeapon(weaponIndex);
                 playerRig.DrawProgress = game.State == CombatState.Playing && game.IsSwitching ? game.SwitchProgress : -1f;
+                playerRig.Crouch = game.Crouch;
+                playerRig.Walk = game.Walk;
                 // On the menu shot the hero stands relaxed and turned to the camera; gameplay aim and fire stay out of it.
                 bool menuShot = thirdPersonCamera != null && thirdPersonCamera.MenuBlend > .4f;
                 playerRig.Relaxed = menuShot;
+                bool knifeOut = game.State == CombatState.Playing && game.SelectedEntry == game.WeaponCount;
+                playerRig.KnifeInHand = knifeOut;
+                playerRig.KnifeSwing = game.State == CombatState.Playing && game.KnifeSwinging
+                    ? game.KnifeSwingTime * KnifeClipRate(playerRig.Profile) : -1f;
+                // The menu hero rests the weapon on his shoulder; the intro title over the valley keeps the low carry.
+                playerRig.ShoulderRest = menuShot && thirdPersonCamera.TitleVista <= 0f;
                 // Aiming down the sights shoulders the weapon with the bore on the crosshair; otherwise it rides the low-ready.
                 playerRig.AimWeight = thirdPersonCamera != null ? thirdPersonCamera.AimBlend : 0f;
                 playerRig.AimPoint = shotAimRemaining > 0 ? presentationTracerEnd :
@@ -447,6 +578,12 @@ namespace TienTuyen.Presentation
                 playerRig.ReloadPhases = rounds.HasValue ? new Vector2(rounds.Value.StartSeconds, rounds.Value.EndSeconds) : Vector2.zero;
                 float reload = remaining > 0 ? 1f - remaining / Mathf.Max(.01f, playerRig.ReloadSeconds) : -1f;
                 playerRig.Tick(dt, velocity, aim, reload, hitTimer / .18f, game.Health <= 0 ? 1f : 0f);
+                if (menuStep != null)
+                {
+                    bool stepping = playerRig.StepFrame(out Vector3 top, out Quaternion turn);
+                    if (menuStep.gameObject.activeSelf != stepping) menuStep.gameObject.SetActive(stepping);
+                    if (stepping) menuStep.SetPositionAndRotation(top - Vector3.up * menuStepTop, turn);
+                }
             }
             if (heroMarker != null) heroMarker.localScale = MarkerScale(HeroMarkerDiameter, 1f + Mathf.Sin(time * 4f) * .035f);
         }
@@ -462,6 +599,7 @@ namespace TienTuyen.Presentation
 
         private void OnWeaponFired(int slot, Vector3 start, Vector3 end)
         {
+            if(game.WeaponAt(slot)?.Id==TienTuyen.Content.ContentIds.Rpg18)return;
             if (!arenaBuilt || playerRig == null) return;
             lastShotDirection = end - start;
             lastShotDirection.y = 0;
@@ -479,9 +617,11 @@ namespace TienTuyen.Presentation
             visual.shotDirection = direction;
             visual.shotAimRemaining = .25f;
             // The event may arrive before this frame's variant selection in LateUpdate.
-            var rig = actor.localScale.x > .85f ? visual.eliteRig : visual.shooterRig;
+            var rig = game.TryGetEnemyAction(actor, out var shotAction) && shotAction.Role == TienTuyen.Content.EnemyRole.Sniper
+                ? visual.sniperRig : actor.localScale.x > .85f ? visual.eliteRig : visual.shooterRig;
             if (rig != null)
             {
+                if (shotAction.Role == TienTuyen.Content.EnemyRole.Sniper) rig.FixedMuzzlePosition = shotAction.ShotOrigin;
                 rig.SnapAim(direction);
                 rig.Fire();
             }
@@ -492,19 +632,23 @@ namespace TienTuyen.Presentation
             foreach (var pair in enemyVisuals)
             {
                 Transform actor = pair.Key; EnemyVisual visual = pair.Value;
+                if(game.IsCommanderActor(actor)){visual.root.gameObject.SetActive(false);continue;}
+                visual.root.gameObject.SetActive(true);
                 bool active = actor.gameObject.activeSelf;
                 bool wasActive = previousEnemyActive[actor];
                 previousEnemyActive[actor] = active;
-                float dt = Mathf.Max(Time.unscaledDeltaTime, .0001f);
+                float dt = Mathf.Max(FrameSeconds, .0001f);
                 Vector3 velocity = active && wasActive ? (actor.position - previousEnemyPositions[actor]) / dt : Vector3.zero;
                 previousEnemyPositions[actor] = actor.position;
                 visual.root.localScale = InverseScale(actor.localScale);
                 bool charger = visual.chargerMarker != null && visual.chargerMarker.gameObject.activeSelf;
                 // Shooter material is assigned by CombatGame when a shooter activates.
                 bool shooter = visual.bodyRenderer != null && visual.bodyRenderer.sharedMaterial != null && visual.bodyRenderer.sharedMaterial.name.IndexOf("Shooter", StringComparison.OrdinalIgnoreCase) >= 0;
+                bool sniper = game.TryGetEnemyAction(actor, out var enemyState) && enemyState.Role == TienTuyen.Content.EnemyRole.Sniper;
                 bool elite = actor.localScale.x > .85f;
                 visual.infantry.SetActive(active && !shooter && !charger && !elite);
-                visual.shooter.SetActive(active && shooter && !elite);
+                visual.shooter.SetActive(active && shooter && !elite && !sniper);
+                visual.sniper.SetActive(active && sniper);
                 visual.charger.SetActive(active && charger && !elite);
                 visual.elite.SetActive(active && elite);
                 if (visual.ring != null)
@@ -527,8 +671,9 @@ namespace TienTuyen.Presentation
                     visual.hitRemaining = Mathf.Max(0, visual.hitRemaining - dt);
                     Vector3 aim = visual.shotAimRemaining > 0 ? visual.shotDirection :
                         shooter && player != null ? player.position - actor.position : velocity;
+                    if (shooter && enemyState.Aiming) aim = enemyState.AimDirection;
                     aim.y = 0;
-                    var rig = elite ? visual.eliteRig : charger ? visual.chargerRig : shooter ? visual.shooterRig : visual.infantryRig;
+                    var rig = sniper ? visual.sniperRig : elite ? visual.eliteRig : charger ? visual.chargerRig : shooter ? visual.shooterRig : visual.infantryRig;
                     if (rig == null) continue;
                     var action = shooter ? default : EnemyAction(actor, visual, rig.Profile, dt, velocity.magnitude, ref aim);
                     // Ranged enemies change magazines on the game's reload timer.
@@ -537,6 +682,11 @@ namespace TienTuyen.Presentation
                     {
                         rig.ReloadSeconds = ranged.ReloadSeconds;
                         reload = 1f - ranged.ReloadRemaining / Mathf.Max(.01f, ranged.ReloadSeconds);
+                    }
+                    if (sniper)
+                    {
+                        rig.AimWeight = enemyState.Aiming ? 1f : 0f;
+                        rig.FixedMuzzlePosition = enemyState.Aiming || visual.shotAimRemaining > 0 ? enemyState.ShotOrigin : (Vector3?)null;
                     }
                     rig.Tick(dt, velocity, aim, reload, visual.hitRemaining / .18f, 0f, action);
                     var swish = rig == visual.infantryRig ? visual.infantrySwish : rig == visual.chargerRig ? visual.chargerSwish : null;
@@ -617,6 +767,7 @@ namespace TienTuyen.Presentation
 
         private void OnEnemyDamaged(Transform actor, float damage, bool critical, bool killed)
         {
+            if(game.IsCommanderActor(actor))return;
             if (!enemyVisuals.TryGetValue(actor, out var visual)) return;
             visual.hitRemaining = .18f;
             if (!killed) return;
@@ -624,7 +775,8 @@ namespace TienTuyen.Presentation
             // Copy presentation data, never retain the pooled actor as a corpse parent.
             bool shooter = visual.bodyRenderer != null && visual.bodyRenderer.sharedMaterial != null &&
                 visual.bodyRenderer.sharedMaterial.name.IndexOf("Shooter", StringComparison.OrdinalIgnoreCase) >= 0;
-            var rig = actor.localScale.x > .85f ? visual.eliteRig : shooter ? visual.shooterRig :
+            bool sniper = game.TryGetEnemyAction(actor, out var deadState) && deadState.Role == TienTuyen.Content.EnemyRole.Sniper;
+            var rig = sniper ? visual.sniperRig : actor.localScale.x > .85f ? visual.eliteRig : shooter ? visual.shooterRig :
                 visual.chargerMarker != null && visual.chargerMarker.gameObject.activeSelf ? visual.chargerRig : visual.infantryRig;
             if (rig == null || !rig.IsSkinned) return;
             if (corpses == null) corpses = gameObject.AddComponent<CombatCorpsePool>();
@@ -636,7 +788,7 @@ namespace TienTuyen.Presentation
         {
             foreach (var warning in warnings)
             {
-                if (!warning.gameObject.activeSelf) continue;
+                if (!warning.gameObject.activeSelf || game.IsCommanderWarning(warning)) continue;
                 float pulse = .88f + Mathf.Abs(Mathf.Sin(time * 8f));
                 warning.localScale = new Vector3(pulse, .02f, pulse);
                 var renderer = warning.GetComponent<Renderer>();
@@ -667,8 +819,8 @@ namespace TienTuyen.Presentation
             if (bulletTrailMaterial == null) bulletTrailMaterial = ProceduralArt.Particle("Art_BulletTrail", true, new Color(4f, 1.6f, .5f, 1f));
             var trail = bullet.gameObject.AddComponent<TrailRenderer>();
             trail.sharedMaterial = bulletTrailMaterial;
-            trail.time = .14f;
-            trail.startWidth = .09f;
+            trail.time = .16f;
+            trail.startWidth = .06f;
             trail.endWidth = 0f;
             trail.minVertexDistance = .05f;
             trail.shadowCastingMode = ShadowCastingMode.Off;
@@ -730,7 +882,8 @@ namespace TienTuyen.Presentation
                 Vector3 delta = child.position - previous;
                 if (!hadPrevious || delta.sqrMagnitude < .000001f) delta = child.forward;
                 if (delta.sqrMagnitude > .000001f) child.rotation = Quaternion.LookRotation(delta.normalized, Vector3.up);
-                child.localScale = new Vector3(.105f, .105f, .42f);
+                // A thin hot needle along the flight, not a ball: bloom swells a round head into a white blob.
+                child.localScale = new Vector3(.05f, .05f, .7f);
                 previousBulletPositions[child] = child.position;
             }
         }
@@ -746,7 +899,7 @@ namespace TienTuyen.Presentation
             tracerBeam.alignment = LineAlignment.View;
             tracerBeam.textureMode = LineTextureMode.Stretch;
             tracerBeam.numCapVertices = 2;
-            tracerMaterial = ProceduralArt.Particle("Art_TracerBeam", true, new Color(4.5f, 3.2f, 1.4f, 1f));
+            tracerMaterial = ProceduralArt.Particle("Art_TracerBeam", true, new Color(1.6f, 1.1f, .5f, 1f));   // near bloom threshold: a hot thread, not a glowing bar
             tracerBeam.sharedMaterial = tracerMaterial;
             tracerBeam.shadowCastingMode = ShadowCastingMode.Off;
             tracerBeam.startWidth = .06f;
@@ -762,7 +915,10 @@ namespace TienTuyen.Presentation
             var main = ps.main; main.playOnAwake = false; main.duration = .38f; main.startLifetime = .32f; main.startSpeed = 2.2f; main.startSize = .09f; main.maxParticles = 16; main.simulationSpace = ParticleSystemSimulationSpace.World;
             var emission = ps.emission; emission.SetBursts(new[] { new ParticleSystem.Burst(0, 10) });
             var shape = ps.shape; shape.shapeType = ParticleSystemShapeType.Sphere; shape.radius = .12f;
-            var renderer = ps.GetComponent<ParticleSystemRenderer>(); renderer.material = RuntimeMaterial("Art_Burst", color, true);
+            // Soft glowing dots: an opaque Lit material drew every particle as a flat square.
+            string key = "Art_Burst|" + color;
+            if (!MaterialCache.TryGetValue(key, out var burst) || burst == null) MaterialCache[key] = burst = ProceduralArt.Particle("Art_Burst", true, color * 2f);
+            var renderer = ps.GetComponent<ParticleSystemRenderer>(); renderer.sharedMaterial = burst;
             ps.Play();
             Destroy(go, 1.1f);
         }

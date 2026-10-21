@@ -10,7 +10,7 @@ namespace TienTuyen.Presentation
     /// (<see cref="SkinnedCharacterAnimator"/>); <see cref="Initialize"/> is the procedural
     /// fallback for the unskinned low-poly catalog, whose feet are driven by travelled
     /// distance and whose two-bone limbs meet planted boots and actual gun sockets.
-    /// Weapons, recoil, muzzle flash, brass and the faction flag are shared by both.
+    /// Weapons, recoil, muzzle flash and brass are shared by both.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class CombatCharacterRig : MonoBehaviour
@@ -44,28 +44,26 @@ namespace TienTuyen.Presentation
         private Limb leftLeg, rightLeg, leftArm, rightArm;
         private HeldWeapon[] weapons = Array.Empty<HeldWeapon>();
         private int selectedWeapon;
-        private float gaitPhase, movementBlend, clock, recoil, flashTime, aim, shotHold;
+        private float gaitPhase, movementBlend, clock, recoil, flashTime, aim, shotHold, stillTime, atEase, shoulderRest;
+        // Standing still and unaimed this long lowers a carried weapon to the at-ease carry over AtEaseIn; aim, fire or a
+        // step brings it back up over AtEaseOut, no slower than the shoulder rises to the sights.
+        private const float AtEaseDelay = 1.2f, AtEaseIn = .6f, AtEaseOut = .1f;
+        // The menu shot opens on the at-ease pose already held, not on the hero lowering his weapon into it. Only the menu
+        // shot coming in settles it: a run's reset under the departing menu shot must not.
+        private bool wasRelaxed, settleAtEase;
         // A shot shoulders the weapon; it stays up this long after the last one, then returns to the low-ready.
         private const float ShotHoldSeconds = 2f;
         private float stanceFraction = .6f;
         private float lastReload = -1f;
         private bool weaponsHidden;
+        public bool ExternalLauncher { get; set; }
         private Vector3 smoothedVelocity;
         private bool freshPose = true;
         private float scale = 1f;
         private float chestFront = .19f;
         private int shotSequence;
         private readonly Shell[] shells = new Shell[3];
-        private CombatBanner banner;
         private SkinnedCharacterAnimator skinned;
-        private Transform bannerMount;
-        private float bannerHidden;
-        private Vector3 bannerAnchor, bannerForward;
-        private const float ShoulderBladeOffset = .07f;
-        // Screen size grows as 1/distance: inside these camera distances (the bodies between the
-        // over-the-shoulder camera and the hero, and the hero's own flag while aiming) a full flag
-        // would cover the crosshair, so it lowers into the back and is gone at the near one.
-        private const float BannerHiddenDistance = 2f, BannerFullDistance = 4f;
         private static Mesh limbMesh;
         private static Material flashMaterial;
         private static Material brassMaterial;
@@ -76,6 +74,29 @@ namespace TienTuyen.Presentation
         public bool IsSkinned => skinned != null;
         /// <summary>Hold the weapon in the low-ready whatever the aim request (the menu pose); a shot still shoulders it.</summary>
         public bool Relaxed { get; set; }
+        /// <summary>Hold the weapon in the stand idle, neither shouldered nor aimed at a point, keeping the facing (a film's
+        /// ready stance); a shot still shoulders it.</summary>
+        public bool IdleHold { get; set; }
+        /// <summary>Lower a carried weapon to the at-ease carry after standing still and unaimed for a moment (the hero).</summary>
+        public bool StandAtEase { get; set; }
+        /// <summary>0..1 how far a carried weapon is lowered to the at-ease carry.</summary>
+        public float AtEaseWeight => atEase;
+        /// <summary>At ease the weapon rests on the right shoulder instead of across the belly (the menu hero).</summary>
+        public bool ShoulderRest { get; set; }
+        /// <summary>The step under the shoulder carry's raised foot: its top centre and turn, while the foot is on it.</summary>
+        public bool StepFrame(out Vector3 top, out Quaternion rotation)
+        {
+            bool on = skinned != null && atEase * shoulderRest > 0f;
+            top = on ? skinned.StepTop : Vector3.zero;
+            rotation = pose != null ? pose.rotation : Quaternion.identity;
+            return on;
+        }
+        /// <summary>The knife is out: in the right fist, the gun hidden (skinned hero only).</summary>
+        public bool KnifeInHand { get; set; }
+        /// <summary>Seconds into the knife's slash clip, or -1; a slash shows the knife in hand too.</summary>
+        public float KnifeSwing { get; set; } = -1f;
+        private bool KnifeShown => knife != null && (KnifeInHand || KnifeSwing >= 0f);
+        private Transform knife, sheath;
         /// <summary>0..1 request to shoulder the weapon (aiming down the sights); shots raise it on their own.</summary>
         public float AimWeight { get; set; }
         /// <summary>0..1 progress of drawing the weapon in hand (the game's switch timing); negative when not drawing.</summary>
@@ -84,8 +105,14 @@ namespace TienTuyen.Presentation
         public float ReloadSeconds { get; set; }
         /// <summary>A reload by the round: its start and end phases in seconds; zero for a whole reload.</summary>
         public Vector2 ReloadPhases { get; set; }
+        /// <summary>0 standing to 1 crouched (the game's crouch); a skinned body blends in its crouched clips.</summary>
+        public float Crouch { get; set; }
+        /// <summary>0 running to 1 walking (the game's walk); a skinned body blends in its walking clips unless crouched.</summary>
+        public float Walk { get; set; }
         /// <summary>World point the shouldered bore meets (the crosshair); null keeps the bore level.</summary>
         public Vector3? AimPoint { get; set; }
+        /// <summary>Presentation-only muzzle socket for the sniper's fixed warning/shot plane.</summary>
+        public Vector3? FixedMuzzlePosition { get; set; }
         public SkinnedCharacterProfile Profile { get; private set; }
         /// <summary>The death clip has reached its last frame and is holding it.</summary>
         public bool DeathFinished => skinned != null && skinned.DeathFinished;
@@ -104,7 +131,6 @@ namespace TienTuyen.Presentation
         public Transform PoseRoot => pose;
         public Transform ChestPivot => skinned != null ? skinned.Chest : torso;
         public Transform CurrentWeaponRoot => CurrentWeapon?.root;
-        public CombatBanner Banner => banner;
         private HeldWeapon CurrentWeapon => weapons.Length > 0 ? weapons[selectedWeapon] : null;
         private bool Carried => skinned != null && CurrentWeapon != null && CurrentWeapon.carry >= 0;
 
@@ -145,6 +171,9 @@ namespace TienTuyen.Presentation
                 Transform mesh = renderer.transform;
                 Vector3 center = pose.InverseTransformPoint(MeshCenter(renderer));
                 bool left = center.x < 0;
+                // The catalog's faction flag (banner pole and cloth) is not worn.
+                if (part.StartsWith("banner", StringComparison.Ordinal))
+                { renderer.enabled = false; continue; }
                 if (part.Contains("shooter rifle") || part.Contains("shooter muzzle") || part.Contains("slung tool"))
                 { renderer.enabled = false; continue; }
                 if (part.EndsWith(" arm", StringComparison.Ordinal) || part.EndsWith(" shin", StringComparison.Ordinal) || part.EndsWith(" cuff", StringComparison.Ordinal))
@@ -173,8 +202,6 @@ namespace TienTuyen.Presentation
                             chestFront = Mathf.Max(chestFront, torso.InverseTransformPoint(mesh.TransformPoint(corner)).z);
                 }
             }
-            // The faction flag rides on the chest pivot so it leans with the body.
-            banner = CombatBanner.Create(torso, renderers, (GetInstanceID() & 1023) * .37f);
             if (!leftBoot) AddShape("Boot", leftLeg.end, new Vector3(0, .1f, .045f), new Vector3(.20f, .20f, .32f), dark);
             if (!rightBoot) AddShape("Boot", rightLeg.end, new Vector3(0, .1f, .045f), new Vector3(.20f, .20f, .32f), dark);
             if (!leftHand) AddShape("Glove", leftArm.end, Vector3.zero, Vector3.one * .16f, skin);
@@ -223,7 +250,6 @@ namespace TienTuyen.Presentation
                 renderer.receiveShadows = true;
             }
             skinned = new SkinnedCharacterAnimator(profile, pose, model);
-            AttachBanner(profile, skinned.Chest);
 
             int count = weaponTransforms == null ? 0 : weaponTransforms.Length;
             weapons = new HeldWeapon[count];
@@ -252,62 +278,6 @@ namespace TienTuyen.Presentation
             else ApplyPose(Vector3.zero, -1, 0, 0);
         }
 
-        private void AttachBanner(SkinnedCharacterProfile profile, Transform chest)
-        {
-            if (profile.bannerSource == null || chest == null) return;
-            // Fitted on the bind pose (nothing is animated yet), so the fit never depends on the
-            // playing clip or on whether the character is active. The mount then rides the back
-            // point every frame and turns with the chest while the pole stays upright.
-            bannerAnchor = profile.chestBack;
-            bannerForward = Quaternion.Inverse(chest.rotation) * pose.forward;
-            bannerMount = Node("BannerMount", pose, Vector3.zero);
-            bannerMount.SetPositionAndRotation(chest.TransformPoint(bannerAnchor), pose.rotation);
-            // The catalog figure carries the faction flag at its authored height.
-            var source = Instantiate(profile.bannerSource, pose, false).transform;
-            source.localPosition = Vector3.zero;
-            source.localRotation = Quaternion.Euler(0, 180, 0) * Quaternion.Euler(-90, 0, 0);
-            source.localScale = Vector3.one;
-            var renderers = source.GetComponentsInChildren<MeshRenderer>(true);
-            banner = CombatBanner.Create(bannerMount, renderers, (GetInstanceID() & 1023) * .37f);
-            if (banner != null)
-            {
-                MeshRenderer pole = null;
-                foreach (var part in renderers)
-                    if (part.name == "banner pole") { pole = part; part.transform.SetParent(banner.Pivot, true); break; }
-                Vector3 shift = profile.bannerOffset;
-                if (pole != null && bannerAnchor != Vector3.zero)
-                {
-                    // The catalog figure is bulkier than this body: stand the pole against the
-                    // measured back, over the shoulder blade on the catalog's side.
-                    var bounds = pole.bounds;
-                    Vector3 axis = bannerMount.InverseTransformPoint(bounds.center);
-                    float radius = Mathf.Min(bounds.extents.x, bounds.extents.z);
-                    shift.x += Mathf.Sign(axis.x) * ShoulderBladeOffset - axis.x;
-                    shift.z += -(radius + .02f) - axis.z;
-                }
-                banner.Pivot.localPosition += shift;
-            }
-            source.gameObject.SetActive(false);
-            Destroy(source.gameObject);
-        }
-
-        private void FollowBanner()
-        {
-            if (bannerMount == null) return;
-            Transform chest = skinned.Chest;
-            Vector3 up = pose.up;
-            Vector3 forward = Vector3.ProjectOnPlane(chest.rotation * bannerForward, up);
-            bannerMount.position = chest.TransformPoint(bannerAnchor);
-            if (forward.sqrMagnitude > 1e-4f) bannerMount.rotation = Quaternion.LookRotation(forward, up);
-            var view = Camera.main;
-            float shown = view == null ? 1f : Mathf.SmoothStep(0f, 1f,
-                Mathf.InverseLerp(BannerHiddenDistance, BannerFullDistance, Vector3.Distance(view.transform.position, bannerMount.position)));
-            // The relaxed menu pose folds the banner away, and unfolds it as the camera swings round.
-            bannerHidden = Mathf.MoveTowards(bannerHidden, Relaxed ? 1f : 0f, Time.unscaledDeltaTime * 3f);
-            shown *= 1f - Mathf.SmoothStep(0f, 1f, bannerHidden);
-            bannerMount.localScale = new Vector3(shown, shown, shown);
-        }
-
         public void SelectWeapon(int index)
         {
             if (weapons.Length == 0) return;
@@ -315,7 +285,7 @@ namespace TienTuyen.Presentation
             for (int i = 0; i < weapons.Length; i++)
             {
                 if (weapons[i] == null) continue;
-                weapons[i].root.gameObject.SetActive(i == selectedWeapon && !weaponsHidden);
+                weapons[i].root.gameObject.SetActive(i == selectedWeapon && !weaponsHidden && !ExternalLauncher);
                 if (i != selectedWeapon) weapons[i].flash.SetActive(false);
             }
         }
@@ -353,10 +323,7 @@ namespace TienTuyen.Presentation
             freshPose = false;
             // Re-seat weapon and hands on the new facing without advancing any clip.
             if (skinned != null)
-            {
                 ApplySkinnedHold(lastReload);
-                FollowBanner();
-            }
         }
 
         /// <param name="action">Enemy action clip and time derived from gameplay this tick; skinned rigs only.</param>
@@ -389,13 +356,27 @@ namespace TienTuyen.Presentation
             flashTime = Mathf.Max(0, flashTime - dt);
             shotHold = Mathf.Max(0, shotHold - dt);
             // A carried weapon is always shouldered: a shot does not bring it to the sights.
-            float aimTarget = Mathf.Max(Relaxed ? 0f : Mathf.Clamp01(AimWeight), shotHold > 0f && !Carried ? 1f : 0f);
+            float aimTarget = Mathf.Max(Relaxed || IdleHold ? 0f : Mathf.Clamp01(AimWeight), shotHold > 0f && !Carried ? 1f : 0f);
             aim = Mathf.MoveTowards(aim, aimTarget, dt / (aimTarget > aim ? .15f : .35f));
+            bool still = StandAtEase && Carried && !IdleHold && !KnifeShown && speed < .05f && aimTarget <= 0f && shotHold <= 0f && reloadProgress < 0f &&
+                DrawProgress < 0f && death <= 0f && Crouch < .1f;
+            stillTime = still ? stillTime + dt : 0f;
+            settleAtEase = Relaxed && (settleAtEase || !wasRelaxed);
+            wasRelaxed = Relaxed;
+            if (settleAtEase && still)
+            {
+                settleAtEase = false;
+                stillTime = AtEaseDelay;
+                atEase = 1f;
+                shoulderRest = ShoulderRest ? 1f : 0f;
+            }
+            atEase =Mathf.MoveTowards(atEase, stillTime >= AtEaseDelay ? 1f : 0f, dt / (still ? AtEaseIn : AtEaseOut));
+            // The carry swaps only while fully at ease or not at ease at all, so the rifle never swings through the body.
+            if (atEase <= 0f || atEase >= 1f) shoulderRest = Mathf.MoveTowards(shoulderRest, ShoulderRest ? 1f : 0f, dt / AtEaseIn);
             if (CurrentWeapon != null) CurrentWeapon.flash.SetActive(flashTime > 0 && death <= 0f);
             Vector3 localVelocity = pose.InverseTransformDirection(smoothedVelocity);
             if (skinned != null) ApplySkinned(dt, localVelocity, reloadProgress, Mathf.Clamp01(hit), Mathf.Clamp01(death), action);
             else ApplyPose(localVelocity, reloadProgress, Mathf.Clamp01(hit), Mathf.Clamp01(death));
-            banner?.Tick(dt, localVelocity);
             UpdateShells(dt);
         }
 
@@ -407,24 +388,42 @@ namespace TienTuyen.Presentation
             skinned.Carry(weapon != null ? weapon.carry : -1);
             skinned.Draw(DrawProgress);
             skinned.ReloadLength(ReloadSeconds, ReloadPhases);
-            skinned.Advance(dt, localVelocity, movementBlend, reload, hit, death, weapon != null, aim, action);
-            // A falling body drops its weapon and flag from view (a rigid pole would spear the
-            // floor in a backward fall); respawn/reset shows them again.
-            if (skinned.Dying != weaponsHidden)
+            skinned.Crouch(Crouch);
+            skinned.Walk(Walk);
+            bool knifeShown = KnifeShown;
+            skinned.KnifeInHand = knifeShown;
+            if (knifeShown && KnifeSwing >= 0f) action = new CharacterAction(CharacterActionKind.Melee, KnifeSwing);
+            skinned.Advance(dt, localVelocity, movementBlend, reload, hit, death, weapon != null && !knifeShown, aim, action);
+            // A falling body drops its weapon from view, and the knife in hand puts the gun away; respawn/reset shows it again.
+            if ((skinned.Dying || knifeShown) != weaponsHidden)
             {
-                weaponsHidden = skinned.Dying;
+                weaponsHidden = skinned.Dying || knifeShown;
                 SelectWeapon(selectedWeapon);
-                if (bannerMount != null) bannerMount.gameObject.SetActive(!weaponsHidden);
             }
             ApplySkinnedHold(reload);
-            if (!weaponsHidden) FollowBanner();
         }
 
         private void ApplySkinnedHold(float reload)
         {
             var weapon = CurrentWeapon;
+            skinned.AtEase = atEase;
+            skinned.ShoulderRest = shoulderRest;
+            bool knifeShown = KnifeShown && !skinned.Dying;
             skinned.Apply(weapon?.root, weapon?.grip, weapon?.support, weapon?.muzzle, weapon?.hold, weapon != null ? weapon.holdScale : 1f,
-                recoil, reload, Relaxed && shotHold <= 0f ? null : AimPoint, weapon != null);
+                recoil, reload, (Relaxed || IdleHold) && shotHold <= 0f ? null : AimPoint, weapon != null && !knifeShown, FixedMuzzlePosition);
+            if (knife == null) return;
+            skinned.SheathPose(out Vector3 position, out Quaternion rotation);
+            sheath.SetPositionAndRotation(position, rotation);
+            if (knifeShown) skinned.HoldKnife(knife);
+            else knife.SetPositionAndRotation(position, rotation);
+        }
+
+        /// <summary>The hero's knife (native +X the blade, +Y its edge, the origin where the fist closes) and its sheath, which
+        /// stays on the hip.</summary>
+        public void AttachKnife(Transform knifeRoot, Transform sheathRoot)
+        {
+            knife = knifeRoot;
+            sheath = sheathRoot;
         }
 
         private void ApplyPose(Vector3 localVelocity, float reload, float hit, float death)
@@ -458,6 +457,8 @@ namespace TienTuyen.Presentation
                     rear = Mathf.Min(rear, (weapon.root.localRotation * Vector3.Scale(corner, weapon.root.localScale)).z);
                 weapon.root.localPosition = new Vector3(.04f, .35f - reloadArc * .08f,
                     chestFront + .035f - rear - recoil * .020f);
+                if (FixedMuzzlePosition.HasValue && death <= 0f)
+                    weapon.root.position += FixedMuzzlePosition.Value - weapon.muzzle.position;
                 Vector3 grip = pose.InverseTransformPoint(weapon.grip.position);
                 Vector3 support = pose.InverseTransformPoint(weapon.support.position);
                 if (reloadArc > 0)
@@ -710,7 +711,7 @@ namespace TienTuyen.Presentation
         private void OnDisable() { skinned?.ReleaseGraph(); }
         private void ResetMotion()
         {
-            movementBlend = 0; gaitPhase = 0; recoil = 0; flashTime = 0; clock = 0; aim = 0; shotHold = 0;
+            movementBlend = 0; gaitPhase = 0; recoil = 0; flashTime = 0; clock = 0; aim = 0; shotHold = 0; stillTime = 0; atEase = 0; shoulderRest = 0;
             stanceFraction = .6f; lastReload = -1f;
             smoothedVelocity = Vector3.zero; freshPose = true;
             skinned?.Reset();
@@ -749,8 +750,6 @@ namespace TienTuyen.Presentation
 
         private void OnDestroy()
         {
-            banner?.Dispose();
-            banner = null;
             skinned?.Dispose();
             skinned = null;
             if (!ownsResources) return;

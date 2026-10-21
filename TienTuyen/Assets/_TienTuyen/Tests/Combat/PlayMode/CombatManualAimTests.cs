@@ -63,6 +63,21 @@ namespace TienTuyen.Combat.Tests
         }
 
         [Test]
+        public void AQuickKnifeSlashCutsAnEnemyWithinReachAndNotOneBeyond()
+        {
+            var near = CreateTarget(new Vector3(1.4f, .8f, 0f));
+            var far = CreateTarget(new Vector3(2.6f, .8f, 0f), 1);
+            float nearHp = (float)GetField(near.entry, "hp"), farHp = (float)GetField(far.entry, "hp");
+            game.SetViewInput(90f, far.transform.position, false);
+            Assert.That(game.Slash(), Is.True);
+            for (int step = 0; step < 50 && game.KnifeSwinging; step++) Invoke("UpdateKnife", .02f);
+            Assert.That((float)GetField(near.entry, "hp"), Is.LessThan(nearHp), "Within reach in front: cut.");
+            Assert.That((float)GetField(far.entry, "hp"), Is.EqualTo(farHp), "Beyond reach: untouched.");
+            Assert.That(game.KnifeSwinging, Is.False);
+            Assert.That(game.SelectedEntry, Is.EqualTo(game.ActiveWeaponSlot), "The gun is back in hand after the slash.");
+        }
+
+        [Test]
         public void AShotAimedOverAnEnemysHeadMisses()
         {
             var enemy = CreateTarget(new Vector3(4f, .8f, 0f));
@@ -276,6 +291,8 @@ namespace TienTuyen.Combat.Tests
             for (float waited = 0; waited < 5f && view.MenuBlend < 1f; waited += Time.unscaledDeltaTime) yield return null;
             Assert.That(view.MenuBlend, Is.EqualTo(1f));
             Assert.That(rig.Relaxed, Is.True, "The menu hero stands relaxed, never in the aim pose.");
+            Assert.That(rig.AtEaseWeight, Is.EqualTo(1f), "The menu shot opens on the hero already at ease, not lowering his weapon into it.");
+            Assert.That(rig.StepFrame(out _, out _), Is.True, "The menu hero's foot is already up on the step.");
 
             game.BeginRun();
             for (float waited = 0; waited < 5f && view.MenuBlend > 0f; waited += Time.unscaledDeltaTime) yield return null;
@@ -308,6 +325,33 @@ namespace TienTuyen.Combat.Tests
             Assert.That(fps.Active, Is.False);
             for (int i = 0; i < renderers.Length; i++)
                 Assert.That((renderers[i].shadowCastingMode, renderers[i].forceRenderingOff), Is.EqualTo(before[i]), renderers[i].name);
+        }
+
+        [UnityTest]
+        public IEnumerator FirstPersonKnifeTakesTheGunsPlaceAndCrossesTheViewAtContact()
+        {
+            var view = Camera.main.GetComponent<CombatThirdPersonCamera>();
+            var fps = view.GetComponent<CombatFirstPersonView>();
+            view.SetFirstPerson(true);
+            for (float waited = 0; waited < 5f && !fps.Active; waited += Time.unscaledDeltaTime) yield return null;
+            yield return null;
+            var models = view.transform.Find("ViewmodelCamera/Viewmodel");
+            var gun = models.Find("Viewmodel_" + game.ActiveWeapon.Id);
+            Assert.That(game.DrawKnife(), Is.True);
+            game.StepSimulation(CombatRules.WeaponDrawSeconds + .1f, Vector2.zero);
+            yield return null;
+            var knife = models.Find("Viewmodel_knife");
+            Assert.That(knife != null && knife.gameObject.activeInHierarchy, Is.True, "First person shows no knife.");
+            Assert.That(gun.gameObject.activeInHierarchy, Is.False, "The gun's viewmodel stays in view with the knife out.");
+
+            // The blade crosses the middle of the view when the slash strikes, so what is seen and the damage agree.
+            Assert.That(game.Slash(), Is.True);
+            game.StepSimulation(CombatRules.KnifeContactSeconds, Vector2.zero);
+            yield return null;
+            Transform blade = null;
+            foreach (var bone in knife.GetComponentsInChildren<Transform>()) if (bone.name == "v_weapon.knife") blade = bone;
+            Vector3 seen = view.transform.Find("ViewmodelCamera").GetComponent<Camera>().WorldToViewportPoint(blade.position);
+            Assert.That(seen.x, Is.InRange(.35f, .65f), "The blade is off the middle of the view at contact.");
         }
 
         [UnityTest]
@@ -413,13 +457,14 @@ namespace TienTuyen.Combat.Tests
                 "The reload take is still moving the gun after the game's reload ended.");
         }
 
-        private (object entry, Transform transform) CreateTarget(Vector3 position)
+        private (object entry, Transform transform) CreateTarget(Vector3 position, int slot = 0)
         {
             SetField(game, "spawnTimer", 0f);
             Invoke("UpdateSpawn", 0f);
             SetField(game, "spawnTimer", 999f);
             var enemies = (Array)GetField(game, "enemies");
-            var enemy = enemies.GetValue(0);
+            var enemy = enemies.GetValue(slot);
+            if (GetField(enemy, "definition") == null) SetField(enemy, "definition", GetField(enemies.GetValue(0), "definition"));
             Assert.That(GetField(enemy, "definition"), Is.Not.Null);
             SetField(enemy, "active", true);
             SetField(enemy, "pending", false);

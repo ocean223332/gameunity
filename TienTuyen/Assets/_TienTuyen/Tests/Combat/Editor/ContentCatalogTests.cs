@@ -18,19 +18,19 @@ namespace TienTuyen.Combat.Tests
                 35f, 2.6f, 8f, 1.4f, 1.2f, 0.25f, spawnWeight, 1, 2);
 
         [Test]
-        public void P2HasThreeWeaponsAndThreeRegularPlusEliteEnemyRolesWithStableUniqueIds()
+        public void CatalogHasThreeStarterWeaponsAndBossLauncherWithStableUniqueIds()
         {
             var catalog = ContentCatalog.P2;
-            Assert.That(catalog.Weapons.Count, Is.EqualTo(3));
-            Assert.That(catalog.Enemies.Count, Is.EqualTo(4));
+            Assert.That(catalog.Weapons.Count, Is.EqualTo(4));
+            Assert.That(catalog.Enemies.Count, Is.EqualTo(5));
             Assert.That(catalog.Weapons.Select(w => w.Id),
-                Is.EquivalentTo(new[] { ContentIds.Rifle, ContentIds.Smg, ContentIds.Shotgun }));
+                Is.EquivalentTo(new[] { ContentIds.Rifle, ContentIds.Smg, ContentIds.Shotgun, ContentIds.Rpg18 }));
             Assert.That(catalog.Enemies.Select(e => e.Id),
-                Is.EquivalentTo(new[] { ContentIds.Infantry, ContentIds.Charger, ContentIds.Shooter, ContentIds.Elite }));
+                Is.EquivalentTo(new[] { ContentIds.Infantry, ContentIds.Charger, ContentIds.Shooter, ContentIds.Elite, ContentIds.Sniper }));
             Assert.That(catalog.Enemies.Select(e => e.Role),
-                Is.EquivalentTo(new[] { EnemyRole.Infantry, EnemyRole.Charger, EnemyRole.Shooter, EnemyRole.Elite }));
+                Is.EquivalentTo(new[] { EnemyRole.Infantry, EnemyRole.Charger, EnemyRole.Shooter, EnemyRole.Elite, EnemyRole.Sniper }));
             Assert.That(catalog.Weapons.Select(w => w.Id).Concat(catalog.Enemies.Select(e => e.Id)).Distinct().Count(),
-                Is.EqualTo(7));
+                Is.EqualTo(9));
         }
 
         [Test]
@@ -49,9 +49,11 @@ namespace TienTuyen.Combat.Tests
             Assert.That((shotgun.DamagePerHit, shotgun.PelletsPerShot, shotgun.ShotCooldownSeconds,
                 shotgun.MagazineSize, shotgun.Range, shotgun.BasePrice),
                 Is.EqualTo((8f, 6, 0.85f, 5, 4.5f, 22)));
+            var rpg=catalog.GetWeapon(ContentIds.Rpg18);
+            Assert.That((rpg.DamagePerHit,rpg.MagazineSize,rpg.ReloadSeconds,rpg.Range),Is.EqualTo((140f,1,4f,24f)));
             var reload = shotgun.RoundReload.Value;
             Assert.That((reload.StartSeconds, reload.PerRoundSeconds, reload.EndSeconds), Is.EqualTo((0.6f, 0.175f, 0.4667f)));
-            Assert.That(catalog.Weapons.All(w => w.DamagePerHit > 0 && w.DamagePerHit <= 36 &&
+            Assert.That(catalog.Weapons.Where(w=>w.Id!=ContentIds.Rpg18).All(w => w.DamagePerHit > 0 && w.DamagePerHit <= 36 &&
                 w.ShotCooldownSeconds >= 0.1f && w.ShotCooldownSeconds <= 1.6f &&
                 w.Range >= 4.5f && w.Range <= 13f && w.BasePrice >= 18 && w.BasePrice <= 30), Is.True);
         }

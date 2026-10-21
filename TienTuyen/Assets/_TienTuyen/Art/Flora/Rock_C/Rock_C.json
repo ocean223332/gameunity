@@ -1,0 +1,25 @@
+{
+ "name": "Rock_C",
+ "materials": [
+  {
+   "name": "Rock_C_M0",
+   "leaf": false,
+   "cutout": false,
+   "normal": true
+  },
+  {
+   "name": "Rock_C_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "height": 2.308,
+ "radius": 1.684,
+ "tris": [
+  644,
+  76,
+  4
+ ]
+}

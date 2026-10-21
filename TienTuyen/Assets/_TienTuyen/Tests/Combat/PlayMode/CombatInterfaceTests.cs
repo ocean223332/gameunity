@@ -60,7 +60,8 @@ namespace TienTuyen.Combat.Tests
             Assert.That(Screen("HUD"), Is.False);
 
             game.BeginRun();
-            yield return new WaitForSecondsRealtime(.5f);
+            float deadline = Time.realtimeSinceStartup + 3f;
+            while (Screen("MainMenu") && Time.realtimeSinceStartup < deadline) yield return null;
             Assert.That(Screen("HUD"), Is.True);
             Assert.That(Screen("MainMenu"), Is.False);
 

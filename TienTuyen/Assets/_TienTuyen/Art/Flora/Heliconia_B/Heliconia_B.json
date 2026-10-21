@@ -1,0 +1,30 @@
+{
+ "name": "Heliconia_B",
+ "materials": [
+  {
+   "name": "Heliconia_B_M0",
+   "leaf": true,
+   "cutout": true,
+   "normal": true
+  },
+  {
+   "name": "Heliconia_B_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "noCard": false,
+ "height": 1.6,
+ "radius": 0.964,
+ "tris": [
+  434,
+  162,
+  4
+ ],
+ "cutoff": 0.3,
+ "smoothness": 0.4,
+ "translucency": 0.95,
+ "tintVariation": 0.12
+}

@@ -16,14 +16,24 @@ namespace TienTuyen.Presentation
     /// <summary>
     /// Draws the placed FloraBiome prefabs with GPU instancing instead of thousands of GameObjects: the
     /// prefabs' LODGroups give the meshes, materials and switch heights, each plant picks its LOD from its
-    /// screen height like a LODGroup would, and whole cells outside the view are skipped. No colliders exist;
-    /// the plants are only drawn. Shadows come from LOD0 and LOD1, never from the cross-cards.
+    /// screen height like a LODGroup would, and whole cells outside the view are skipped. Near a switch height a
+    /// plant is drawn in both levels with complementary dither (EnvLeaf _FloraFade), and past the last level it
+    /// dithers away, so nothing pops. No colliders exist; the plants are only drawn. Shadows come from LOD0 and
+    /// LOD1, never from the cross-cards.
     /// </summary>
     [DisallowMultipleComponent]
     [DefaultExecutionOrder(100)]
     public sealed class FloraScatter : MonoBehaviour
     {
         private const float CellSize = 20f;
+        // Fraction of a switch height over which the two levels cross-fade, on each side of it.
+        // Not const: GraphicsBenchmark switches the fade off (-florafade off) to measure it.
+        internal static float FadeBand = .08f;
+        // Fades are drawn in steps, one draw per step and sign: 1..Steps fading in, Steps+1..2*Steps fading out.
+        private const int FadeSteps = 4;
+        // A plant casts shadows out to this many metres per metre of its height (0: out to the shadow distance), so
+        // knee-high cover stops filling the shadow cascades long before the trees do.
+        internal static float ShadowMetresPerHeight;
 
         private sealed class Part
         {
@@ -40,6 +50,8 @@ namespace TienTuyen.Presentation
             public float[] InstanceSize;   // per placed instance: Size * scale
             // Per LOD level: drawn and casting shadows, drawn only, casting shadows only (just out of view).
             public List<Matrix4x4>[] Lit, Unshadowed, ShadowOnly;
+            // Per LOD level and fade step: plants in a cross-fade, with and without shadows.
+            public List<Matrix4x4>[][] FadingLit, FadingUnshadowed;
         }
 
         private sealed class Cell
@@ -56,8 +68,12 @@ namespace TienTuyen.Presentation
         private Bounds worldBounds;
         private readonly Plane[] planes = new Plane[6];
         private Vector3 lastPosition = new Vector3(float.NaN, 0, 0);
+        // Copies of the prefab materials, so the alpha-to-coverage switch never edits the assets.
+        private readonly Dictionary<Material, Material> drawMaterials = new Dictionary<Material, Material>();
+        private bool alphaToMask;
         private Quaternion lastRotation;
         private float lastFov;
+        private static MaterialPropertyBlock[] fades;
 
         public IReadOnlyList<FloraInstance> Instances => instances;
         public FloraBiome Biome => biome;
@@ -79,7 +95,7 @@ namespace TienTuyen.Presentation
             biome = source;
             instances = placed.ToArray();
             kinds = new Kind[biome.Plants.Length];
-            for (int i = 0; i < kinds.Length; i++) kinds[i] = Describe(biome.Plants[i].Prefab);
+            for (int i = 0; i < kinds.Length; i++) kinds[i] = Describe(biome.Plants[i].Prefab, drawMaterials);
 
             matrices = new Matrix4x4[instances.Length];
             var byCell = new Dictionary<Vector2Int, Cell>();
@@ -110,7 +126,7 @@ namespace TienTuyen.Presentation
             }
         }
 
-        private static Kind Describe(GameObject prefab)
+        private static Kind Describe(GameObject prefab, Dictionary<Material, Material> copies)
         {
             if (prefab == null) return null;
             var group = prefab.GetComponent<LODGroup>();
@@ -123,7 +139,9 @@ namespace TienTuyen.Presentation
                 Size = group.size,
                 Lit = new List<Matrix4x4>[lods.Length],
                 Unshadowed = new List<Matrix4x4>[lods.Length],
-                ShadowOnly = new List<Matrix4x4>[lods.Length]
+                ShadowOnly = new List<Matrix4x4>[lods.Length],
+                FadingLit = new List<Matrix4x4>[lods.Length][],
+                FadingUnshadowed = new List<Matrix4x4>[lods.Length][]
             };
             for (int l = 0; l < lods.Length; l++)
             {
@@ -135,13 +153,25 @@ namespace TienTuyen.Presentation
                     if (filter == null || filter.sharedMesh == null) continue;
                     var materials = renderer.sharedMaterials;
                     for (int s = 0; s < filter.sharedMesh.subMeshCount && s < materials.Length; s++)
-                        parts.Add(new Part { Mesh = filter.sharedMesh, Submesh = s, Material = materials[s] });
+                    {
+                        var source = materials[s];
+                        if (source != null && !copies.ContainsKey(source))
+                            copies.Add(source, new Material(source) { name = source.name });
+                        parts.Add(new Part { Mesh = filter.sharedMesh, Submesh = s, Material = source == null ? null : copies[source] });
+                    }
                 }
                 kind.Lods[l] = parts.ToArray();
                 kind.Transitions[l] = lods[l].screenRelativeTransitionHeight;
                 kind.Lit[l] = new List<Matrix4x4>(256);
                 kind.Unshadowed[l] = new List<Matrix4x4>(256);
                 kind.ShadowOnly[l] = new List<Matrix4x4>(64);
+                kind.FadingLit[l] = new List<Matrix4x4>[FadeSteps * 2 + 1];
+                kind.FadingUnshadowed[l] = new List<Matrix4x4>[FadeSteps * 2 + 1];
+                for (int f = 1; f <= FadeSteps * 2; f++)
+                {
+                    kind.FadingLit[l][f] = new List<Matrix4x4>();
+                    kind.FadingUnshadowed[l][f] = new List<Matrix4x4>();
+                }
             }
             return kind;
         }
@@ -150,6 +180,13 @@ namespace TienTuyen.Presentation
         {
             var view = Camera.main;
             if (view == null || kinds == null) return;
+            // With MSAA the cut-outs blend their edges by coverage instead of a hard clip.
+            bool msaa = view.allowMSAA && GraphicsSettings.currentRenderPipeline is UniversalRenderPipelineAsset asset && asset.msaaSampleCount > 1;
+            if (msaa != alphaToMask)
+            {
+                alphaToMask = msaa;
+                foreach (var copy in drawMaterials.Values) copy.SetFloat("_AlphaToMask", msaa ? 1f : 0f);
+            }
             var t = view.transform;
             if ((t.position - lastPosition).sqrMagnitude > .04f || Quaternion.Angle(t.rotation, lastRotation) > .75f ||
                 !Mathf.Approximately(view.fieldOfView, lastFov))
@@ -168,6 +205,7 @@ namespace TienTuyen.Presentation
                     for (int l = 0; l < kind.Lit.Length; l++)
                     {
                         kind.Lit[l].Clear(); kind.Unshadowed[l].Clear(); kind.ShadowOnly[l].Clear();
+                        for (int f = 1; f <= FadeSteps * 2; f++) { kind.FadingLit[l][f].Clear(); kind.FadingUnshadowed[l][f].Clear(); }
                     }
             GeometryUtility.CalculateFrustumPlanes(view, planes);
             Vector3 eye = view.transform.position;
@@ -183,16 +221,57 @@ namespace TienTuyen.Presentation
                     var kind = kinds[instances[i].Species];
                     if (kind == null) continue;
                     float distance = Mathf.Max(Vector3.Distance(eye, instances[i].Position), .01f);
+                    float reach = ShadowMetresPerHeight > 0f ? Mathf.Min(shadowReach, ShadowMetresPerHeight * HeightOf(instances[i])) : shadowReach;
                     float screen = kind.InstanceSize[i] * perMetre / distance;
                     int level = 0;
                     while (level < kind.Transitions.Length && screen < kind.Transitions[level]) level++;
-                    if (level >= kind.Transitions.Length) continue;   // culled, like a LODGroup past its last level
-                    // The cross-cards never cast shadows.
-                    bool shadows = level < kind.Transitions.Length - 1 && distance < shadowReach;
-                    if (seen) (shadows ? kind.Lit : kind.Unshadowed)[level].Add(matrices[i]);
-                    else if (shadows) kind.ShadowOnly[level].Add(matrices[i]);
+                    if (!seen)
+                    {
+                        // Out of view only shadows count, and those need no fade.
+                        if (level < kind.Transitions.Length - 1 && distance < reach) kind.ShadowOnly[level].Add(matrices[i]);
+                        continue;
+                    }
+                    // In the band around a switch height both levels draw: the upper level keeps a share of its
+                    // pixels and the lower one the rest. Past the last level the plant only fades out.
+                    int upper = level < kind.Transitions.Length && screen < kind.Transitions[level] * (1f + FadeBand) ? level : level - 1;
+                    float kept = 1f;
+                    if (upper >= 0 && upper < kind.Transitions.Length)
+                        kept = Mathf.InverseLerp(kind.Transitions[upper] * (1f - FadeBand), kind.Transitions[upper] * (1f + FadeBand), screen);
+                    if (kept >= 1f || kept <= 0f)
+                    {
+                        if (level >= kind.Transitions.Length) continue;   // culled, like a LODGroup past its last level
+                        Add(kind, level, distance < reach, matrices[i], 0);
+                        continue;
+                    }
+                    int step = Mathf.Clamp((int)(kept * FadeSteps), 0, FadeSteps - 1) + 1;
+                    Add(kind, upper, distance < reach, matrices[i], step);
+                    if (upper + 1 < kind.Transitions.Length) Add(kind, upper + 1, distance < reach, matrices[i], FadeSteps + step);
                 }
             }
+        }
+
+        private static void Add(Kind kind, int level, bool nearShadows, Matrix4x4 matrix, int fade)
+        {
+            // The cross-cards never cast shadows.
+            bool shadows = nearShadows && level < kind.Transitions.Length - 1;
+            if (fade == 0) (shadows ? kind.Lit : kind.Unshadowed)[level].Add(matrix);
+            else (shadows ? kind.FadingLit : kind.FadingUnshadowed)[level][fade].Add(matrix);
+        }
+
+        /// <summary>The _FloraFade of a fade step: the middle of the step, negative for the level fading out.</summary>
+        private static MaterialPropertyBlock Fade(int step)
+        {
+            if (fades == null)
+            {
+                fades = new MaterialPropertyBlock[FadeSteps * 2 + 1];
+                for (int f = 1; f <= FadeSteps * 2; f++)
+                {
+                    float kept = ((f - 1) % FadeSteps + .5f) / FadeSteps;
+                    fades[f] = new MaterialPropertyBlock();
+                    fades[f].SetFloat("_FloraFade", f <= FadeSteps ? kept : -kept);
+                }
+            }
+            return fades[step];
         }
 
         private void Submit()
@@ -206,11 +285,16 @@ namespace TienTuyen.Presentation
                     Draw(kind.Lods[l], kind.Lit[l], ShadowCastingMode.On);
                     Draw(kind.Lods[l], kind.Unshadowed[l], ShadowCastingMode.Off);
                     Draw(kind.Lods[l], kind.ShadowOnly[l], ShadowCastingMode.ShadowsOnly);
+                    for (int f = 1; f <= FadeSteps * 2; f++)
+                    {
+                        Draw(kind.Lods[l], kind.FadingLit[l][f], ShadowCastingMode.On, Fade(f));
+                        Draw(kind.Lods[l], kind.FadingUnshadowed[l][f], ShadowCastingMode.Off, Fade(f));
+                    }
                 }
             }
         }
 
-        private void Draw(Part[] parts, List<Matrix4x4> list, ShadowCastingMode shadows)
+        private void Draw(Part[] parts, List<Matrix4x4> list, ShadowCastingMode shadows, MaterialPropertyBlock fade = null)
         {
             if (list.Count == 0) return;
             foreach (var part in parts)
@@ -222,7 +306,8 @@ namespace TienTuyen.Presentation
                     shadowCastingMode = shadows,
                     receiveShadows = true,
                     lightProbeUsage = LightProbeUsage.BlendProbes,
-                    motionVectorMode = MotionVectorGenerationMode.ForceNoMotion
+                    motionVectorMode = MotionVectorGenerationMode.Object,
+                    matProps = fade
                 };
                 for (int start = 0; start < list.Count; start += 1023)
                     Graphics.RenderMeshInstanced(rp, part.Mesh, part.Submesh, list, Mathf.Min(1023, list.Count - start), start);

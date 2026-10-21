@@ -35,11 +35,16 @@ Material:
     m_Ints: []
     m_Floats:
     - _AlphaClip: 1
+    - _AlphaToMask: 0
     - _BumpScale: 1
     - _Cull: 0
     - _Cutoff: 0.45
     - _Flutter: 0.04
     - _Occlusion: 0.8
+    - _RockMoss: 0.6
+    - _RockSink: 0.35
+    - _RockTopBlend: 0
+    - _Saturation: 0.85
     - _Smoothness: 0.25
     - _TintVariation: 0.18
     - _Translucency: 0.8

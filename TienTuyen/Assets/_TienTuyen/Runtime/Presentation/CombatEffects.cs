@@ -70,7 +70,7 @@ namespace TienTuyen.Presentation
         private void LateUpdate()
         {
             if (game == null || game.State == CombatState.Paused) return;
-            float dt = Time.unscaledDeltaTime;
+            float dt = CombatArtDirector.FrameSeconds;
             ResetBloodForRun();
             blood.Tick(dt);
             if (muzzleLightTime > 0)
@@ -95,6 +95,7 @@ namespace TienTuyen.Presentation
 
         private void OnWeaponFired(int slot, Vector3 start, Vector3 end)
         {
+            if(game.WeaponAt(slot)?.Id==TienTuyen.Content.ContentIds.Rpg18)return;
             shotDirection = (end - start).normalized;
             hasEnemyImpact = false;
             Transform socket = muzzle?.Invoke();

@@ -1,0 +1,68 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0fa7baf63bdd448fb8a6e8e3d366cd6b, type: 3}
+  m_Name: CommanderProfile
+  m_EditorClassIdentifier: TienTuyen.Presentation::TienTuyen.Presentation.SkinnedCharacterProfile
+  model: {fileID: 504566159415923067, guid: 72251ee503c64ac44a392092e95b8a23, type: 3}
+  avatar: {fileID: 9000000, guid: 2d940961e590bd84f95feab6910405e7, type: 2}
+  upperBodyMask: {fileID: 0}
+  idle: {fileID: -3692187359208236184, guid: 0d9bd24e3c01b5648a8c937a23f8c256, type: 3}
+  aim: {fileID: -1913338626883129411, guid: 7197205de4f46f64ba2766c8871c1ece, type: 3}
+  runForward: {fileID: 2216972904187992000, guid: aea41a71d039df64f9aee2b406a053fb, type: 3}
+  runBackward: {fileID: 0}
+  strafeLeft: {fileID: 0}
+  strafeRight: {fileID: 0}
+  reload: {fileID: 0}
+  hit: {fileID: 0}
+  death: {fileID: 0}
+  meleeAttack: {fileID: 0}
+  meleeContactTime: 0
+  knifeIdle: {fileID: 0}
+  guardHold: 0
+  runCarriesUpperBody: 0
+  fistChannel: {x: 0, y: 0}
+  chargeTelegraph: {fileID: 0}
+  chargeDash: {fileID: 0}
+  chargeDashCycleDistance: 0
+  chargeRecovery: {fileID: 0}
+  deathFloorLift:
+    serializedVersion: 2
+    m_Curve: []
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  leftSole: []
+  rightSole: []
+  runForwardSpeed: 4.7
+  runBackwardSpeed: 0
+  strafeLeftSpeed: 0
+  strafeRightSpeed: 0
+  maxPlaybackRate: 1.3
+  crouchIdle: {fileID: 0}
+  crouchForward: {fileID: 0}
+  crouchBackward: {fileID: 0}
+  crouchLeft: {fileID: 0}
+  crouchRight: {fileID: 0}
+  crouchForwardSpeed: 0
+  crouchBackwardSpeed: 0
+  crouchLeftSpeed: 0
+  crouchRightSpeed: 0
+  walkForward: {fileID: 0}
+  walkBackward: {fileID: 0}
+  walkLeft: {fileID: 0}
+  walkRight: {fileID: 0}
+  walkForwardSpeed: 0
+  walkBackwardSpeed: 0
+  walkLeftSpeed: 0
+  walkRightSpeed: 0
+  modelScale: 1
+  weaponSets: []

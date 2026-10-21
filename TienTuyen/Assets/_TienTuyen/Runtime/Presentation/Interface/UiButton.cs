@@ -27,7 +27,7 @@ namespace TienTuyen.Presentation.Interface
         private Style style;
         private Image fill, outline, accent, glow;
         private CanvasGroup group;
-        private bool hovered, focused, pressed;
+        private bool hovered, focused, pressed, hoverSounded;
         private float highlight, chosen;
 
         public static UiButton Create(string name, Transform parent, Style style, string caption, Action onClick, float radius = 6f)
@@ -74,20 +74,49 @@ namespace TienTuyen.Presentation.Interface
 
         private void Awake() => Button = GetComponent<Button>();
 
-        public void OnPointerEnter(PointerEventData eventData) => hovered = true;
-        public void OnPointerExit(PointerEventData eventData) { hovered = false; pressed = false; }
-        public void OnSelect(BaseEventData eventData) => focused = true;
-        public void OnDeselect(BaseEventData eventData) => focused = false;
+        public void OnPointerEnter(PointerEventData eventData)
+        {
+            hovered = true;
+            PlayHoverOnce();
+        }
+
+        public void OnPointerExit(PointerEventData eventData)
+        {
+            hovered = false;
+            pressed = false;
+            if (!focused) hoverSounded = false;
+        }
+
+        public void OnSelect(BaseEventData eventData)
+        {
+            focused = true;
+            PlayHoverOnce();
+        }
+
+        public void OnDeselect(BaseEventData eventData)
+        {
+            focused = false;
+            if (!hovered) hoverSounded = false;
+        }
         public void OnPointerDown(PointerEventData eventData) => pressed = true;
         public void OnPointerUp(PointerEventData eventData) => pressed = false;
 
         private void OnDisable()
         {
             hovered = pressed = false;
+            hoverSounded = false;
             highlight = 0;
         }
 
         private void Update() => Refresh(Time.unscaledDeltaTime);
+
+        private void PlayHoverOnce()
+        {
+            if (hoverSounded) return;
+            hoverSounded = true;
+            var audio = FindFirstObjectByType<CombatAudio>();
+            if (audio != null) audio.PlayUi("UI_Hover");
+        }
 
         private void Refresh(float deltaTime)
         {

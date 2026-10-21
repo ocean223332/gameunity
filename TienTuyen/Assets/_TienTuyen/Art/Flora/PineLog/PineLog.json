@@ -1,0 +1,25 @@
+{
+ "name": "PineLog",
+ "materials": [
+  {
+   "name": "PineLog_M0",
+   "leaf": false,
+   "cutout": false,
+   "normal": true
+  },
+  {
+   "name": "PineLog_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "height": 1.222,
+ "radius": 5.092,
+ "tris": [
+  2162,
+  630,
+  4
+ ]
+}

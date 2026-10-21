@@ -1,6 +1,6 @@
 {
   "name": "TienTuyen.Combat.Editor.Tests",
-  "references": ["TienTuyen.Combat", "TienTuyen.Progression", "TienTuyen.Waves", "TienTuyen.Content"],
+  "references": ["TienTuyen.Combat", "TienTuyen.Progression", "TienTuyen.Waves", "TienTuyen.Content", "TienTuyen.Presentation"],
   "includePlatforms": ["Editor"],
   "optionalUnityReferences": ["TestAssemblies"],
   "autoReferenced": false

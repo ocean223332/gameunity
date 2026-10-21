@@ -1,0 +1,51 @@
+{
+  "skill_name": "pose-capture-review",
+  "evals": [
+    {
+      "id": 1,
+      "name": "knife-upright-free-hand",
+      "prompt": "Sage handed back the knife rollback: the hero is back on the CS:GO (xdR) knife idle. Comparison sheet: inputs/knife_sheet_A.png (top row ours, bottom row the CS:GO stand_idle on the Valve stand-in, front/side/behind). Sage says the pose matches CS:GO. Review it and decide accept or rework.",
+      "expected_output": "Catches on its own that the hero's free LEFT hand is bent back at the wrist with the palm forward and fingers spread upright ('stop' hand), unlike the CS:GO reference; asks for rework or flags it to the user instead of accepting.",
+      "files": [
+        "inputs/knife_sheet_A.png"
+      ],
+      "assertions": [
+        "Verdict is not ACCEPT (REWORK or ASK USER)",
+        "Names the LEFT (free, non-knife) hand or wrist as the problem",
+        "Describes it as bent back / upright / palm-forward / spread fingers vs the CS:GO reference",
+        "Vietnamese user message mentions the left-hand problem"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "menu-hip-hand-hovering",
+      "prompt": "Sage handed back the menu pose, version 1 'hand on hip': palm flat on the waist above the belt and canteen, fingers forward, thumb behind, elbow out and back, no clipping, 2 mm gap. Shots: inputs/menu_full_B.png (1920x1080) and inputs/menu_arm_B.png (arm crop). The user wants the hero to look confident, not timid. Review and decide accept or rework.",
+      "expected_output": "Sees that the left hand does not actually rest on the hip: it hovers beside the belt/canteen with fingers pointing outward and a bent wrist, contradicting the handback; does not accept it as is.",
+      "files": [
+        "inputs/menu_full_B.png",
+        "inputs/menu_arm_B.png"
+      ],
+      "assertions": [
+        "Verdict is not ACCEPT",
+        "Says the hand does not actually rest on the hip (hovers beside belt/canteen)",
+        "Mentions the fingers pointing outward or the bent wrist",
+        "Calls out that the handback description does not match the image"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "knife-fixed-should-pass",
+      "prompt": "Sage handed back a fix for the hero's knife stance. Sheet: inputs/knife_sheet_C.png (top ours, bottom CS:GO stand_idle on the Valve stand-in) and inputs/knife_lefthand_C.png (left hand close-ups, front and side). Review and decide accept or rework.",
+      "expected_output": "Accepts (the left hand now follows the forearm with half-closed fingers, matching the reference); may note minor differences but does not invent blocking defects.",
+      "files": [
+        "inputs/knife_sheet_C.png",
+        "inputs/knife_lefthand_C.png"
+      ],
+      "assertions": [
+        "Verdict is ACCEPT",
+        "Confirms the left hand follows the forearm / fingers half closed",
+        "Does not raise a blocking defect that is not visible in the images"
+      ]
+    }
+  ]
+}

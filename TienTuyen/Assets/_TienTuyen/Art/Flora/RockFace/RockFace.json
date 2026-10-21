@@ -1,0 +1,25 @@
+{
+ "name": "RockFace",
+ "materials": [
+  {
+   "name": "RockFace_M0",
+   "leaf": false,
+   "cutout": false,
+   "normal": true
+  },
+  {
+   "name": "RockFace_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "height": 3.385,
+ "radius": 9.596,
+ "tris": [
+  1871,
+  839,
+  4
+ ]
+}

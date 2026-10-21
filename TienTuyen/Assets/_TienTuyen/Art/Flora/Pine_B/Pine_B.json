@@ -1,0 +1,31 @@
+{
+ "name": "Pine_B",
+ "materials": [
+  {
+   "name": "Pine_B_M0",
+   "leaf": false,
+   "cutout": false,
+   "normal": true
+  },
+  {
+   "name": "Pine_B_M1",
+   "leaf": true,
+   "cutout": true,
+   "normal": true
+  },
+  {
+   "name": "Pine_B_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "height": 28.8,
+ "radius": 8.763,
+ "tris": [
+  11844,
+  3176,
+  4
+ ]
+}

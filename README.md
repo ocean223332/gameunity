@@ -45,4 +45,42 @@ Building and compiling do not replace a full 6-wave playtest. Automated lifecycl
 - [ART_DIRECTION — style and assets](docs/ART_DIRECTION.md)
 - [CREDITS — third-party and derived assets](docs/CREDITS.md)
 
+### Audio provenance
+
+The approved combat SFX are stored in `TienTuyen/Assets/_TienTuyen/Audio/Resources/CombatAudio`.
+Valve's AK47, MP5-SD and XM1014 recordings and the ground footsteps come from the
+pinned [sourcesounds/csgo mirror](https://github.com/sourcesounds/csgo/tree/08f1bd6835d4f510d2ccaedeab6bb9f637b388ab).
+Reload, draw, knife and shell contacts come from the [RAGNA SS GameBanana pack
+552059](https://gamebanana.com/mods/552059). Both sets contain Valve proprietary
+originals; their credits and the pack's licence note are recorded in
+[CREDITS](docs/CREDITS.md) and [Audio/Sources.md](TienTuyen/Assets/_TienTuyen/Audio/Sources.md).
+The remaining UI, impact, vocal, swish and cicada recordings are CC0 from Kenney,
+TinyWorlds, artisticdude and syncopika.
+
+The menu plays **Adagio for Strings, Op. 11** by Samuel Barber (1936), performed by
+the Vancouver Symphony Orchestra, conducted by Georges Delerue, from the *Platoon*
+soundtrack (Atlantic, 1986; orchestra credit from the album, the video names only
+Delerue). Source: [YouTube](https://www.youtube.com/watch?v=hqVFWlZcnUg), uploaded
+2023-03-19 by [서해지](https://www.youtube.com/channel/UC92UvwU5ZlP3M__GQRSuMHg).
+The composition and recording are copyrighted; the fan upload grants no licence.
+
+Starting a run crossfades to **Constance** (Kevin MacLeod, 2011, ISRC USUAN1100850)
+at the existing quieter in-game level; returning to the menu crossfades back.
+Both tracks use edited internal loops. Constance is sourced from
+[incompetech.com](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100850)
+under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/):
+
+> "Constance" Kevin MacLeod (incompetech.com)
+>
+> Licensed under Creative Commons: By Attribution 4.0 License
+>
+> http://creativecommons.org/licenses/by/4.0/
+
 The design documents describe the target experience; features are only considered available once implemented and verified. The confirmed configuration above supersedes the corresponding "undecided" notes in earlier proposal documents.
+
+## Sniper enemy and local test controls
+
+- The sniper reuses the existing shooter soldier model and animation, carrying the existing rifle model with a scope and extended barrel. It replaces the pistol enemy.
+- It spawns rarely from wave 2 (weight 1), with at most two active/announced at once. It retreats inside 8 m, approaches when beyond 10 m, and can aim/fire out to 14 m. The 8 m inner firing boundary keeps it usable along the arena's shorter edge.
+- Its red warning locks direction for 1.5 seconds before a single shot. Hold C or Left Ctrl to crouch under the shot; movement and cover also avoid it. Its first encounter each run pauses for a short Vietnamese tutorial.
+- F6 toggles invulnerability; F7 skips a wave without rewards; F8 announces a sniper from wave 2, respecting its cap. Restart resets test mode and the tutorial.

@@ -17,12 +17,14 @@ namespace TienTuyen.Editor
     {
         public const string Models = "Assets/_TienTuyen/Art/Resources/Models";
         public const string Textures = "Assets/_TienTuyen/Art/Props/Textures";
+        /// <summary>Prop texture sets imported at 1024 (see PropTexturePostprocessor).</summary>
+        public static readonly string[] Capped1024 = { "truck_zil_a", "truck_a", "truck_d", "bicycle" };
         public const string Materials = "Assets/_TienTuyen/Art/Props/Materials";
         public const string StationTextures = "Assets/_TienTuyen/Art/Resources/Props";
 
         public static readonly string[] Catalog =
         {
-            "rifle", "smg", "shotgun", "m16", "etool", "supply_crate", "crate", "sandbag", "drum", "rock",
+            "rifle", "smg", "shotgun", "m16", "supply_crate", "crate", "sandbag", "drum", "rock",
             "shed", "watchtower", "cookfire", "bunker", "truck", "truck_zil", "aa_gun", "bicycle",
         };
 
@@ -114,7 +116,9 @@ namespace TienTuyen.Editor
             texture.alphaSource = TextureImporterAlphaSource.FromInput;
             texture.mipmapEnabled = true;
             texture.anisoLevel = 4;
-            texture.maxTextureSize = 2048;
+            // A mask is flat colour areas, and these sets showed no loss at 2x zoom from the closest gameplay camera:
+            // 1024 looks the same there at a quarter of the memory.
+            texture.maxTextureSize = mask || Array.IndexOf(PropArtInstaller.Capped1024, file.Substring(0, file.LastIndexOf('_'))) >= 0 ? 1024 : 2048;
             texture.textureCompression = TextureImporterCompression.CompressedHQ;
             if (!station) return;
             // Tiling cloth and the cut-out net (alpha), loaded at runtime by StationMaterials.

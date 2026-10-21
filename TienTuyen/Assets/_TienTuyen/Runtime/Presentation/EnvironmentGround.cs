@@ -7,15 +7,26 @@ namespace TienTuyen.Presentation
 {
     /// <summary>
     /// Terrain meshes and ground paint. One blended surface replaces separate
-    /// clearing, puddle and rut meshes: the splat map paints four scanned layers
-    /// (laterite, mud, leaf litter, grass) plus puddles, trampled paths, scorch and
-    /// crater ejecta onto a single heightfield; a relief map shades the hollows, path
-    /// beds and blast pits the flat playfield cannot carry, and a road distance field
-    /// lets the shader cut the wheel ruts at any resolution.
+    /// clearing, puddle and rut meshes: around the station the splat map paints the
+    /// scanned layers (soil, mud, pine needles, grass) plus puddles, trampled paths,
+    /// scorch and crater ejecta onto a single heightfield; a relief map shades the
+    /// hollows, path beds and blast pits the flat playfield cannot carry, and a road
+    /// distance field lets the shader cut the wheel ruts at any resolution. Past the
+    /// station EnvGround paints the open meadow and the rock on the steeps itself.
     /// </summary>
     internal static class EnvironmentGround
     {
-        private const float InnerExtent = 64f, InnerCell = 1f, OuterExtent = 208f, OuterCell = 4f;
+        /// <summary>
+        /// Three nested grids: 1 m around the station, 2 m over the valley slopes and the karst wall (a rectangle
+        /// reaching south-west over it), 4 m out to the edge.
+        /// </summary>
+        public const float InnerExtent = 64f, MiddleWest = -304f, MiddleEast = 160f, MiddleSouth = -304f, MiddleNorth = 160f;
+        private const float InnerCell = 1f, MiddleCell = 2f, OuterCell = 4f;
+        /// <summary>
+        /// Half size of the terrain mesh, on the 4 m grid and past the river's far plain (EnvironmentLayout.RiverReach);
+        /// the backdrop's near rings take over past it.
+        /// </summary>
+        public const float OuterExtent = L.RiverReach > 340f ? (int)(L.RiverReach / OuterCell + .999f) * OuterCell : 340f;
         private const float SplatMin = -64f, SplatSize = 128f;
         private const int SplatResolution = 1024;
         private const float RoadCell = .5f;
@@ -57,94 +68,162 @@ namespace TienTuyen.Presentation
 
         public static Material CreateMaterial()
         {
+            var layers = new TerrainLayer[Layers.Length];
+            for (int i = 0; i < Layers.Length; i++) layers[i] = Resources.Load<TerrainLayer>("Environment/Ground/" + Layers[i]);
             var material = ProceduralArt.Environment("Ground", "Env_Ground");
             if (material == null)
-                return ProceduralArt.Lit("Env_Ground", Color.white, .06f, false, Layer("Litter", "Albedo"), Layer("Litter", "Normal"), .8f);
-            foreach (string layer in Layers)
+                return ProceduralArt.Lit("Env_Ground", Color.white, .06f, false, layers[3]?.diffuseTexture, layers[3]?.normalMapTexture, .8f);
+            var tiling = Vector4.one;
+            var normalScale = Vector4.one;
+            for (int i = 0; i < Layers.Length; i++)
             {
-                material.SetTexture("_" + layer + "Map", Layer(layer, "Albedo"));
-                material.SetTexture("_" + layer + "Normal", Layer(layer, "Normal"));
-                material.SetTexture("_" + layer + "Mask", Layer(layer, "Mask"));
+                var layer = layers[i];
+                if (layer == null)
+                {
+                    Debug.LogWarning("EnvironmentGround: TerrainLayer Environment/Ground/" + Layers[i] + " missing.");
+                    continue;
+                }
+                string name = "_" + Layers[i];
+                material.SetTexture(name + "Diffuse", layer.diffuseTexture);
+                material.SetTexture(name + "Normal", layer.normalMapTexture);
+                material.SetTexture(name + "Mask", layer.maskMapTexture != null ? layer.maskMapTexture : DefaultMask(layer));
+                // Terrain Lit's convention: the diffuse remap max is the layer's tint, the mask remap its range.
+                Vector4 tint = layer.diffuseRemapMax;
+                material.SetColor(name + "Tint", new Color(tint.x, tint.y, tint.z, 1));
+                material.SetVector("_MaskMin" + i, layer.maskMapRemapMin);
+                material.SetVector("_MaskMax" + i, layer.maskMapRemapMax);
+                float perMetre = 1f / Mathf.Max(.01f, layer.tileSize.x);
+                if (i < 4) { tiling[i] = perMetre; normalScale[i] = layer.normalScale; }
+                else material.SetVector("_RockTiling", new Vector4(perMetre, layer.normalScale, 0, 0));
             }
+            // Patch layers mixed into a base layer, when they are there: a flowering sward into the grass, moss into the needles.
+            foreach (var (patchLayer, slot) in new[] { ("Grass2", 5), ("Moss", 6) })
+            {
+                var patches = Resources.Load<TerrainLayer>("Environment/Ground/" + patchLayer);
+                if (patches == null) continue;
+                string name = "_" + patchLayer;
+                material.SetTexture(name + "Diffuse", patches.diffuseTexture);
+                material.SetTexture(name + "Normal", patches.normalMapTexture);
+                material.SetTexture(name + "Mask", patches.maskMapTexture != null ? patches.maskMapTexture : DefaultMask(patches));
+                Vector4 tint = patches.diffuseRemapMax;
+                material.SetColor(name + "Tint", new Color(tint.x, tint.y, tint.z, 1));
+                material.SetVector("_MaskMin" + slot, patches.maskMapRemapMin);
+                material.SetVector("_MaskMax" + slot, patches.maskMapRemapMax);
+                material.SetVector(name + "Tiling", new Vector4(1f / Mathf.Max(.01f, patches.tileSize.x), patches.normalScale, 0, 0));
+            }
+            material.SetVector("_Tiling", tiling);
+            material.SetVector("_NormalScale", normalScale);
+            material.SetVector("_Playfield", new Vector4(L.HalfX, L.HalfZ, L.FlatMargin, 0));
             BakeSplat(out var splat, out var tone, out var relief, out var roadField);
             material.SetTexture("_SplatMap", splat);
             material.SetTexture("_ToneMap", tone);
             material.SetTexture("_ReliefMap", relief);
             material.SetTexture("_RoadField", roadField);
             material.SetVector("_SplatRect", new Vector4(SplatMin, SplatMin, 1f / SplatSize, 1f / SplatSize));
+            // Past the splat the road runs on through the hills from a coarser field over the whole terrain.
+            material.SetTexture("_RoadFar", BakeFarRoadField());
+            material.SetVector("_RoadFarRect", new Vector4(-OuterExtent, -OuterExtent, .5f / OuterExtent, .5f / OuterExtent));
+            // The river valley's paint (floodplain paddies, bank mud, the terraces) keys off the distance to the river.
+            material.SetTexture("_RiverField", BakeRiverField());
+            material.SetVector("_RiverRect", new Vector4(-OuterExtent, -OuterExtent, .5f / OuterExtent, .5f / OuterExtent));
+            material.SetVector("_River", new Vector4(RiverSurface, L.RiverHalfWidth, L.RiverPlain, L.FarPlain));
+            material.SetVector("_Karst", new Vector4(L.KarstWest, L.KarstEast, L.FallX, L.TwinFallX));
+            var karstRock = Resources.Load<Texture2D>("Environment/KarstRock");
+            if (karstRock != null) material.SetTexture("_KarstRock", karstRock);
+            // The backdrop's near rings continue the meadow from the same layers (EnvTerrain.hlsl).
+            foreach (string name in new[] { "Grass", "Needles", "Soil", "Rock" })
+            {
+                Shader.SetGlobalTexture("_EnvFar" + name, material.GetTexture("_" + name + "Diffuse"));
+                Shader.SetGlobalColor("_EnvFar" + name + "Tint", material.GetColor("_" + name + "Tint"));
+            }
+            Shader.SetGlobalVector("_EnvFarRockSlope", material.GetVector("_RockSlope"));
             return material;
         }
 
-        /// <summary>The scanned ground layers in Resources/Environment/Ground (see Art/Source/README.md).</summary>
-        private static readonly string[] Layers = { "Laterite", "Mud", "Litter", "Grass" };
+        /// <summary>The ground layers, as Unity TerrainLayers in Resources/Environment/Ground (Art/Source/pack_textures.py); any TerrainLayer can replace one.</summary>
+        private static readonly string[] Layers = { "Soil", "Mud", "Needles", "Grass", "Rock" };
 
-        private static Texture2D Layer(string layer, string map) => Resources.Load<Texture2D>("Environment/Ground/" + layer + "_" + map);
+        /// <summary>Mask for a TerrainLayer without one: its metallic and smoothness, full occlusion, mid height.</summary>
+        private static Texture2D DefaultMask(TerrainLayer layer)
+        {
+            var mask = new Texture2D(1, 1, TextureFormat.RGBA32, false, true) { name = layer.name + "_DefaultMask" };
+            mask.SetPixel(0, 0, new Color(layer.metallic, 1, .5f, layer.smoothness));
+            mask.Apply(false, true);
+            return mask;
+        }
 
         public static void Build(Transform root, Material ground)
         {
-            var inner = Grid(-InnerExtent, InnerExtent, InnerCell, false);
-            Spawn(root, "Terrain_Station", inner, ground, true);
-            var outer = Grid(-OuterExtent, OuterExtent, OuterCell, true);
-            Spawn(root, "Terrain_Hills", outer, ground, false);
+            var inner = new Rect(-InnerExtent, -InnerExtent, 2f * InnerExtent, 2f * InnerExtent);
+            var middle = Rect.MinMaxRect(MiddleWest, MiddleSouth, MiddleEast, MiddleNorth);
+            var outer = new Rect(-OuterExtent, -OuterExtent, 2f * OuterExtent, 2f * OuterExtent);
+            Spawn(root, "Terrain_Station", Grid("Env_TerrainInner", inner, InnerCell, Rect.zero, MiddleCell), ground, true);
+            Spawn(root, "Terrain_Valley", Grid("Env_TerrainMiddle", middle, MiddleCell, inner, OuterCell), ground, false);
+            Spawn(root, "Terrain_Hills", Grid("Env_TerrainOuter", outer, OuterCell, middle, OuterCell), ground, false);
             BuildCraterWater(root);
+            BuildRiver(root);
+            EnvironmentRiverlands.BuildKarst(root, ground);
+            EnvironmentGrass.Build(root, ground);
         }
 
         // ---------- Heightfield ----------
 
         /// <summary>
-        /// A smooth-shaded height grid. The outer grid skips the inner square; the
-        /// inner grid's border follows the outer grid's coarser edge so they meet
-        /// without cracks.
+        /// A smooth-shaded height grid over a rectangle that leaves out the rectangle (hole) a finer grid fills. Its
+        /// outer border follows the next grid's coarser cells (border cell), so neighbouring grids meet without cracks.
         /// </summary>
-        private static Mesh Grid(float min, float max, float cell, bool skipInner)
+        private static Mesh Grid(string name, Rect area, float cell, Rect hole, float borderCell)
         {
-            int n = Mathf.RoundToInt((max - min) / cell);
-            int stride = n + 1;
-            var heights = new float[stride * stride];
-            ProceduralArt.ParallelRows(stride, z =>
+            float minX = area.xMin, minZ = area.yMin;
+            int nx = Mathf.RoundToInt(area.width / cell), nz = Mathf.RoundToInt(area.height / cell);
+            int stride = nx + 1;
+            var heights = new float[stride * (nz + 1)];
+            ProceduralArt.ParallelRows(nz + 1, z =>
             {
                 for (int x = 0; x < stride; x++)
-                    heights[z * stride + x] = L.GroundHeight(min + x * cell, min + z * cell);
+                    heights[z * stride + x] = L.GroundHeight(minX + x * cell, minZ + z * cell);
             });
-            if (!skipInner)
+            int step = Mathf.RoundToInt(borderCell / cell);
+            if (step > 1)
             {
-                int step = Mathf.RoundToInt(OuterCell / cell);
-                for (int i = 0; i <= n; i++)
+                for (int i = 0; i <= nx; i++)
                 {
-                    int i0 = i / step * step, i1 = Mathf.Min(n, i0 + step);
+                    int i0 = i / step * step, i1 = Mathf.Min(nx, i0 + step);
                     float t = i1 == i0 ? 0 : (float)(i - i0) / (i1 - i0);
                     heights[i] = Mathf.Lerp(heights[i0], heights[i1], t);
-                    heights[n * stride + i] = Mathf.Lerp(heights[n * stride + i0], heights[n * stride + i1], t);
-                    heights[i * stride] = Mathf.Lerp(heights[i0 * stride], heights[i1 * stride], t);
-                    heights[i * stride + n] = Mathf.Lerp(heights[i0 * stride + n], heights[i1 * stride + n], t);
+                    heights[nz * stride + i] = Mathf.Lerp(heights[nz * stride + i0], heights[nz * stride + i1], t);
+                }
+                for (int k = 0; k <= nz; k++)
+                {
+                    int k0 = k / step * step, k1 = Mathf.Min(nz, k0 + step);
+                    float t = k1 == k0 ? 0 : (float)(k - k0) / (k1 - k0);
+                    heights[k * stride] = Mathf.Lerp(heights[k0 * stride], heights[k1 * stride], t);
+                    heights[k * stride + nx] = Mathf.Lerp(heights[k0 * stride + nx], heights[k1 * stride + nx], t);
                 }
             }
-            var vertices = new Vector3[stride * stride];
-            var normals = new Vector3[stride * stride];
-            for (int z = 0; z <= n; z++)
-            for (int x = 0; x <= n; x++)
+            var vertices = new Vector3[stride * (nz + 1)];
+            var normals = new Vector3[vertices.Length];
+            for (int z = 0; z <= nz; z++)
+            for (int x = 0; x <= nx; x++)
             {
                 int i = z * stride + x;
-                vertices[i] = new Vector3(min + x * cell, heights[i], min + z * cell);
-                float left = heights[z * stride + Mathf.Max(0, x - 1)], right = heights[z * stride + Mathf.Min(n, x + 1)];
-                float down = heights[Mathf.Max(0, z - 1) * stride + x], up = heights[Mathf.Min(n, z + 1) * stride + x];
-                float spanX = (Mathf.Min(n, x + 1) - Mathf.Max(0, x - 1)) * cell, spanZ = (Mathf.Min(n, z + 1) - Mathf.Max(0, z - 1)) * cell;
+                vertices[i] = new Vector3(minX + x * cell, heights[i], minZ + z * cell);
+                float left = heights[z * stride + Mathf.Max(0, x - 1)], right = heights[z * stride + Mathf.Min(nx, x + 1)];
+                float down = heights[Mathf.Max(0, z - 1) * stride + x], up = heights[Mathf.Min(nz, z + 1) * stride + x];
+                float spanX = (Mathf.Min(nx, x + 1) - Mathf.Max(0, x - 1)) * cell, spanZ = (Mathf.Min(nz, z + 1) - Mathf.Max(0, z - 1)) * cell;
                 normals[i] = new Vector3(-(right - left) / spanX, 1f, -(up - down) / spanZ).normalized;
             }
-            var triangles = new List<int>(n * n * 6);
-            for (int z = 0; z < n; z++)
-            for (int x = 0; x < n; x++)
+            var triangles = new List<int>(nx * nz * 6);
+            for (int z = 0; z < nz; z++)
+            for (int x = 0; x < nx; x++)
             {
-                if (skipInner)
-                {
-                    float x0 = min + x * cell, z0 = min + z * cell;
-                    if (x0 >= -InnerExtent && x0 + cell <= InnerExtent && z0 >= -InnerExtent && z0 + cell <= InnerExtent) continue;
-                }
+                float x0 = minX + x * cell, z0 = minZ + z * cell;
+                if (x0 >= hole.xMin && x0 + cell <= hole.xMax && z0 >= hole.yMin && z0 + cell <= hole.yMax) continue;
                 int a = z * stride + x, b = a + stride, c = b + 1, d = a + 1;
                 triangles.Add(a); triangles.Add(b); triangles.Add(c);
                 triangles.Add(a); triangles.Add(c); triangles.Add(d);
             }
-            var mesh = new Mesh { name = skipInner ? "Env_TerrainOuter" : "Env_TerrainInner", indexFormat = IndexFormat.UInt32 };
+            var mesh = new Mesh { name = name, indexFormat = IndexFormat.UInt32 };
             mesh.SetVertices(vertices);
             mesh.SetNormals(normals);
             mesh.SetTriangles(triangles, 0);
@@ -180,6 +259,120 @@ namespace TienTuyen.Presentation
             mesh.SetNormals(normals);
             mesh.SetTriangles(triangles, 0);
             Spawn(root, "CraterWater", mesh, material, false);
+        }
+
+        /// <summary>Water surface: a little above the bed's edge, so it meets the banks on the floodplain's first rise.</summary>
+        public const float RiverSurface = L.RiverLevel + .3f;
+
+        /// <summary>The river: one ribbon along EnvironmentLayout.River, tucked under both banks, cut at the terrain edge.</summary>
+        private static void BuildRiver(Transform root)
+        {
+            // R.A.M 2019's clear river water (EnvRiver, pack_river.py): its Big Green settings, its ripples tiled as on a
+            // 34 m wide R.A.M spline (2.5 widths per UV).
+            var material = ProceduralArt.Environment("River", "Env_River");
+            var riverMap = Resources.Load<Texture2D>("Environment/River/RiverMap");
+            if (material != null && riverMap != null)
+            {
+                material.SetTexture("_RiverMap", riverMap);
+                material.SetVector("_RiverBanks", new Vector4(L.RiverHalfWidth + 3f, 3f, 0, 0));
+                // Its own reflections, seen from just above the water: the clearing's probe, 24 m higher, mirrors its own
+                // ground at grazing angles, which laid a flat brown sheet over the far half of the river. Rendered with
+                // the clearing's on each preset (CombatEnvironment.Apply).
+                var probe = new GameObject("RiverReflections").AddComponent<ReflectionProbe>();
+                probe.transform.SetParent(root, false);
+                probe.transform.localPosition = new Vector3(L.River[6].x, RiverSurface + 3f, L.River[6].y);
+                probe.mode = UnityEngine.Rendering.ReflectionProbeMode.Realtime;
+                probe.refreshMode = UnityEngine.Rendering.ReflectionProbeRefreshMode.ViaScripting;
+                probe.timeSlicingMode = UnityEngine.Rendering.ReflectionProbeTimeSlicingMode.NoTimeSlicing;
+                probe.resolution = 128;
+                probe.hdr = true;
+                probe.importance = 2;
+                probe.size = new Vector3(900f, 60f, 2f * (L.RiverHalfWidth + 30f));
+                probe.blendDistance = 10f;
+                probe.shadowDistance = 0;
+                probe.clearFlags = UnityEngine.Rendering.ReflectionProbeClearFlags.Skybox;
+            }
+            else material = ProceduralArt.Environment("Water", "Env_RiverWater");
+            if (material == null) material = ProceduralArt.Lit("Env_RiverWater", ProceduralArt.Hex("#3B4A3A"), .95f);
+            else if (material.shader.name.EndsWith("/Water"))
+            {
+                // Jade karst water (as on ridge's gorge past the edge) under an open sky; ripples drift downstream
+                // (west to east). _RiverBanks switches the shader to the river: the ribbon's UV runs along it (arc
+                // length, m) and -1..1 across it, its UV1 holds the direction downstream.
+                material.SetVector("_DeepColor", new Vector4(.07f, .33f, .26f, 1));
+                material.SetVector("_RiverBanks", new Vector4(L.RiverHalfWidth + 3f, 3f, 0, 0));
+                material.SetFloat("_SkyReflection", 1f);
+                material.SetFloat("_RippleScale", .22f);
+                material.SetVector("_Flow", new Vector4(.6f, .1f, 0, 0));
+                var ripples = Resources.Load<Texture2D>("Environment/Water/RiverRipples");
+                if (ripples != null)
+                {
+                    material.SetTexture("_RippleNormal", ripples);
+                    material.SetVector("_RippleMap", new Vector4(9f, .2f, 0, 0));
+                }
+                // R.A.M 2019's flow-stretched ripples and foam, carried along the river (pack_ram.py).
+                var flowNormal = Resources.Load<Texture2D>("Environment/Water/RiverFlowNormal");
+                var flowFoam = Resources.Load<Texture2D>("Environment/Water/RiverFoam");
+                if (flowNormal != null) material.SetTexture("_FlowNormal", flowNormal);
+                if (flowFoam != null) material.SetTexture("_FlowFoam", flowFoam);
+                material.SetVector("_FlowMap", new Vector4(9f, 28f, flowNormal != null ? .15f : 0f, 8f));
+            }
+            // Resample the river line every few metres; each sample adds a pair of bank vertices. The river crosses
+            // the terrain once, so the samples on it are one run; the backdrop paints it on past the edge.
+            const float spacing = 4f, half = L.RiverHalfWidth + 3f;
+            var line = L.River;
+            var vertices = new List<Vector3>();
+            var across = new List<Vector2>();
+            var downstream = new List<Vector2>();
+            var triangles = new List<int>();
+            // Arc length along the line (m), for the current's streaks; and where each fall's plunge sits on it.
+            float arc = 0, mainFall = 0, twinFall = 0;
+            Vector2 previous = line[0];
+            for (int i = 0; i < line.Length - 1; i++)
+            {
+                Vector2 a = line[i], b = line[i + 1];
+                int steps = Mathf.Max(1, Mathf.CeilToInt(Vector2.Distance(a, b) / spacing));
+                for (int k = i == 0 ? 0 : 1; k <= steps; k++)
+                {
+                    Vector2 p = Vector2.Lerp(a, b, (float)k / steps);
+                    if (previous.x < L.FallX && p.x >= L.FallX) mainFall = arc + (L.FallX - previous.x);
+                    if (previous.x < L.TwinFallX && p.x >= L.TwinFallX) twinFall = arc + (L.TwinFallX - previous.x);
+                    arc += Vector2.Distance(previous, p);
+                    previous = p;
+                    if (Mathf.Abs(p.x) > OuterExtent + spacing || Mathf.Abs(p.y) > OuterExtent + spacing) continue;
+                    // Tangent across the neighbouring corners, so the ribbon turns through each bend without a kink.
+                    Vector2 ahead = k < steps ? b : (i + 2 < line.Length ? line[i + 2] : b);
+                    Vector2 behind = k > 0 ? a : (i > 0 ? line[i - 1] : a);
+                    Vector2 dir = (ahead - behind).normalized, normal = new Vector2(-dir.y, dir.x);
+                    int v = vertices.Count;
+                    if (v >= 2)
+                    {
+                        // Wound clockwise seen from above (v - 2, v: south bank; v - 1, v + 1: north bank).
+                        triangles.Add(v - 2); triangles.Add(v - 1); triangles.Add(v);
+                        triangles.Add(v - 1); triangles.Add(v + 1); triangles.Add(v);
+                    }
+                    vertices.Add(new Vector3(p.x - normal.x * half, RiverSurface, p.y - normal.y * half));
+                    vertices.Add(new Vector3(p.x + normal.x * half, RiverSurface, p.y + normal.y * half));
+                    across.Add(new Vector2(arc, -1f));
+                    across.Add(new Vector2(arc, 1f));
+                    downstream.Add(dir);
+                    downstream.Add(dir);
+                }
+            }
+            if (triangles.Count == 0) return;
+            var mesh = new Mesh { name = "Env_River" };
+            mesh.SetVertices(vertices);
+            mesh.SetUVs(0, across);
+            mesh.SetUVs(1, downstream);
+            var normals = new Vector3[vertices.Count];
+            for (int i = 0; i < normals.Length; i++) normals[i] = Vector3.up;
+            mesh.SetNormals(normals);
+            mesh.SetTriangles(triangles, 0);
+            mesh.RecalculateBounds();
+            // The falls' foam trails start at their plunges; 1.1 m/s mid-channel current.
+            material.SetVector("_RiverFalls", new Vector4(mainFall, twinFall, 1.1f, 0));
+            Spawn(root, "River", mesh, material, false);
+            EnvironmentRiverlands.Build(root, material);
         }
 
         // ---------- Ground paint ----------
@@ -297,6 +490,54 @@ namespace TienTuyen.Presentation
                     strength[i] = rut;
                 }
             });
+            return RoadTexture("Env_GroundRoadField", n, side, strength);
+        }
+
+        /// <summary>The road field over the whole terrain at 1 m: road only (the depot track lies inside the splat).</summary>
+        private static Texture2D BakeFarRoadField()
+        {
+            int n = Mathf.RoundToInt(OuterExtent * 2f);
+            float texel = OuterExtent * 2f / n;
+            var side = new float[n * n];
+            var strength = new float[n * n];
+            ProceduralArt.ParallelRows(n, row =>
+            {
+                for (int column = 0; column < n; column++)
+                {
+                    float x = -OuterExtent + (column + .5f) * texel, z = -OuterExtent + (row + .5f) * texel;
+                    int i = row * n + column;
+                    L.RoadDistance(x, z, out float s);
+                    side[i] = Mathf.Clamp(s, -12f, 12f);
+                    strength[i] = Mathf.Lerp(.45f, 1f, Band(ProceduralArt.Fbm(x * .11f + 13f, z * .11f - 6f, 2), .35f, .6f));
+                }
+            });
+            return RoadTexture("Env_GroundRoadFar", n, side, strength);
+        }
+
+        /// <summary>Signed distance to the river line (north positive) over the whole terrain at 2 m, half floats.</summary>
+        private static Texture2D BakeRiverField()
+        {
+            int n = Mathf.RoundToInt(OuterExtent);
+            float texel = OuterExtent * 2f / n;
+            var data = new ushort[n * n];
+            ProceduralArt.ParallelRows(n, row =>
+            {
+                for (int column = 0; column < n; column++)
+                    data[row * n + column] = Mathf.FloatToHalf(Mathf.Clamp(
+                        L.RiverSide(-OuterExtent + (column + .5f) * texel, -OuterExtent + (row + .5f) * texel), -250f, 250f));
+            });
+            var texture = new Texture2D(n, n, TextureFormat.RHalf, false, true)
+            {
+                name = "Env_GroundRiverField", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear
+            };
+            texture.SetPixelData(data, 0);
+            texture.Apply(false, true);
+            return texture;
+        }
+
+        /// <summary>Packs a road field: signed distance, rut strength and the distance's gradient as half floats.</summary>
+        private static Texture2D RoadTexture(string name, int n, float[] side, float[] strength)
+        {
             var data = new ushort[n * n * 4];
             for (int row = 0; row < n; row++)
             for (int column = 0; column < n; column++)
@@ -313,7 +554,7 @@ namespace TienTuyen.Presentation
             }
             var texture = new Texture2D(n, n, TextureFormat.RGBAHalf, true, true)
             {
-                name = "Env_GroundRoadField", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear
+                name = name, wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear
             };
             texture.SetPixelData(data, 0);
             texture.Apply(true, true);
@@ -462,11 +703,10 @@ namespace TienTuyen.Presentation
             relief += clump * .015f;
             if (outside > 0)
             {
-                // Forest floor on the hills: dark, damp litter broken by moss and seedling patches, so sunlit
-                // slopes between the trees never read as bare orange leaf fall.
+                // Past the edge the shader's meadow takes over (EnvGround); the paint only keeps the soil a little damp there.
                 float floor = Band(outside, 5f, 14f);
                 grass = Mathf.Max(grass, floor * (.3f + .6f * Band(medium + (fine - .5f) * .3f, .38f, .62f)));
-                damp = Mathf.Max(damp, floor * .9f);
+                damp = Mathf.Max(damp, floor * .25f);
             }
             if (outside < 3f)
             {
@@ -587,12 +827,11 @@ namespace TienTuyen.Presentation
                 }
             }
 
-            // Fade to a plain forest floor (damp litter with some moss) before the texture edge clamps, so the
-            // hills past the splat continue it without a seam.
+            // Fade to plain values before the texture edge clamps; the shader's meadow covers the seam.
             float edge = Mathf.Max(Mathf.Abs(x), Mathf.Abs(z));
             float keep = 1f - Band(edge, SplatSize * .5f - 6f, SplatSize * .5f - 1f);
             grass = Mathf.Lerp(.55f, grass, keep);
-            damp = Mathf.Lerp(.9f, damp, keep);
+            damp = Mathf.Lerp(.25f, damp, keep);
             relief = Mathf.Clamp(relief * keep, -ReliefRange, ReliefRange);
             compact *= keep;
             // Broad value at two scales, so no stretch of open ground a few tens of metres across keeps one tone.
@@ -611,6 +850,15 @@ namespace TienTuyen.Presentation
         public static float GrassCover(float x, float z) =>
             GrassCover(x, z, L.OutsideDistance(x, z), ProceduralArt.Fbm(x * .19f, z * .19f, 3));
 
+        /// <summary>Cheap presentation query for the mud puddles already painted into the ground.</summary>
+        public static bool WetPatch(float x, float z)
+        {
+            // The 1.6x radius follows the painted puddle edge closely enough for wet footsteps.
+            foreach (var puddle in Puddles)
+                if (Vector2.Distance(new Vector2(x, z), new Vector2(puddle.x, puddle.y)) <= puddle.z * 1.6f) return true;
+            return false;
+        }
+
         private static float GrassCover(float x, float z, float outside, float medium) => Band(GrassPatch(x, z, outside, medium), .56f, .7f);
 
         /// <summary>The continuous grass field behind GrassCover, whose .56-.7 band is where the clumps grow.</summary>
@@ -622,7 +870,7 @@ namespace TienTuyen.Presentation
             return ProceduralArt.Fbm(x * .085f + 3f, z * .085f + 9f, 3) + (1f - Mathf.Clamp01(inward / 3.5f)) * .22f;
         }
 
-        private static void Spawn(Transform parent, string name, Mesh mesh, Material material, bool castShadows)
+        internal static void Spawn(Transform parent, string name, Mesh mesh, Material material, bool castShadows)
         {
             var go = new GameObject(name, typeof(MeshFilter), typeof(MeshRenderer));
             go.transform.SetParent(parent, false);

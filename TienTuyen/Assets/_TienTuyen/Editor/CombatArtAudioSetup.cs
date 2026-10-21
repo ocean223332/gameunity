@@ -49,9 +49,9 @@ namespace TienTuyen.Editor
             EnsureFolder("Assets/_TienTuyen/Art/Resources");
             EnsureFolder(ModelResourceFolder);
             string projectRoot = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
-            // Weapons and props (rifle, smg, shotgun, m16, etool, crates, sandbag, rock, buildings, vehicles) are
+            // Weapons and props (rifle, smg, shotgun, m16, crates, sandbag, rock, buildings, vehicles) are
             // authored straight into the Resources folder; see Art/Source/README.md.
-            string[] names = { "hero", "enemy_infantry", "enemy_shooter", "enemy_charger", "enemy_elite", "tarp", "tree", "bush", "grass" };
+            string[] names = { "hero", "enemy_infantry", "enemy_shooter", "enemy_charger", "enemy_elite" };
             foreach (string name in names)
             {
                 string source = ModelSourceFolder + "/" + name + ".fbx";

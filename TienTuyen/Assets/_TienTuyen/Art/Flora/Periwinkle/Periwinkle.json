@@ -1,0 +1,25 @@
+{
+ "name": "Periwinkle",
+ "materials": [
+  {
+   "name": "Periwinkle_M0",
+   "leaf": true,
+   "cutout": false,
+   "normal": true
+  },
+  {
+   "name": "Periwinkle_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "height": 0.3,
+ "radius": 0.114,
+ "tris": [
+  1539,
+  923,
+  4
+ ]
+}

@@ -1,0 +1,36 @@
+{
+ "name": "JungleTree_B",
+ "materials": [
+  {
+   "name": "JungleTree_B_rest",
+   "leaf": false,
+   "cutout": false,
+   "normal": true
+  },
+  {
+   "name": "JungleTree_B_M1",
+   "leaf": true,
+   "cutout": true,
+   "normal": true
+  },
+  {
+   "name": "JungleTree_B_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "noCard": false,
+ "height": 13.7,
+ "radius": 5.983,
+ "tris": [
+  5198,
+  955,
+  4
+ ],
+ "cutoff": 0.3,
+ "smoothness": 0.4,
+ "translucency": 0.95,
+ "tintVariation": 0.12
+}

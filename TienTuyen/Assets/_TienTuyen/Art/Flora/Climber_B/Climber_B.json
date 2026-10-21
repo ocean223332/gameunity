@@ -1,0 +1,29 @@
+{
+ "name": "Climber_B",
+ "materials": [
+  {
+   "name": "Climber_B_M0",
+   "leaf": true,
+   "cutout": true,
+   "normal": true
+  },
+  {
+   "name": "Climber_B_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "height": 1.2,
+ "radius": 1.466,
+ "tris": [
+  147,
+  90,
+  4
+ ],
+ "cutoff": 0.3,
+ "smoothness": 0.4,
+ "translucency": 0.95,
+ "tintVariation": 0.12
+}

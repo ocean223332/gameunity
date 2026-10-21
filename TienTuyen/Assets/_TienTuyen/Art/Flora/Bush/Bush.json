@@ -1,0 +1,25 @@
+{
+ "name": "Bush",
+ "materials": [
+  {
+   "name": "Bush_M0",
+   "leaf": true,
+   "cutout": true,
+   "normal": true
+  },
+  {
+   "name": "Bush_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "height": 1.0,
+ "radius": 0.545,
+ "tris": [
+  241,
+  241,
+  4
+ ]
+}

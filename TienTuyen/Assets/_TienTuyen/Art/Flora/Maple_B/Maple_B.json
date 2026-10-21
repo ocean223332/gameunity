@@ -1,0 +1,32 @@
+{
+ "name": "Maple_B",
+ "materials": [
+  {
+   "name": "Maple_B_M0",
+   "leaf": true,
+   "cutout": true,
+   "normal": true
+  },
+  {
+   "name": "Maple_B_rest",
+   "leaf": false,
+   "cutout": false,
+   "normal": true
+  },
+  {
+   "name": "Maple_B_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "height": 12.8,
+ "radius": 5.313,
+ "tris": [
+  6196,
+  2720,
+  4
+ ],
+ "cutoff": 0.4
+}

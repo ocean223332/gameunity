@@ -29,7 +29,12 @@ half EnvHazeAmount(float distance, float height)
 {
     // max() guards keep the scene view sane before CombatEnvironment publishes the globals.
     float depth = distance / max(_EnvHaze.y, 1.0);
-    half forest = _EnvHaze.x * (1.0 - exp(-depth * depth)) * exp(-max(height, 0.0) / max(_EnvHaze.w, 1.0));
+    // The forest air thins with height: what a ray crosses is its density averaged from the eye down to the surface,
+    // so from a high eye the valley floor is seen through the thin air above, not the ground layer's full depth.
+    // A surface above the eye keeps its own height's density, as before.
+    float w = max(_EnvHaze.w, 1.0), hs = max(height, 0.0), hc = max(GetCameraPositionWS().y, hs);
+    float layer = hc - hs > 0.5 ? w * (exp(-hs / w) - exp(-hc / w)) / (hc - hs) : exp(-hs / w);
+    half forest = _EnvHaze.x * (1.0 - exp(-depth * depth)) * layer;
     half atmosphere = exp(-pow(distance / max(_EnvHaze.z, 1.0), 1.6));
     return 1.0 - (1.0 - forest) * atmosphere;
 }
@@ -49,9 +54,10 @@ half3 EnvApplyHaze(half3 color, float3 positionWS)
 
 // Wind sway for batched world-space foliage. Weight grows with height above the
 // plant's base (baked into vertex colour), phase decorrelates neighbours.
-float3 EnvWindOffset(float3 positionWS, float weight, float phase)
+// The ...At form takes the time, so motion vectors can rebuild last frame's pose.
+float3 EnvWindOffsetAt(float3 positionWS, float weight, float phase, float time)
 {
-    float t = _Time.y * _EnvWind.w;
+    float t = time * _EnvWind.w;
     float p = dot(positionWS.xz, float2(0.13, 0.09)) + phase * 6.2831;
     float gust = sin(t * 0.31 + positionWS.x * 0.021 + positionWS.z * 0.013) * 0.5 + 0.5;
     float sway = sin(t + p) * 0.55 + sin(t * 2.27 + p * 1.7) * 0.22;
@@ -59,6 +65,11 @@ float3 EnvWindOffset(float3 positionWS, float weight, float phase)
     // Flutter: small fast vertical motion on leaf tips.
     offset.y = sin(t * 5.3 + p * 3.1) * 0.035 * weight * _EnvWind.z * 4.0;
     return offset;
+}
+
+float3 EnvWindOffset(float3 positionWS, float weight, float phase)
+{
+    return EnvWindOffsetAt(positionWS, weight, phase, _Time.y);
 }
 
 float EnvHash21(float2 p)

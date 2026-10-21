@@ -16,6 +16,7 @@ namespace TienTuyen.Presentation
     [RequireComponent(typeof(Camera))]
     public sealed class CombatThirdPersonCamera : MonoBehaviour
     {
+        public bool EncounterCamera { get; set; }
         public float Sensitivity = .11f;
         public float Distance = 4.3f, AimDistance = 2.5f;
         public float FieldOfView = 56f, AimFieldOfView = 40f;
@@ -26,15 +27,14 @@ namespace TienTuyen.Presentation
 
         // First person: the eye sits above the gameplay actor (capsule centre, Y=.8) at the hero's own eye, 1.65 m off the ground.
         public float EyeHeight = .85f;
+        /// <summary>How far the pivot and eye drop at a full crouch: CS:GO's head drop from stand to crouch idle.</summary>
+        public float CrouchDrop = .37f;
         public float FirstPersonFieldOfView = 70f, FirstPersonAimFieldOfView = 52f;
         public const float FirstPersonMinPitch = -60f, FirstPersonMaxPitch = 70f;
 
-        // Main-menu hero shot: the camera looks along MenuLookYaw at a hero whose shoulders are turned MenuTurn
-        // degrees off square-on, who stands in the right third of the frame, clear of the left-hand panel; at
-        // that turn the low-ready rifle stays inside the frame. The low-ready idle holds the shoulders
-        // MenuBodyOffset degrees clockwise of the character's forward, so the facing the rig is given is turned
-        // back by that much.
-        public const float MenuLookYaw = 62f, MenuTurn = 59f, MenuBodyOffset = 27f, MenuFieldOfView = 26f;
+        // Main-menu hero shot: the camera looks along MenuLookYaw at the hero, who stands in the right third of the frame,
+        // clear of the left-hand panel, and faces the camera square-on.
+        public const float MenuLookYaw = 62f, MenuFieldOfView = 38f;
         public const float MenuDistance = 3.5f, MenuCameraHeight = 1f, MenuFocusHeight = 1.12f, MenuHeroScreenX = .75f;
 
         private CombatGame game;
@@ -51,6 +51,10 @@ namespace TienTuyen.Presentation
         /// <summary>How fast the aim weight moves, per second; anything following it should use the same rate.</summary>
         public const float AimBlendSpeed = 6.5f;
         public Vector3 AimPoint => aimPoint;
+        /// <summary>Weight (0..1) of the launch title's drift over the karst valley, set by the intro; 0 in play.</summary>
+        public float TitleVista { get; set; }
+        /// <summary>Seconds along the title drift.</summary>
+        public float TitleVistaTime { get; set; }
         /// <summary>1 on the main-menu shot, 0 on every other view; eases between them.</summary>
         public float MenuBlend => menuBlend;
         /// <summary>The player's chosen combat view (V); the menu, shop and end shots stay third person.</summary>
@@ -64,8 +68,13 @@ namespace TienTuyen.Presentation
             firstPerson = on;
             if (!on) pitch = Mathf.Clamp(pitch, MinPitch, MaxPitch);
         }
-        /// <summary>Planar facing the rig is given on the menu so that the hero's body turns toward the camera, a little off square-on.</summary>
-        public static Vector3 MenuHeroFacing => Quaternion.Euler(0, MenuLookYaw + 180f + MenuTurn - MenuBodyOffset, 0) * Vector3.forward;
+        /// <summary>Planar facing the rig is given on the menu: square-on to the camera, which stands left of the hero by the
+        /// right-third shift (16:9).</summary>
+        public static Vector3 MenuHeroFacing => Quaternion.Euler(0, MenuHeroYaw, 0) * Vector3.forward;
+        private static float MenuHeroYaw => MenuLookYaw + 180f + Mathf.Atan2(MenuShift(16f / 9f), MenuDistance) * Mathf.Rad2Deg;
+        // Standing the camera left of the hero puts him right of centre without turning the lens away from him.
+        private static float MenuShift(float aspect) =>
+            MenuDistance * Mathf.Tan(MenuFieldOfView * .5f * Mathf.Deg2Rad) * aspect * (MenuHeroScreenX * 2f - 1f);
 
         private struct Shot
         {
@@ -120,7 +129,7 @@ namespace TienTuyen.Presentation
             var mouse = Mouse.current;
             if (mouse != null && live && Cursor.lockState == CursorLockMode.Locked)
             {
-                look += mouse.delta.ReadValue() * Sensitivity;
+                look += mouse.delta.ReadValue() * Sensitivity * PlayerSettings.MouseSensitivity;
                 fire |= mouse.leftButton.isPressed;
                 aim |= mouse.rightButton.isPressed;
             }
@@ -151,6 +160,7 @@ namespace TienTuyen.Presentation
 
         private void LateUpdate()
         {
+            if(EncounterCamera)return;
             if (game == null || player == null || view == null) return;
             float dt = Mathf.Min(Time.unscaledDeltaTime, .05f);
             bool paused = game.State == CombatState.Paused, menu = game.State == CombatState.Menu;
@@ -160,7 +170,7 @@ namespace TienTuyen.Presentation
                 // does not turn and the camera swings round behind him.
                 if (game.State == CombatState.Playing && lastState == CombatState.Menu)
                 {
-                    yaw = MenuLookYaw + 180f + MenuTurn - MenuBodyOffset;
+                    yaw = MenuHeroYaw;
                     pitch = 12f;
                     cinematic = 0f;
                 }
@@ -173,7 +183,7 @@ namespace TienTuyen.Presentation
             if (!paused) orbitYaw = Mathf.Repeat(orbitYaw + dt * 5f, 360f);
             if (!paused) firstPersonBlend = Mathf.MoveTowards(firstPersonBlend, firstPerson ? 1f : 0f, dt * 6f);
 
-            Vector3 target = player.position + Vector3.up * PivotHeight;
+            Vector3 target = player.position + Vector3.up * (PivotHeight - CrouchDrop * game.Crouch);
             pivot = hasPivot ? Vector3.Lerp(pivot, target, 1f - Mathf.Exp(-22f * dt)) : target;
             hasPivot = true;
 
@@ -195,6 +205,7 @@ namespace TienTuyen.Presentation
             };
             Shot shot = Blend(gameplay, orbit, Smooth(cinematic), pivot);
             if (menuBlend > 0f) shot = Blend(shot, MenuShot(), Smooth(menuBlend), pivot);
+            if (TitleVista > 0f) shot = Blend(shot, VistaShot(TitleVistaTime), Smooth(Mathf.Clamp01(TitleVista)), pivot);
 
             Quaternion rotation = Quaternion.Euler(shot.Pitch, shot.Yaw, 0);
             if (!paused)
@@ -217,7 +228,7 @@ namespace TienTuyen.Presentation
         private static float Smooth(float t) => t * t * (3f - 2f * t);
 
         /// <summary>
-        /// The hero in the right third of the frame, knee-up, seen from the front. Position and aim
+        /// The whole hero in the right third of the frame, seen from the front. Position and aim
         /// breathe on slow, unrelated cycles so the shot never looks frozen.
         /// </summary>
         private Shot MenuShot()
@@ -226,11 +237,7 @@ namespace TienTuyen.Presentation
             float breathe = Mathf.Sin(time * 1.15f), drift = Mathf.Sin(time * .37f + 1.3f), sway = Mathf.Sin(time * .23f);
             Quaternion look = Quaternion.Euler(0, MenuLookYaw, 0);
             Vector3 feet = player.position - Vector3.up * .8f;
-            // Standing the camera left of the hero puts him right of centre without turning the lens
-            // away from him; the shift tracks the aspect.
-            float halfHeight = MenuDistance * Mathf.Tan(MenuFieldOfView * .5f * Mathf.Deg2Rad);
-            float aspect = view.aspect > .1f ? view.aspect : 16f / 9f;
-            float shift = halfHeight * aspect * (MenuHeroScreenX * 2f - 1f);
+            float shift = MenuShift(view.aspect > .1f ? view.aspect : 16f / 9f);
             Vector3 position = feet - look * Vector3.forward * MenuDistance - look * Vector3.right * shift + Vector3.up * MenuCameraHeight;
             position += look * Vector3.right * (sway * .035f) + Vector3.up * (breathe * .009f + drift * .012f) +
                 look * Vector3.forward * (drift * .03f);
@@ -244,6 +251,19 @@ namespace TienTuyen.Presentation
                 Fov = MenuFieldOfView + breathe * .12f
             };
         }
+
+        /// <summary>Under the launch title: a slow crane up and in over the yard's edge, down the valley to the karst
+        /// ridges, nearly level so the twin pinnacles and the falls fill the frame over the sandbag line; it eases out
+        /// so the hand-off to the menu starts from rest.</summary>
+        private static Shot VistaShot(float time)
+        {
+            float u = Smooth(Mathf.Clamp01(time / TitleDriftSeconds));
+            Vector3 position = Vector3.Lerp(new Vector3(2.6f, 2.2f, -3.2f), new Vector3(.2f, 3.0f, -6.2f), u);
+            position.y = Mathf.Max(position.y, CombatEnvironment.GroundHeight(position.x, position.z) + 1.6f);
+            return new Shot { Position = position, Yaw = Mathf.Lerp(-165f, -175f, u), Pitch = Mathf.Lerp(-.5f, 1f, u), Fov = 48f };
+        }
+
+        public const float TitleDriftSeconds = 9f;
 
         /// <summary>
         /// Swings the camera round <paramref name="center"/> instead of through it: azimuth, distance and
@@ -273,10 +293,10 @@ namespace TienTuyen.Presentation
         {
             rotation = Quaternion.Euler(pitch - recoilKick, yaw, 0);
             // First person looks from the actor itself, unsmoothed, so the eye never trails the body.
-            Vector3 eye = player.position + Vector3.up * EyeHeight;
+            Vector3 eye = player.position + Vector3.up * (EyeHeight - CrouchDrop * game.Crouch);
             if (firstPersonBlend >= 1f) return eye;
             float distance = Mathf.Lerp(Distance, AimDistance, aimBlend);
-            Vector3 origin = (hasPivot ? pivot : player.position + Vector3.up * PivotHeight) +
+            Vector3 origin = (hasPivot ? pivot : player.position + Vector3.up * (PivotHeight - CrouchDrop * game.Crouch)) +
                 rotation * (ShoulderOffset * Mathf.Lerp(1f, .85f, aimBlend));
             Vector3 back = rotation * Vector3.back;
             // Sandbag covers keep their gameplay box colliders; never look through them.

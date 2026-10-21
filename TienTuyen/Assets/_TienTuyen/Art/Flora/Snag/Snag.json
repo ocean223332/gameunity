@@ -1,0 +1,25 @@
+{
+ "name": "Snag",
+ "materials": [
+  {
+   "name": "Snag_M0",
+   "leaf": false,
+   "cutout": false,
+   "normal": true
+  },
+  {
+   "name": "Snag_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "height": 6.713,
+ "radius": 1.761,
+ "tris": [
+  2510,
+  1198,
+  4
+ ]
+}

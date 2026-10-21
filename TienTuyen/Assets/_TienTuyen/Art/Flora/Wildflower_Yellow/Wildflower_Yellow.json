@@ -1,0 +1,25 @@
+{
+ "name": "Wildflower_Yellow",
+ "materials": [
+  {
+   "name": "Wildflower_Yellow_M0",
+   "leaf": true,
+   "cutout": true,
+   "normal": false
+  },
+  {
+   "name": "Wildflower_Yellow_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "height": 0.5,
+ "radius": 0.317,
+ "tris": [
+  2070,
+  827,
+  4
+ ]
+}

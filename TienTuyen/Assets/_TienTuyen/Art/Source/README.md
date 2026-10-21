@@ -15,7 +15,7 @@ pivot, rotation, scale and character height, and the realistic catalog below.
 
 ## Realistic weapons and props
 
-`rifle`, `smg`, `shotgun`, `m16` (enemy rifle), `etool`, `supply_crate`, `crate`,
+`rifle`, `smg`, `shotgun`, `m16` (enemy rifle), `supply_crate`, `crate`,
 `sandbag`, `drum`, `rock`, `shed`, `watchtower`, `cookfire`, `bunker`, `truck`,
 `truck_zil`, `aa_gun` and `bicycle` are textured models built outside the Unity
 project by the scripts in `output/props-r/scripts` (sources and licences in
@@ -27,8 +27,8 @@ triangles; a model stays under 15k triangles.
 
 - Weapons keep the part names `CombatCharacterRig` reads: `grip`, `handguard`
   (`pump handguard`), `muzzle`, and on the hero guns `barrel` and `receiver`;
-  the E-tool's blade part contains "blade". Hero guns are authored for the
-  x0.72 hero attach scale, `m16` and `etool` for the enemies' x0.58 x0.9.
+  a bladed tool's blade part contains "blade". Hero guns are authored for the
+  x0.72 hero attach scale, `m16` for the enemies' x0.58 x0.9.
 - Station props are merged per cluster at runtime by `PropBatch`
   (`EnvironmentStation`), so `CombatModelImportPostprocessor` imports them as
   readable. Sandbag parts are `bag_a`..`bag_d`; `bag_*_ground` are the muddy
@@ -92,9 +92,9 @@ visible when a model resource fails validation.
 
 - `build_mountains.py` bakes the far backdrop `Art/Resources/Environment/Mountains.bytes` from AWS terrain
   tiles (usage in its header). The mountain look itself is shader-side (`EnvMountains.shader`).
-- `pack_textures.py` packs the Poly Haven ground, bark and rock sets into `Art/Resources/Environment`.
+- `pack_textures.py` packs the ground layers (Rocky Hills and Mountain Lake tiles) and the Poly Haven bark and rock sets into `Art/Resources/Environment`.
+- `pack_water.py` packs the falls' white water and the mist puffs (Rocky Hills) and the river's ripple normals (Mountain Lake) into `Art/Resources/Environment/Water`; usage in its header.
 - `Flora/` builds the `Art/Flora` species in background Blender: `flora_build.py` makes one species
   (LOD0/LOD1 meshes, cross-card LOD2, textures, json) from the stage-1 source scene
-  `output/environment-review/stage1/blender/env_stage1_sources.blend`, the Poly Haven downloads and the twig
-  atlas that `twig_atlas.py` renders from ambientCG leaf sets; `grass_atlas.py` cuts the grass blade atlas and
-  `match_card.py` matches a thin plant's card colour to its blades. Sources and licences are in `docs/CREDITS.md`.
+  `output/environment-review/stage1/blender/env_stage1_sources.blend`, the Poly Haven downloads and the
+  pine-woodland downloads in `output/assets` (its `EXT` table). Sources and licences are in `docs/CREDITS.md`.

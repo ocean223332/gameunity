@@ -5,6 +5,7 @@ namespace TienTuyen.Content
 {
     public static class ContentIds
     {
+        public const string Rpg18 = "weapon.rpg18";
         public const string Rifle = "weapon.rifle";
         public const string Smg = "weapon.smg";
         public const string Shotgun = "weapon.shotgun";
@@ -12,9 +13,10 @@ namespace TienTuyen.Content
         public const string Charger = "enemy.charger";
         public const string Shooter = "enemy.shooter";
         public const string Elite = "enemy.elite";
+        public const string Sniper = "enemy.sniper";
     }
 
-    public enum EnemyRole { Infantry, Shooter, Elite, Charger }
+    public enum EnemyRole { Infantry, Shooter, Elite, Charger, Sniper }
 
     /// <summary>
     /// A reload that loads one round at a time: a start, a time per missing round, an end. The time is
@@ -130,7 +132,8 @@ namespace TienTuyen.Content
                 new WeaponDefinition(ContentIds.Rifle, "Súng trường", 24f, 1, 0.35f, 12, 2.4333f, 10f, 20),
                 new WeaponDefinition(ContentIds.Smg, "Tiểu liên", 10f, 1, 0.12f, 24, 2.9333f, 6.5f, 18),
                 new WeaponDefinition(ContentIds.Shotgun, "Súng tản đạn", 8f, 6, 0.85f, 5,
-                    new RoundReload(0.6f, 0.175f, 0.4667f), 4.5f, 22)
+                    new RoundReload(0.6f, 0.175f, 0.4667f), 4.5f, 22),
+                new WeaponDefinition(ContentIds.Rpg18, "RPG-18", 140f, 1, 1.2f, 1, 4f, 24f, 80)
             },
             new[]
             {
@@ -138,6 +141,8 @@ namespace TienTuyen.Content
                     35f, 2.6f, 8f, 1.4f, 1.2f, 0.25f, 8, 1, 2),
                 new EnemyDefinition(ContentIds.Charger, "Lính xung kích", EnemyRole.Charger,
                     20f, 3.7f, 11f, 2.6f, 4.5f, 0.7f, 3, 1, 2),
+                new EnemyDefinition(ContentIds.Sniper, "Lính bắn tỉa", EnemyRole.Sniper,
+                    28f, 2.1f, 10f, 2f, 14f, 1.5f, 1, 1, 2),
                 new EnemyDefinition(ContentIds.Shooter, "Xạ thủ", EnemyRole.Shooter,
                     // Damage per round of a 3-round burst; aim .8 + burst .16 + cooldown 2.64 = 3.6 s a burst, 2.5 DPS.
                     24f, 2.1f, 3f, 2.64f, 7f, 0.8f, 3, 1, 2),

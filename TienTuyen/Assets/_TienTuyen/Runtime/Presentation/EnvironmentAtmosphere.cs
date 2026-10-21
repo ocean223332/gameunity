@@ -13,6 +13,14 @@ namespace TienTuyen.Presentation
     /// </summary>
     internal static class EnvironmentAtmosphere
     {
+        private static Material shafts;
+
+        /// <summary>Brightens or hides the sun shafts for the weather (none under overcast).</summary>
+        public static void SetShaftIntensity(float intensity)
+        {
+            if (shafts != null) shafts.SetFloat("_Intensity", intensity);
+        }
+
         public static void Build(Transform root, Vector3 sunForward)
         {
             var air = new GameObject("Atmosphere").transform;
@@ -52,7 +60,7 @@ namespace TienTuyen.Presentation
         {
             var shader = Shader.Find("TienTuyen/Environment/LightShaft");
             if (shader == null || !shader.isSupported) return;
-            var material = new Material(shader) { name = "Env_LightShaft" };
+            var material = shafts = new Material(shader) { name = "Env_LightShaft" };
             material.SetColor("_Color", ProceduralArt.Hex("#FFC888"));
             material.SetFloat("_Intensity", .26f);
             var random = new System.Random(77);

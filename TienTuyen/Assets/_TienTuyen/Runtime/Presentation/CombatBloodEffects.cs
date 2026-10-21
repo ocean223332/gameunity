@@ -10,6 +10,15 @@ namespace TienTuyen.Presentation
         public const int SurfaceDecalCapacity = 8;
         public const int TotalDecalCapacity = DecalCapacity + SurfaceDecalCapacity;
         private const uint BloodReceiverLayer = 2;
+
+        /// <summary>The ground's height at (x, z) for the ground decals; null (the campaign) is the station's terrain.</summary>
+        public System.Func<float, float, float> GroundHeight;
+
+        /// <summary>
+        /// Multiply the spray's colour and alpha: the droplets and streaks, and the mist. White, the campaign's, leaves them
+        /// as authored for a body seen at distance and in motion; a closer camera can darken them and thin the mist.
+        /// </summary>
+        public Color DropletTint = Color.white, MistTint = Color.white;
         private const float Lifetime = 45f, FadeSeconds = 8f, PoolStart = .25f;
         private enum Kind { Droplet, Streak, Mist }
         private struct Decal
@@ -171,14 +180,16 @@ namespace TienTuyen.Presentation
         public void SurfaceSplatter(Vector3 point, Vector3 normal, float diameter) =>
             PlaceDecal(point, normal, diameter, .4f, random.Next(4), 0, true, Vector3.zero, 0);
 
+        private float Height(float x, float z) => GroundHeight != null ? GroundHeight(x, z) : CombatEnvironment.GroundHeight(x, z);
+
         private void Ground(Vector3 point, float diameter, int variant, float spreadSeconds, Vector3 direction, float delay)
         {
-            point.y = CombatEnvironment.GroundHeight(point.x, point.z);
+            point.y = Height(point.x, point.z);
             const float sample = .25f;
             var normal = new Vector3(
-                CombatEnvironment.GroundHeight(point.x - sample, point.z) - CombatEnvironment.GroundHeight(point.x + sample, point.z),
+                Height(point.x - sample, point.z) - Height(point.x + sample, point.z),
                 sample * 2,
-                CombatEnvironment.GroundHeight(point.x, point.z - sample) - CombatEnvironment.GroundHeight(point.x, point.z + sample)).normalized;
+                Height(point.x, point.z - sample) - Height(point.x, point.z + sample)).normalized;
             PlaceDecal(point, normal, diameter, .35f, variant, spreadSeconds, false, direction, delay);
         }
 
@@ -293,20 +304,10 @@ namespace TienTuyen.Presentation
             size.enabled = true;
             size.size = new ParticleSystem.MinMaxCurve(1, stretch ? AnimationCurve.Linear(0, 1, 1, .45f) : AnimationCurve.Linear(0, .9f, 1, 1.35f));
             // Mist is lit like the scene so the cloud darkens in shade; tiny drops stay unlit so they always read.
-            material = new Material(Shader.Find(lit ? "Universal Render Pipeline/Particles/Simple Lit" : "Universal Render Pipeline/Particles/Unlit")) { name = name + "Material" };
+            // The alpha-blended setup lives in material assets: a material made only in code leaves its transparent
+            // shader variant out of the Player build, and the particles draw as opaque squares.
+            material = new Material(Resources.Load<Material>(lit ? "Blood/BloodParticleLit" : "Blood/BloodParticleUnlit")) { name = name + "Material" };
             material.SetTexture("_BaseMap", texture);
-            material.SetColor("_BaseColor", Color.white);
-            material.SetFloat("_Surface", 1);
-            material.SetFloat("_Blend", 0);
-            material.SetFloat("_Cull", 0);
-            material.SetFloat("_ZWrite", 0);
-            material.SetFloat("_SrcBlend", (float)BlendMode.SrcAlpha);
-            material.SetFloat("_DstBlend", (float)BlendMode.OneMinusSrcAlpha);
-            material.SetFloat("_SrcBlendAlpha", (float)BlendMode.One);
-            material.SetFloat("_DstBlendAlpha", (float)BlendMode.OneMinusSrcAlpha);
-            material.SetOverrideTag("RenderType", "Transparent");
-            material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
-            material.renderQueue = (int)RenderQueue.Transparent;
             var renderer = ps.GetComponent<ParticleSystemRenderer>();
             renderer.sharedMaterial = material;
             renderer.shadowCastingMode = ShadowCastingMode.Off;
@@ -371,6 +372,8 @@ namespace TienTuyen.Presentation
                         origin += right * Range(-.07f, .07f) + up * Range(-.06f, .08f);
                         break;
                 }
+                var tint = kind == Kind.Mist ? MistTint : DropletTint;
+                if (tint != Color.white) emit.startColor = (Color)emit.startColor * tint;
                 emit.position = origin;
                 emit.velocity = velocity;
                 emit.rotation = rotation;

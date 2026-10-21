@@ -1,0 +1,30 @@
+{
+ "name": "ElephantEar_A",
+ "materials": [
+  {
+   "name": "ElephantEar_A_M0",
+   "leaf": true,
+   "cutout": true,
+   "normal": true
+  },
+  {
+   "name": "ElephantEar_A_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "noCard": false,
+ "height": 1.5,
+ "radius": 1.376,
+ "tris": [
+  314,
+  106,
+  4
+ ],
+ "cutoff": 0.3,
+ "smoothness": 0.4,
+ "translucency": 0.95,
+ "tintVariation": 0.12
+}

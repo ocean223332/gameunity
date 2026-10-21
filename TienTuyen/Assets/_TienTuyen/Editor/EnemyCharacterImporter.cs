@@ -11,7 +11,7 @@ namespace TienTuyen.Editor
     public static class EnemyCharacterImporter
     {
         public const string Art = "Assets/_TienTuyen/Art/Characters/USRifleman";
-        public const string ResourceDir = "Assets/_TienTuyen/Art/Resources/Characters/USRifleman";
+        public const string ResourceDir = "Assets/_TienTuyen/Art/Characters/USRifleman/Profiles"; // outside Resources: only the ValveBiped profiles ship
         public const string RigPath = Art + "/US_Rifleman_Rig.fbx";
         public const string MaterialPath = Art + "/USRifleman.mat";
         const string TextureId = "tripo_image_7bd6e247-8f75-47f9-9bd0-e665de2d4647";
@@ -60,8 +60,6 @@ namespace TienTuyen.Editor
             profile.modelScale = 1;
             profile.deathFloorLift = SkinnedCharacterProfileBaker.MeasureDeathFloorLift(profile);
             SkinnedCharacterProfileBaker.MeasureSoles(profile);
-            SkinnedCharacterProfileBaker.MeasureBack(profile);
-            profile.bannerSource = UnityEngine.Resources.Load<GameObject>("Models/enemy_shooter");
             EditorUtility.SetDirty(profile);
             AssetDatabase.SaveAssets();
             if (!profile.IsValid) throw new InvalidOperationException("US rifleman profile is invalid");

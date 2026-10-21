@@ -8,7 +8,7 @@ using UnityEngine.InputSystem;
 namespace TienTuyen.Combat
 {
     /// <summary>Self-contained graybox combat loop for the three-wave P1 milestone.</summary>
-    public sealed class CombatGame : MonoBehaviour
+    public sealed partial class CombatGame : MonoBehaviour
     {
         private const float GroundY = 0.8f;
         private const float JumpHeight = 1.2f;
@@ -31,11 +31,30 @@ namespace TienTuyen.Combat
         public event Action<Vector3, float> PlayerDamaged;
         /// <summary>A melee enemy swung: raised on every attack, also when invulnerability absorbs the damage.</summary>
         public event Action<Transform> EnemyMeleeStruck;
+        public event Action<Transform> EnemyMeleeSwing;
+        public event Action<Transform, EnemyActionKind> EnemyChargeStarted;
+        public event Action<Vector3, bool> SurfaceImpact;
+        public event Action<Vector3> BulletNearMiss;
+        public event Action<Vector3> PickupCollected;
+        public event Action<Vector3> SupplySpawned, SupplyClaimed;
+        public event Action<int> SupplyMilestone;
+        public event Action<int, float, int> ReloadStarted;
+        public event Action<Transform, float> EnemyReloadStarted;
+        /// <summary>Actors were cleared by a wave transition, death, menu or restart; never a hit or collection.</summary>
+        public event Action TransientsCleared;
 
         /// <summary>True once a view controller has supplied manual aim; tests and tools keep auto-aim.</summary>
         public bool ManualAim => manualAim;
         /// <summary>Manual aim only: the crosshair ray currently rests on a reachable enemy.</summary>
         public bool AimOnTarget { get; private set; }
+        /// <summary>The crouch input is held (player only).</summary>
+        public bool Crouching => crouchHeld;
+        /// <summary>How far down the player is, 0 standing to 1 crouched, eased over <see cref="CombatRules.CrouchSeconds"/>.</summary>
+        public float Crouch { get; private set; }
+        public float PlayerHeight => Mathf.Lerp(CombatRules.PlayerStandHeight, CombatRules.PlayerCrouchHeight, Crouch);
+        /// <summary>How far the player has slowed to a walk, 0 running to 1 walking, eased over <see cref="CombatRules.WalkSeconds"/>; a crouch wins.</summary>
+        public float Walk { get; private set; }
+        private bool walkHeld;
         public Vector3 PlayerAimDirection
         {
             get
@@ -66,7 +85,7 @@ namespace TienTuyen.Combat
         public float DamageDealt { get; private set; }
         public int Seed { get; private set; }
         public int AliveEnemies { get; private set; }
-        public int MagazineSize => ProgressionRules.MagazineSize(CurrentWeaponDefinition.MagazineSize, Stats);
+        public int MagazineSize => CurrentWeaponDefinition.Id==ContentIds.Rpg18 ? 1 : ProgressionRules.MagazineSize(CurrentWeaponDefinition.MagazineSize, Stats);
         /// <summary>Length of the reload in progress on the weapon in hand, else of an empty-magazine reload.</summary>
         public float ReloadDuration => weaponReload[ActiveWeaponSlot] > 0 ? weaponReloadTotal[ActiveWeaponSlot] :
             CurrentWeaponDefinition.ReloadSeconds * Stats.ReloadFactor;
@@ -87,6 +106,18 @@ namespace TienTuyen.Combat
         public ShopSession Shop { get; private set; }
         public ProgressionStats Stats => Run == null ? ProgressionRules.Aggregate(Array.Empty<StatModifier>()) : Run.Stats;
         public int WeaponCount => Run?.Weapons.Count ?? 0;
+        /// <summary>The knife is in hand: key 5, the entry after the guns in the scroll and Q cycle. The gun slot it
+        /// was drawn from stays <see cref="ActiveWeaponSlot"/>.</summary>
+        public bool KnifeOut { get; private set; }
+        /// <summary>Seconds into the slash in progress, or -1.</summary>
+        public float KnifeSwingTime { get; private set; } = -1f;
+        public bool KnifeSwinging => KnifeSwingTime >= 0;
+        /// <summary>The slash in progress is a quick slash (F) from a gun, which comes back when it ends.</summary>
+        public bool QuickKnife { get; private set; }
+        /// <summary>The hand's entry in the weapon list: a gun slot, or <see cref="WeaponCount"/> for the knife.</summary>
+        public int SelectedEntry => KnifeOut || QuickKnife && KnifeSwinging ? WeaponCount : ActiveWeaponSlot;
+        public event Action KnifeSwung;
+        public event Action<Transform> KnifeStruck;
         public int UpgradeChoiceCount => Run?.CurrentChoices.Count ?? 0;
         public bool SupplyVisible { get; private set; }
         public float SupplyProgress { get; private set; }
@@ -109,22 +140,26 @@ namespace TienTuyen.Combat
 
         /// <summary>Presentation read of one active enemy's attack state; false for inactive or unknown actors.</summary>
         // A ranged enemy's magazine change lasts its gun's reload take (AK 2.4333 s, MP5-SD 2.9333 s).
-        private static float EnemyReloadSeconds(Enemy enemy) => enemy.elite ? 2.4333f : 2.9333f;
+        private static float EnemyReloadSeconds(Enemy enemy) => enemy.sniper ? 2f : enemy.elite ? 2.4333f : 2.9333f;
         // Each aim fires a burst of EnemyBurst rounds at the gun's cyclic rate (AK ~600, MP5-SD ~750 rounds a minute);
         // a magazine holds the same 10 (Elite) and 8 (Shooter) aims as before bursts.
         private const int EnemyBurst = 3;
         private static float EnemyBurstSpacing(Enemy enemy) => enemy.elite ? .1f : .08f;
-        private static int EnemyMagazine(Enemy enemy) => enemy.elite ? 30 : 24;
+        private static int EnemyMagazine(Enemy enemy) => enemy.sniper ? 5 : enemy.elite ? 30 : 24;
 
         private void FireEnemyRound(Enemy enemy)
         {
-            FireEnemyBullet(enemy.body.transform, enemy.aimDirection, enemy.definition.AttackDamage, enemy.elite ? 3f : 4f);
+            FireEnemyBullet(enemy.body.transform, enemy.aimDirection, enemy.definition.AttackDamage, enemy.sniper ? 0f : enemy.elite ? 3f : 4f);
             enemy.ammo = Mathf.Max(0, enemy.ammo - 1);
             enemy.burstLeft--;
             enemy.burstTimer = EnemyBurstSpacing(enemy);
             if (enemy.burstLeft > 0) return;
             enemy.attackTimer = enemy.definition.AttackCooldownSeconds;
-            if (enemy.ammo == 0) enemy.reloadTimer = EnemyReloadSeconds(enemy);
+            if (enemy.ammo == 0)
+            {
+                enemy.reloadTimer = EnemyReloadSeconds(enemy);
+                EnemyReloadStarted?.Invoke(enemy.body.transform, enemy.reloadTimer);
+            }
         }
 
         public bool TryGetEnemyAction(Transform actor, out EnemyActionState state)
@@ -133,6 +168,7 @@ namespace TienTuyen.Combat
             foreach (var enemy in enemies)
             {
                 if (enemy == null || !enemy.active || enemy.body.transform != actor) continue;
+                state.Role = enemy.definition.Role;
                 state.AttackCooldownRemaining = enemy.attackTimer;
                 if (enemy.charger)
                 {
@@ -145,6 +181,9 @@ namespace TienTuyen.Combat
                 }
                 else if (enemy.shooter)
                 {
+                    state.Aiming = enemy.aiming;
+                    state.AimDirection = new Vector3(enemy.aimDirection.x, 0, enemy.aimDirection.y);
+                    state.ShotOrigin = SniperOrigin(enemy);
                     state.ReloadSeconds = EnemyReloadSeconds(enemy);
                     state.ReloadRemaining = enemy.reloadTimer;
                 }
@@ -182,18 +221,21 @@ namespace TienTuyen.Combat
 
         private sealed class Enemy
         {
-            public GameObject body, warning, chargerMarker;
+            public GameObject body, warning, chargerMarker, laser;
+            public bool sniper => definition != null && definition.Role == EnemyRole.Sniper;
             public bool active, pending, shooter, elite, charger, aiming, charging, chargeHit;
             public EnemyDefinition definition;
             public float hp, attackTimer, aimTimer, warningTimer, pathTimer, chargeRemaining, reloadTimer, burstTimer;
             public int ammo, burstLeft;
             public Vector2 aimDirection;
+            public bool swingAnnounced;
         }
 
         private sealed class Bullet
         {
             public GameObject body;
             public bool active;
+            public bool nearMissPlayed, highShot;
             public Vector3 velocity;
             public float remaining, damage;
         }
@@ -221,6 +263,7 @@ namespace TienTuyen.Combat
         private GameObject tracer;
         private Vector3 tracerStart, tracerEnd;
         private float tracerRemaining, spawnTimer, invulnerability;
+        private int squadLeft;
         private int targetIndex = -1;
         private int elitesThisWave;
         private readonly int[] weaponAmmo = new int[ProgressionRun.MaxWeaponSlots];
@@ -232,7 +275,15 @@ namespace TienTuyen.Combat
         // The weapon in hand by identity, so a wave after the shop keeps it when slots shift.
         private OwnedWeapon heldWeapon;
         private long nextPickupId;
-        private bool manualAim, triggerHeld;
+        private bool manualAim, triggerHeld, crouchHeld;
+        private bool sniperTutorialSeen;
+        private EnemyDefinition forcedEnemyDefinition;
+        private Material sniperLaserMaterial;
+        public bool SniperTutorialVisible { get; private set; }
+        public bool DebugInvulnerable { get; private set; }
+        public bool DebugCheatsUsed { get; private set; }
+        private const float SniperShotHeight = 1.45f;
+        private const int SniperCap = 2;
         private Vector3 aimDirection = Vector3.forward;
         private bool hasViewRay;
         private Vector3 viewRayOrigin, viewRayDirection;
@@ -257,9 +308,24 @@ namespace TienTuyen.Combat
 
         private void Update()
         {
+            var debugKeyboard = Keyboard.current;
+            if (debugKeyboard != null)
+            {
+                if (debugKeyboard.f6Key.wasPressedThisFrame) ExecuteCheat("god");
+                if (debugKeyboard.f7Key.wasPressedThisFrame) ExecuteCheat("nextwave");
+                if (debugKeyboard.f8Key.wasPressedThisFrame) ExecuteCheat("sniper");
+                if (debugKeyboard.f9Key.wasPressedThisFrame) ExecuteCheat("boss");
+                if (debugKeyboard.f10Key.wasPressedThisFrame) ExecuteCheat("money");
+            }
             if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
                 TogglePause();
             if (State != CombatState.Playing) return;
+            if(CommanderCinematic)
+            {
+                skipCommanderHold=debugKeyboard!=null && debugKeyboard.spaceKey.isPressed ? skipCommanderHold+Time.deltaTime : 0;
+                if(skipCommanderHold>=.6f) commanderClock=10;
+                StepSimulation(Time.deltaTime,Vector2.zero);return;
+            }
             Vector2 movement = Vector2.zero;
             var keyboard = Keyboard.current;
             if (keyboard != null)
@@ -280,8 +346,13 @@ namespace TienTuyen.Combat
                 if (keyboard.digit2Key.wasPressedThisFrame) SwitchWeapon(1);
                 if (keyboard.digit3Key.wasPressedThisFrame) SwitchWeapon(2);
                 if (keyboard.digit4Key.wasPressedThisFrame) SwitchWeapon(3);
+                if (keyboard.digit5Key.wasPressedThisFrame) DrawKnife();
+                if (keyboard.fKey.wasPressedThisFrame) Slash();
                 if (keyboard.qKey.wasPressedThisFrame) LastWeapon();
             }
+            crouchHeld = (keyboard != null && (keyboard.leftCtrlKey.isPressed || keyboard.cKey.isPressed)) ||
+                (Gamepad.current != null && Gamepad.current.rightStickButton.isPressed);
+            walkHeld = keyboard != null && keyboard.shiftKey.isPressed;
             if (Mouse.current != null)
             {
                 float wheel = Mouse.current.scroll.ReadValue().y;
@@ -326,7 +397,7 @@ namespace TienTuyen.Combat
         public void RequestReload()
         {
             int slot = ActiveWeaponSlot;
-            if (State != CombatState.Playing || switchRemaining > 0 || slot >= WeaponCount) return;
+            if (State != CombatState.Playing || switchRemaining > 0 || slot >= WeaponCount || KnifeOut || KnifeSwinging) return;
             if (weaponReload[slot] <= 0 && weaponAmmo[slot] < MagazineSizeAt(slot))
                 StartReload(slot);
         }
@@ -334,8 +405,9 @@ namespace TienTuyen.Combat
         /// <summary>Its length is fixed now, from the rounds missing now; the magazine fills when it ends.</summary>
         private void StartReload(int slot)
         {
-            float seconds = WeaponAt(slot).ReloadSecondsFor(MagazineSizeAt(slot) - weaponAmmo[slot]) * Stats.ReloadFactor;
+            float seconds = WeaponAt(slot).ReloadSecondsFor(MagazineSizeAt(slot) - weaponAmmo[slot]) * Stats.ReloadFactor * (WeaponAt(slot).Id==ContentIds.Rpg18 ? Run.RocketReloadFactor : 1f);
             weaponReload[slot] = weaponReloadTotal[slot] = seconds;
+            ReloadStarted?.Invoke(slot, seconds, MagazineSizeAt(slot) - weaponAmmo[slot]);
         }
 
         /// <summary>
@@ -344,10 +416,12 @@ namespace TienTuyen.Combat
         /// </summary>
         public bool SwitchWeapon(int slot)
         {
-            if (State != CombatState.Playing || slot < 0 || slot >= WeaponCount || slot == ActiveWeaponSlot) return false;
-            int from = ActiveWeaponSlot;
-            weaponReload[from] = 0;
+            if (State != CombatState.Playing || slot < 0 || slot >= WeaponCount || slot == ActiveWeaponSlot && !KnifeOut ||
+                KnifeSwinging) return false;
+            int from = SelectedEntry;
+            weaponReload[ActiveWeaponSlot] = 0;
             lastWeaponSlot = from;
+            KnifeOut = false;
             ActiveWeaponSlot = slot;
             heldWeapon = Run.Weapons[slot];
             SwitchDuration = CombatRules.WeaponDrawSeconds;
@@ -356,9 +430,72 @@ namespace TienTuyen.Combat
             return true;
         }
 
-        public bool NextWeapon() => WeaponCount > 1 && SwitchWeapon((ActiveWeaponSlot + 1) % WeaponCount);
-        public bool PreviousWeapon() => WeaponCount > 1 && SwitchWeapon((ActiveWeaponSlot + WeaponCount - 1) % WeaponCount);
-        public bool LastWeapon() => SwitchWeapon(lastWeaponSlot);
+        /// <summary>Puts the gun away and draws the knife (one draw, like a gun).</summary>
+        public bool DrawKnife()
+        {
+            if (State != CombatState.Playing || WeaponCount == 0 || KnifeOut || KnifeSwinging) return false;
+            int from = ActiveWeaponSlot;
+            weaponReload[from] = 0;
+            lastWeaponSlot = from;
+            KnifeOut = true;
+            SwitchDuration = CombatRules.WeaponDrawSeconds;
+            switchRemaining = SwitchDuration;
+            WeaponSwitched?.Invoke(from, WeaponCount);
+            return true;
+        }
+
+        /// <summary>A knife slash: from the knife in hand, or from any gun (F), which cancels its reload and comes back
+        /// ready once the slash ends.</summary>
+        public bool Slash()
+        {
+            if (State != CombatState.Playing || WeaponCount == 0 || KnifeSwinging || KnifeOut && switchRemaining > 0) return false;
+            if (!KnifeOut)
+            {
+                weaponReload[ActiveWeaponSlot] = 0;
+                switchRemaining = 0;
+            }
+            QuickKnife = !KnifeOut;
+            KnifeSwingTime = 0;
+            KnifeSwung?.Invoke();
+            return true;
+        }
+
+        private bool SelectEntry(int entry) => entry == WeaponCount ? DrawKnife() : SwitchWeapon(entry);
+        public bool NextWeapon() => WeaponCount > 0 && SelectEntry((SelectedEntry + 1) % (WeaponCount + 1));
+        public bool PreviousWeapon() => WeaponCount > 0 && SelectEntry((SelectedEntry + WeaponCount) % (WeaponCount + 1));
+        public bool LastWeapon() => SelectEntry(lastWeaponSlot);
+
+        /// <summary>Advances the slash: at contact it strikes every enemy in the frontal arc within reach.</summary>
+        private void UpdateKnife(float dt)
+        {
+            if (!KnifeSwinging) return;
+            float before = KnifeSwingTime;
+            KnifeSwingTime += dt;
+            if (before < CombatRules.KnifeContactSeconds && KnifeSwingTime >= CombatRules.KnifeContactSeconds)
+            {
+                float cos = Mathf.Cos(CombatRules.KnifeArcDegrees * Mathf.Deg2Rad);
+                foreach (var enemy in enemies)
+                {
+                    if (enemy == null || !enemy.active) continue;
+                    Vector3 to = enemy.body.transform.position - player.position;
+                    to.y = 0;
+                    if (to.sqrMagnitude > CombatRules.KnifeReach * CombatRules.KnifeReach ||
+                        to.sqrMagnitude > .01f && Vector3.Dot(to.normalized, aimDirection) < cos) continue;
+                    var body = enemy.body.transform;
+                    ApplyShotDamage(enemy, CombatRules.KnifeDamage * Stats.DamageFactor * (enemy.elite ? CombatRules.KnifeEliteFactor : 1f), false);
+                    KnifeStruck?.Invoke(body);
+                }
+            }
+            if (KnifeSwingTime < CombatRules.KnifeSwingSeconds) return;
+            KnifeSwingTime = -1f;
+            QuickKnife = false;
+        }
+
+        private void PutKnifeAway()
+        {
+            KnifeOut = QuickKnife = false;
+            KnifeSwingTime = -1f;
+        }
 
         private static Vector2 RotatePlanar(Vector2 input, float yawDegrees)
         {
@@ -396,6 +533,12 @@ namespace TienTuyen.Combat
             player.position = new Vector3(0, 0.8f, 0);
             verticalVelocity = 0f;
             player.gameObject.SetActive(true);
+            crouchHeld = false;
+            sniperTutorialSeen = SniperTutorialVisible = false;
+            DebugInvulnerable = DebugCheatsUsed = false;
+            Crouch = 0;
+            walkHeld = false;
+            Walk = 0;
             ResetWave();
             State = CombatState.Playing;
         }
@@ -410,6 +553,7 @@ namespace TienTuyen.Combat
             Run = null;
             heldWeapon = null;
             ActiveWeaponSlot = 0;
+            PutKnifeAway();
             lastWeaponSlot = -1;
             switchRemaining = 0;
             State = CombatState.Menu;
@@ -421,7 +565,11 @@ namespace TienTuyen.Combat
         public void TogglePause()
         {
             if (State == CombatState.Playing) State = CombatState.Paused;
-            else if (State == CombatState.Paused) State = CombatState.Playing;
+            else if (State == CombatState.Paused)
+            {
+                SniperTutorialVisible = false;
+                State = CombatState.Playing;
+            }
         }
 
         public void ContinueWave()
@@ -502,7 +650,7 @@ namespace TienTuyen.Combat
 
         private void DamagePlayer(float rawDamage, Vector3 source)
         {
-            if (State != CombatState.Playing || rawDamage <= 0 || invulnerability > 0) return;
+            if (CommanderCinematic || State != CombatState.Playing || DebugInvulnerable || rawDamage <= 0 || invulnerability > 0) return;
             float reduced = rawDamage * 100f / (100f + Stats.Armor);
             Health = Mathf.Max(0, Health - Mathf.Max(1f, reduced));
             invulnerability = 0.35f;
@@ -521,10 +669,12 @@ namespace TienTuyen.Combat
         {
             if (State != CombatState.Playing || deltaTime <= 0) return;
             // Bound long frame stalls without dropping elapsed time during deterministic tests.
+            if(CommanderCinematic) {AdvanceCommanderCinematic(deltaTime);return;}
             while (deltaTime > 0 && State == CombatState.Playing)
             {
                 float step = Mathf.Min(deltaTime, 1f / 30f);
                 Simulate(step, movement);
+                if(CommanderCinematic) break;
                 deltaTime -= step;
             }
         }
@@ -547,22 +697,27 @@ namespace TienTuyen.Combat
             {
                 switchRemaining = Mathf.Max(0, switchRemaining - dt);
                 // An empty weapon starts its reload as soon as it is drawn.
-                if (switchRemaining == 0 && weaponAmmo[ActiveWeaponSlot] <= 0 && weaponReload[ActiveWeaponSlot] <= 0)
+                if (switchRemaining == 0 && !KnifeOut && weaponAmmo[ActiveWeaponSlot] <= 0 && weaponReload[ActiveWeaponSlot] <= 0)
                     StartReload(ActiveWeaponSlot);
             }
             MovePlayer(dt, movement);
             UpdateNavigation();
             UpdateSpawn(dt);
+            UpdateCommander(dt);
+            UpdateRockets(dt);
+            if(State!=CombatState.Playing || CommanderCinematic) return;
             UpdateEnemies(dt);
             if (State != CombatState.Playing) return;
             UpdateBullets(dt);
             if (State != CombatState.Playing) return;
             UpdatePickups();
+            UpdateKnife(dt);
+            if (State != CombatState.Playing) return;
             FireWeapon();
             RunElapsed += dt;
             WaveRemaining = Mathf.Max(0, WaveRemaining - dt);
             UpdateSupply(dt, WaveRemaining <= 0);
-            if (WaveRemaining <= 0) FinishWave();
+            if (WaveRemaining <= 0 && !CommanderActive) FinishWave();
         }
 
         private void ResetWave()
@@ -570,9 +725,11 @@ namespace TienTuyen.Combat
             HideTransientObjects();
             AliveEnemies = 0;
             WaveRemaining = WaveDuration(Wave);
-            spawnTimer = 1.1f;
+            spawnTimer = CombatRules.FirstSquadSeconds;
+            squadLeft = 0;
             elitesThisWave = 0;
             KeepHeldWeaponInHand();
+            PutKnifeAway();
             lastWeaponSlot = -1;
             switchRemaining = 0;
             for (int slot = 0; slot < ProgressionRun.MaxWeaponSlots; slot++)
@@ -585,6 +742,7 @@ namespace TienTuyen.Combat
             targetIndex = -1;
             AimOnTarget = false;
             UpdateNavigation();
+            if(Wave==5) StartCommander();
         }
 
         /// <summary>Drops a removed slot's ammo and timers so later slots keep their own state as they move down.</summary>
@@ -617,7 +775,7 @@ namespace TienTuyen.Combat
         private void FinishWave()
         {
             // Death has already been handled earlier in the same step.
-            if (State != CombatState.Playing) return;
+            if (State != CombatState.Playing || CommanderActive) return;
             long remaining = 0;
             foreach (var pickup in pickups) if (pickup.active) remaining += pickup.valueMinor;
             Run.TryResolveWave(Wave, remaining, out _);
@@ -636,10 +794,20 @@ namespace TienTuyen.Combat
             State = CombatState.Shop;
         }
 
+        /// <summary>Hold-to-crouch, as the keyboard and gamepad set it each frame; also used by PlayMode tests.</summary>
+        public void SetCrouchInput(bool held) => crouchHeld = held;
+
+        /// <summary>Hold-to-walk, as the keyboard sets it each frame; also used by PlayMode tests.</summary>
+        public void SetWalkInput(bool held) => walkHeld = held;
+
         private void MovePlayer(float dt, Vector2 movement)
         {
             if (movement.sqrMagnitude > 1) movement.Normalize();
-            var displacement = new Vector3(movement.x, 0, movement.y) * (CombatRules.PlayerSpeed * Stats.SpeedFactor * dt);
+            Crouch = Mathf.MoveTowards(Crouch, crouchHeld ? 1f : 0f, dt / CombatRules.CrouchSeconds);
+            Walk = Mathf.MoveTowards(Walk, walkHeld ? 1f : 0f, dt / CombatRules.WalkSeconds);
+            float speed = CombatRules.PlayerSpeed * Stats.SpeedFactor * Mathf.Lerp(1f, CombatRules.CrouchSpeedFactor, Crouch) *
+                Mathf.Lerp(1f, CombatRules.WalkSpeedFactor, Walk * (1f - Crouch));
+            var displacement = new Vector3(movement.x, 0, movement.y) * (speed * dt);
             MoveWithCover(player, displacement, PlayerRadius);
             var p = player.position;
             //player.position = new Vector3(Mathf.Clamp(p.x, -HalfWidth, HalfWidth), 0.8f, Mathf.Clamp(p.z, -HalfHeight, HalfHeight));
@@ -664,7 +832,11 @@ namespace TienTuyen.Combat
         {
             spawnTimer -= dt;
             if (spawnTimer > 0 || AliveEnemies >= CombatRules.EnemyCap) return;
-            spawnTimer = Mathf.Max(0.58f, 1.35f - (Wave - 1) * 0.18f);
+            if (squadLeft <= 0) squadLeft = CombatRules.SquadSize(Wave);
+            squadLeft--;
+            // The next member follows closely; after the last one the lull runs to the next squad's start.
+            spawnTimer = squadLeft > 0 ? CombatRules.SquadSpacingSeconds :
+                CombatRules.SquadIntervalSeconds(Wave) - (CombatRules.SquadSize(Wave) - 1) * CombatRules.SquadSpacingSeconds;
             Enemy slot = null;
             foreach (var enemy in enemies) if (!enemy.active && !enemy.pending) { slot = enemy; break; }
             if (slot == null) return;
@@ -686,7 +858,7 @@ namespace TienTuyen.Combat
                 slot.elite = slot.definition.Role == EnemyRole.Elite;
                 // Both ranged roles use the same real projectile path; Elite only differs in
                 // magazine, spread, range and damage.
-                slot.shooter = slot.definition.Role == EnemyRole.Shooter || slot.definition.Role == EnemyRole.Elite;
+                slot.shooter = slot.definition.Role == EnemyRole.Shooter || slot.definition.Role == EnemyRole.Elite || slot.sniper;
                 slot.charger = slot.definition.Role == EnemyRole.Charger;
                 return;
             }
@@ -695,6 +867,12 @@ namespace TienTuyen.Combat
         private EnemyDefinition ChooseEnemyDefinition()
         {
             var catalog = ContentCatalog.P2;
+            if (forcedEnemyDefinition != null)
+            {
+                var forced = forcedEnemyDefinition;
+                forcedEnemyDefinition = null;
+                return forced;
+            }
             if (IsEliteDue())
             {
                 elitesThisWave++;
@@ -702,11 +880,11 @@ namespace TienTuyen.Combat
             }
             int total = 0;
             foreach (var definition in catalog.Enemies)
-                if (IsEnemyRoleEligibleForWave(definition.Role, Wave)) total += definition.SpawnWeight;
+                if (IsEnemyRoleEligibleForWave(definition.Role, Wave) && (definition.Role != EnemyRole.Sniper || SnipersInPlay() < SniperCap)) total += definition.SpawnWeight;
             int choice = rng.Next(total);
             foreach (var definition in catalog.Enemies)
             {
-                if (!IsEnemyRoleEligibleForWave(definition.Role, Wave)) continue;
+                if (!IsEnemyRoleEligibleForWave(definition.Role, Wave) || (definition.Role == EnemyRole.Sniper && SnipersInPlay() >= SniperCap)) continue;
                 choice -= definition.SpawnWeight;
                 if (choice < 0) return definition;
             }
@@ -715,7 +893,7 @@ namespace TienTuyen.Combat
 
         public static bool IsEnemyRoleEligibleForWave(EnemyRole role, int wave) =>
             (role == EnemyRole.Infantry && wave >= 1) || (role == EnemyRole.Charger && wave >= 2) ||
-            (role == EnemyRole.Shooter && wave >= 3);
+            (role == EnemyRole.Shooter && wave >= 3) || (role == EnemyRole.Sniper && wave >= 2);
 
         /// <summary>The Elite is outside the weighted pool: from this wave each spawn first checks <see cref="IsEliteDue"/>.</summary>
         public static bool IsEliteEligibleForWave(int wave) => wave >= 3;
@@ -736,6 +914,50 @@ namespace TienTuyen.Combat
             return elitesThisWave < quota && WaveDuration(Wave) - WaveRemaining >= due;
         }
 
+        private int SnipersInPlay()
+        {
+            int count = 0;
+            foreach (var enemy in enemies)
+                if ((enemy.active || enemy.pending) && enemy.sniper) count++;
+            return count;
+        }
+
+        /// <summary>Local test controls: F6 god, F7 nextwave, F8 sniper. No rewards are granted by skipping.</summary>
+        public void ExecuteCheat(string command)
+        {
+            if(command=="boss" && State!=CombatState.Playing && State!=CombatState.Paused) BeginRun();
+            if (State != CombatState.Playing && State != CombatState.Paused) return;
+            switch (command)
+            {
+                case "boss":
+                    if(CommanderActive) return;
+                    Wave=5;ResetWave();State=CombatState.Playing;break;
+                case "money": Run.AddCurrency(100000);break;
+                case "god": DebugInvulnerable = !DebugInvulnerable; break;
+                case "nextwave":
+                    if(CommanderActive) return;
+                    SniperTutorialVisible = false;
+                    if (Wave >= MaxWave) { State = CombatState.Victory; HideTransientObjects(); AliveEnemies = 0; }
+                    else { Wave++; ResetWave(); State = CombatState.Playing; }
+                    break;
+                case "sniper":
+                    if (Wave < 2 || SnipersInPlay() >= SniperCap || AliveEnemies >= CombatRules.EnemyCap) return;
+                    forcedEnemyDefinition = ContentCatalog.P2.GetEnemy(ContentIds.Sniper);
+                    // An extra enemy: the squad schedule carries on as it was.
+                    float timer = spawnTimer;
+                    int left = squadLeft;
+                    spawnTimer = 0;
+                    squadLeft = 1;
+                    UpdateSpawn(0);
+                    spawnTimer = timer;
+                    squadLeft = left;
+                    forcedEnemyDefinition = null;
+                    break;
+                default: return;
+            }
+            DebugCheatsUsed = true;
+        }
+
         private int ElitesInPlay()
         {
             int count = 0;
@@ -750,7 +972,7 @@ namespace TienTuyen.Combat
             foreach (var enemy in enemies) if (enemy != null && enemy.active && enemy.shooter && enemy.aiming) activeShooters++;
             foreach (var enemy in enemies)
             {
-                if (enemy == null) continue;
+                if (enemy == null || ReferenceEquals(enemy,commander)) continue;
                 if (enemy.pending)
                 {
                     enemy.warningTimer -= dt;
@@ -758,6 +980,7 @@ namespace TienTuyen.Combat
                     {
                         enemy.pending = false;
                         enemy.warning.SetActive(false);
+                        enemy.laser.SetActive(false);
                         enemy.active = true;
                         enemy.body.SetActive(true);
                         enemy.body.GetComponent<Renderer>().sharedMaterial = enemy.shooter ? ShooterMaterial : EnemyMaterial;
@@ -777,6 +1000,12 @@ namespace TienTuyen.Combat
                         enemy.reloadTimer = 0;
                         enemy.pathTimer = 0;
                         AliveEnemies++;
+                        if (enemy.sniper && !sniperTutorialSeen)
+                        {
+                            sniperTutorialSeen = SniperTutorialVisible = true;
+                            State = CombatState.Paused;
+                            return;
+                        }
                     }
                 }
                 if (!enemy.active) continue;
@@ -803,29 +1032,33 @@ namespace TienTuyen.Combat
                     else if (enemy.aiming)
                     {
                         enemy.aimTimer -= dt;
-                        DrawAimLine(enemy.body.transform.position, enemy.aimDirection, enemy.warning);
+                        if (enemy.sniper) DrawSniperLaser(enemy);
+                        else DrawAimLine(enemy.body.transform.position, enemy.aimDirection, enemy.warning);
                         if (enemy.aimTimer <= 0)
                         {
                             enemy.aiming = false;
                             enemy.warning.SetActive(false);
-                            enemy.burstLeft = Mathf.Min(EnemyBurst, enemy.ammo);
+                            enemy.laser.SetActive(false);
+                            enemy.burstLeft = Mathf.Min(enemy.sniper ? 1 : EnemyBurst, enemy.ammo);
                             FireEnemyRound(enemy);
                         }
                     }
                     else if (enemy.reloadTimer <= 0 && enemy.ammo > 0 &&
-                        distance <= (enemy.elite ? 12f : 10f) && distance >= (enemy.elite ? 6.5f : 4f) &&
+                        distance <= (enemy.sniper ? enemy.definition.AttackRange : enemy.elite ? 12f : 10f) &&
+                        distance >= (enemy.sniper ? 8f : enemy.elite ? 6.5f : 4f) &&
                         HasLineOfSight(enemy.body.transform.position, player.position) && enemy.attackTimer <= 0 && activeShooters < 4)
                     {
                         enemy.aiming = true;
-                        enemy.aimTimer = 0.8f;
+                        enemy.aimTimer = enemy.sniper ? enemy.definition.TelegraphSeconds : 0.8f;
                         // Combat is planar XZ; implicit Vector3 -> Vector2 would drop Z.
                         enemy.aimDirection = new Vector2(toPlayer.x, toPlayer.z).normalized;
-                        enemy.warning.SetActive(true);
+                        if (enemy.sniper) DrawSniperLaser(enemy);
+                        else enemy.warning.SetActive(true);
                         activeShooters++;
                     }
-                    else if (distance < (enemy.elite ? 6.5f : 4f))
+                    else if (distance < (enemy.sniper ? 8f : enemy.elite ? 6.5f : 4f))
                         MoveEnemyAway(enemy, dt, 2.05f, toPlayer);
-                    else if (distance > (enemy.elite ? 9f : 8f) ||
+                    else if (distance > (enemy.sniper ? 10f : enemy.elite ? 9f : 8f) ||
                         !HasLineOfSight(enemy.body.transform.position, player.position))
                         MoveEnemy(enemy, dt, 2.05f);
                 }
@@ -833,9 +1066,15 @@ namespace TienTuyen.Combat
                     UpdateCharger(enemy, dt, toPlayer, distance);
                 else if (distance <= MeleeReach(enemy))
                 {
+                    if (!enemy.swingAnnounced && enemy.attackTimer <= MeleeWindup(enemy))
+                    {
+                        enemy.swingAnnounced = true;
+                        EnemyMeleeSwing?.Invoke(enemy.body.transform);
+                    }
                     if (enemy.attackTimer <= 0)
                     {
                         enemy.attackTimer = enemy.definition.AttackCooldownSeconds;
+                        enemy.swingAnnounced = false;
                         EnemyMeleeStruck?.Invoke(enemy.body.transform);
                         DamagePlayer(enemy.definition.AttackDamage, enemy.body.transform.position);
                         // A killing blow hides every enemy and clears its definition.
@@ -846,6 +1085,7 @@ namespace TienTuyen.Combat
                 {
                     // Out of reach the attack stays at least a windup away, so a strike on arrival
                     // is always telegraphed by the full swing.
+                    enemy.swingAnnounced = false;
                     enemy.attackTimer = Mathf.Max(enemy.attackTimer, MeleeWindup(enemy));
                     MoveEnemy(enemy, dt, enemy.definition.MoveSpeed);
                 }
@@ -875,6 +1115,7 @@ namespace TienTuyen.Combat
                     !RayHitsCover(start, actualMotion.normalized, actualMotion.magnitude, out _))
                 {
                     enemy.chargeHit = true;
+                    EnemyMeleeStruck?.Invoke(enemy.body.transform);
                     DamagePlayer(enemy.definition.AttackDamage, end);
                     if (State != CombatState.Playing) return;
                 }
@@ -896,7 +1137,9 @@ namespace TienTuyen.Combat
                 {
                     enemy.aiming = false;
                     enemy.warning.SetActive(false);
+                    enemy.laser.SetActive(false);
                     enemy.charging = true;
+                    EnemyChargeStarted?.Invoke(enemy.body.transform, EnemyActionKind.ChargeDash);
                     enemy.chargeRemaining = ChargerDashSeconds;
                     enemy.chargeHit = false;
                 }
@@ -907,6 +1150,7 @@ namespace TienTuyen.Combat
             {
                 enemy.aiming = true;
                 enemy.aimTimer = enemy.definition.TelegraphSeconds;
+                EnemyChargeStarted?.Invoke(enemy.body.transform, EnemyActionKind.ChargeTelegraph);
                 enemy.aimDirection = new Vector2(toPlayer.x, toPlayer.z).normalized;
                 DrawChargeLane(enemy.body.transform.position, enemy.aimDirection, enemy.warning,
                     enemy.definition.AttackRange);
@@ -964,14 +1208,31 @@ namespace TienTuyen.Combat
                 Vector3 start = bullet.body.transform.position;
                 Vector3 delta = bullet.velocity * dt;
                 float length = delta.magnitude;
-                if (RayHitsCover(start, delta.normalized, length, out _)) { Deactivate(bullet); continue; }
+                if (RayHitsCover(start, delta.normalized, length, out float coverHit))
+                {
+                    SurfaceImpact?.Invoke(start + delta.normalized * coverHit, true);
+                    Deactivate(bullet);
+                    continue;
+                }
                 var point = ClosestPointOnSegment(player.position, start, start + delta);
-                if ((point - player.position).sqrMagnitude <= 0.47f * 0.47f)
+                var playerFeet = player.position.y - GroundY;
+                var planarPlayer = new Vector3(player.position.x, start.y, player.position.z);
+                var highPoint = ClosestPointOnSegment(planarPlayer, start, start + delta);
+                bool sniperHit = bullet.highShot && PlanarDistanceSquared(highPoint, player.position) <= .47f * .47f &&
+                    highPoint.y >= playerFeet && highPoint.y <= playerFeet + PlayerHeight;
+                if (sniperHit || (!bullet.highShot && (point - player.position).sqrMagnitude <= 0.47f * 0.47f))
                 {
                     DamagePlayer(bullet.damage, start - bullet.velocity);
                     Deactivate(bullet);
                     if (State != CombatState.Playing) return;
                     continue;
+                }
+                // Wait until the segment passes the player, rather than announcing an approaching bullet.
+                if (!bullet.nearMissPlayed && (point - player.position).sqrMagnitude <= 1.5f * 1.5f &&
+                    Vector3.Dot(player.position - start - delta, bullet.velocity) <= 0f)
+                {
+                    bullet.nearMissPlayed = true;
+                    BulletNearMiss?.Invoke(point);
                 }
                 bullet.body.transform.position = start + delta;
                 bullet.remaining -= dt;
@@ -988,7 +1249,8 @@ namespace TienTuyen.Combat
                 Vector3 difference = player.position - pickup.body.transform.position;
                 difference.y = 0;
                 if (difference.sqrMagnitude > Stats.PickupRadius * Stats.PickupRadius) continue;
-                Run.TryCollectPickup(pickup.id, pickup.valueMinor);
+                if (Run.TryCollectPickup(pickup.id, pickup.valueMinor))
+                    PickupCollected?.Invoke(pickup.body.transform.position);
                 pickup.active = false;
                 pickup.body.SetActive(false);
             }
@@ -996,6 +1258,14 @@ namespace TienTuyen.Combat
 
         private void FireWeapon()
         {
+            if(LauncherEquipped) {FireLauncher();return;}
+            if (KnifeOut || KnifeSwinging)
+            {
+                AimOnTarget = false;
+                // The knife in hand slashes on the trigger, or by itself at an enemy within reach.
+                if (KnifeOut && (manualAim ? triggerHeld : FindTarget(CombatRules.KnifeReach) >= 0)) Slash();
+                return;
+            }
             if (manualAim)
             {
                 FireManualWeapons();
@@ -1052,6 +1322,7 @@ namespace TienTuyen.Combat
             int target = FindAimTarget(range);
             Vector3 start = player.position + Vector3.up * .08f;
             Vector3 end;
+            bool surfaceHit = false, hitCover = false;
             if (target >= 0)
             {
                 // Keep the hit on the view ray so the tracer and impact share the actual
@@ -1064,9 +1335,18 @@ namespace TienTuyen.Combat
             {
                 Vector3 rayOrigin = hasViewRay ? viewRayOrigin : start;
                 Vector3 rayDirection = hasViewRay ? viewRayDirection : aimDirection;
-                float distance = RayHitsCover(rayOrigin, rayDirection, range, out float hit) ? hit : range;
+                hitCover = RayHitsCover(rayOrigin, rayDirection, range, out float hit);
+                float distance = hitCover ? hit : range;
+                surfaceHit = hitCover;
                 if (hasViewRay && RayHitsGround(rayOrigin, rayDirection, range, out float ground))
-                    distance = Mathf.Min(distance, ground);
+                {
+                    if (ground < distance)
+                    {
+                        distance = ground;
+                        hitCover = false;
+                    }
+                    surfaceHit = true;
+                }
                 end = rayOrigin + rayDirection * distance;
             }
             weaponAmmo[slot]--;
@@ -1076,6 +1356,7 @@ namespace TienTuyen.Combat
             ShowTracer();
             WeaponFired?.Invoke(slot, start, end);
             ShotImpact?.Invoke(end, target >= 0);
+            if (surfaceHit) SurfaceImpact?.Invoke(end, hitCover);
             if (target >= 0) ApplyShotDamage(enemies[target], ShotDamage(slot, weapon, out bool critical), critical);
             if (weaponAmmo[slot] == 0) StartReload(slot);
         }
@@ -1178,7 +1459,7 @@ namespace TienTuyen.Combat
         public float ReloadAt(int slot) => slot >= 0 && slot < WeaponCount ? weaponReload[slot] : 0;
         /// <summary>Length of the reload in progress in a slot (0 when it is not reloading).</summary>
         public float ReloadDurationAt(int slot) => ReloadAt(slot) > 0 ? weaponReloadTotal[slot] : 0;
-        private int MagazineSizeAt(int slot) => ProgressionRules.MagazineSize(WeaponAt(slot).MagazineSize, Stats);
+        private int MagazineSizeAt(int slot) => WeaponAt(slot).Id==ContentIds.Rpg18 ? 1 : ProgressionRules.MagazineSize(WeaponAt(slot).MagazineSize, Stats);
 
         private int FindTarget(float range)
         {
@@ -1206,16 +1487,18 @@ namespace TienTuyen.Combat
 
         private void ApplyShotDamage(Enemy enemy, float damage, bool critical)
         {
-            if (!enemy.active || enemy.definition == null || damage <= 0 || float.IsNaN(damage) || float.IsInfinity(damage)) return;
+            if (CommanderCinematic || !enemy.active || enemy.definition == null || damage <= 0 || float.IsNaN(damage) || float.IsInfinity(damage)) return;
             float applied = Mathf.Min(damage, enemy.hp);
             enemy.hp -= damage;
             DamageDealt += applied;
             EnemyDamaged?.Invoke(enemy.body.transform, applied, critical, enemy.hp <= 0);
             if (enemy.hp > 0) return;
+            if(ReferenceEquals(enemy,commander)) {CommanderDefeated();return;}
             enemy.active = false;
             enemy.aiming = false;
             enemy.body.SetActive(false);
             enemy.warning.SetActive(false);
+            enemy.laser.SetActive(false);
             AliveEnemies--;
             Kills++;
             if (Run.TryRewardEnemy(Kills, enemy.definition.ExperienceReward, enemy.definition.SupplyReward, out long pickupMinor))
@@ -1230,6 +1513,7 @@ namespace TienTuyen.Combat
         private void UpdateSupply(float dt, bool waveComplete)
         {
             if (supplyEvent == null) return;
+            float previousProgress = SupplyProgress;
             float elapsed = WaveDuration(Wave) - WaveRemaining;
             bool inRange = supplyCrate != null && supplyCrate.activeSelf &&
                 PlanarDistanceSquared(player.position, supplyCrate.transform.position) <= 1.5f * 1.5f;
@@ -1244,16 +1528,21 @@ namespace TienTuyen.Combat
                     supplyCrate.transform.position = new Vector3(0, .36f, 7.4f);
                     supplyCrate.SetActive(true);
                     SupplyVisible = true;
+                    SupplySpawned?.Invoke(supplyCrate.transform.position);
                 }
             }
             SupplyProgress = supplyEvent.RecoverySeconds <= 0 ? 0 :
                 Mathf.Clamp01(supplyEvent.ProgressSeconds / supplyEvent.RecoverySeconds);
+            for (int milestone = 1; milestone < 4; milestone++)
+                if (previousProgress < milestone * .25f && SupplyProgress >= milestone * .25f)
+                    SupplyMilestone?.Invoke(milestone);
             if (supplyEvent.IsClaimable && supplyEvent.TryClaim(Health > 0, out var reward))
             {
                 Run.AddCurrency(reward.CurrencyMinorUnits);
                 Health = Mathf.Min(MaxHealth, Health + reward.Heal);
                 SupplyVisible = false;
                 SupplyProgress = 1;
+                SupplyClaimed?.Invoke(supplyCrate != null ? supplyCrate.transform.position : player.position);
                 if (supplyCrate != null) supplyCrate.SetActive(false);
             }
         }
@@ -1282,22 +1571,52 @@ namespace TienTuyen.Combat
             {
                 if (bullet.active) continue;
                 bullet.active = true;
+                bullet.nearMissPlayed = false;
                 bullet.remaining = 3f;
                 float spread = UnityEngine.Random.Range(-spreadDegrees, spreadDegrees) * Mathf.Deg2Rad;
                 Vector2 shot = new Vector2(direction.x * Mathf.Cos(spread) - direction.y * Mathf.Sin(spread),
                     direction.x * Mathf.Sin(spread) + direction.y * Mathf.Cos(spread));
                 bullet.damage = damage;
-                Vector3 origin = actor.position + Vector3.up * .35f;
+                bool sniper = TryGetEnemyAction(actor, out var action) && action.Role == EnemyRole.Sniper;
+                bullet.highShot = sniper;
+                Vector3 origin = sniper ? action.ShotOrigin :
+                    actor.position + Vector3.up * .35f;
                 Vector3 target = player.position + Vector3.up * .45f;
                 Vector3 trajectory = target - origin;
                 float horizontal = new Vector2(trajectory.x, trajectory.z).magnitude;
                 trajectory.x = shot.x * horizontal; trajectory.z = shot.y * horizontal;
-                bullet.velocity = trajectory.normalized * 18f;
+                bullet.velocity = sniper ? new Vector3(shot.x, 0, shot.y) * 18f : trajectory.normalized * 18f;
                 bullet.body.transform.position = origin;
                 bullet.body.SetActive(true);
                 EnemyFired?.Invoke(actor, new Vector3(direction.x, 0, direction.y));
                 return;
             }
+        }
+
+        private static Vector3 SniperOrigin(Enemy enemy)
+        {
+            var position = enemy.body.transform.position;
+            return new Vector3(position.x + enemy.aimDirection.x * 1f, SniperShotHeight,
+                position.z + enemy.aimDirection.y * 1f);
+        }
+
+        private void DrawSniperLaser(Enemy enemy)
+        {
+            var origin = SniperOrigin(enemy);
+            var direction = new Vector3(enemy.aimDirection.x, 0, enemy.aimDirection.y);
+            // End near the player instead of extending behind the shoulder camera and filling its near plane.
+            float range = Mathf.Min(enemy.definition.AttackRange,
+                Mathf.Sqrt(PlanarDistanceSquared(origin, player.position)) + .5f);
+            float length = RayHitsCover(origin, direction, range, out float hit) ? hit : range;
+            enemy.laser.transform.position = origin + direction * (length * .5f);
+            enemy.laser.transform.rotation = Quaternion.LookRotation(direction);
+            enemy.laser.transform.localScale = new Vector3(.035f, .035f, length);
+            enemy.laser.SetActive(true);
+        }
+
+        private void OnDestroy()
+        {
+            if (sniperLaserMaterial != null) Destroy(sniperLaserMaterial);
         }
 
         private void DrawAimLine(Vector3 origin, Vector2 direction, GameObject line)
@@ -1354,6 +1673,9 @@ namespace TienTuyen.Combat
 
         private void BuildPools()
         {
+            sniperLaserMaterial = new Material(Shader.Find("Universal Render Pipeline/Unlit"));
+            sniperLaserMaterial.name = "SniperLaserRed";
+            sniperLaserMaterial.color = new Color(1f, .03f, .02f);
             for (int i = 0; i < enemies.Length; i++)
             {
                 var body = Primitive("Enemy_" + i, PrimitiveType.Capsule, Vector3.zero, new Vector3(.7f, .75f, .7f), EnemyMaterial);
@@ -1368,7 +1690,11 @@ namespace TienTuyen.Combat
                 marker.transform.localPosition = new Vector3(0, .92f, 0);
                 Destroy(marker.GetComponent<Collider>());
                 marker.SetActive(false);
-                enemies[i] = new Enemy { body = body, warning = warning, chargerMarker = marker };
+                var laser = Primitive("SniperLaser_" + i, PrimitiveType.Cube, Vector3.zero, Vector3.one, sniperLaserMaterial);
+                laser.transform.SetParent(transform, true);
+                Destroy(laser.GetComponent<Collider>());
+                laser.SetActive(false);
+                enemies[i] = new Enemy { body = body, warning = warning, chargerMarker = marker, laser = laser };
             }
             for (int i = 0; i < bullets.Length; i++)
             {
@@ -1388,6 +1714,9 @@ namespace TienTuyen.Combat
 
         private void HideTransientObjects()
         {
+            ResetCommander();
+            SniperTutorialVisible = false;
+            TransientsCleared?.Invoke();
             foreach (var enemy in enemies)
             {
                 enemy.active = enemy.pending = enemy.shooter = enemy.elite = enemy.charger =
@@ -1396,9 +1725,11 @@ namespace TienTuyen.Combat
                 enemy.hp = enemy.attackTimer = enemy.aimTimer = enemy.warningTimer =
                     enemy.pathTimer = enemy.chargeRemaining = enemy.reloadTimer = enemy.burstTimer = 0;
                 enemy.ammo = enemy.burstLeft = 0;
+                enemy.swingAnnounced = false;
                 enemy.aimDirection = Vector2.zero;
                 enemy.body.SetActive(false);
                 enemy.warning.SetActive(false);
+                enemy.laser.SetActive(false);
                 enemy.chargerMarker.SetActive(false);
                 enemy.body.transform.localScale = new Vector3(.7f, .75f, .7f);
             }
@@ -1551,6 +1882,9 @@ namespace TienTuyen.Combat
     /// <summary>Read-only attack state of one enemy, see <see cref="CombatGame.TryGetEnemyAction"/>.</summary>
     public struct EnemyActionState
     {
+        public EnemyRole Role;
+        public bool Aiming;
+        public Vector3 AimDirection, ShotOrigin;
         public EnemyActionKind Kind;
         /// <summary>Charger telegraph, 0 at its start to 1 when the dash begins.</summary>
         public float TelegraphProgress;

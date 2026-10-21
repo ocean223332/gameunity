@@ -1,0 +1,31 @@
+{
+ "name": "PineSapling",
+ "materials": [
+  {
+   "name": "PineSapling_M0",
+   "leaf": false,
+   "cutout": false,
+   "normal": true
+  },
+  {
+   "name": "PineSapling_M1",
+   "leaf": true,
+   "cutout": true,
+   "normal": true
+  },
+  {
+   "name": "PineSapling_Card",
+   "leaf": true,
+   "cutout": true,
+   "normal": false,
+   "card": true
+  }
+ ],
+ "height": 1.45,
+ "radius": 0.767,
+ "tris": [
+  587,
+  436,
+  4
+ ]
+}

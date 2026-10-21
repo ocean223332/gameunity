@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using Newtonsoft.Json.Linq;
 using TienTuyen.Presentation;
 using UnityEditor;
@@ -30,7 +31,11 @@ namespace TienTuyen.Editor
         /// <param name="takes">The clip each tracked take plays as (reloads, fire); tracks of takes not listed are skipped.</param>
         /// <param name="body">The body the data poses: its ring and little fingers (bones the source takes lack) take the
         /// middle finger's turn from bind, as the correction's ValveBiped does; null keeps the takes' fingers only.</param>
-        public static HandGripData Import(string json, string gun, string assetPath, IReadOnlyDictionary<string, AnimationClip> takes, GameObject body = null)
+        /// <param name="authoredOn">The body the correction was made on, when it is not <paramref name="body"/>: its finger
+        /// hands, so each of <paramref name="body"/>'s wrists is pinned where its knuckles best meet the authored body's
+        /// (<see cref="Palm"/>) and its fingers take the authored fingers' shape (Carry). Null when the correction is the body's own.</param>
+        public static HandGripData Import(string json, string gun, string assetPath, IReadOnlyDictionary<string, AnimationClip> takes, GameObject body = null,
+            GameObject authoredOn = null)
         {
             var root = JObject.Parse(File.ReadAllText(json));
             var model = (JObject)(root["model"] ?? root);
@@ -49,9 +54,14 @@ namespace TienTuyen.Editor
             data.right = Grip((JObject)frames["R"]);
             data.left = Grip((JObject)frames["L"]);
             var bind = Bind(body);
-            var grip = Take(GripTake, bind);
-            data.rightFingers = Fingers(grip, "R", (JObject)fingers["R"]);
-            data.leftFingers = Fingers(grip, "L", (JObject)fingers["L"]);
+            var from = authoredOn != null && authoredOn != body && body != null ? new FingerRig(authoredOn) : null;
+            var to = from != null ? new FingerRig(body) : null;
+            // The fingers are posed on the body the correction was made on, then carried onto this one.
+            var grip = Take(GripTake, from?.bind ?? bind);
+            data.rightFingers = Carry(Fingers(grip, "R", (JObject)fingers["R"]), from, to);
+            data.leftFingers = Carry(Fingers(grip, "L", (JObject)fingers["L"]), from, to);
+            data.right = Palm(data.right, from, to, "R");
+            data.left = Palm(data.left, from, to, "L");
 
             var magazine = (JObject)(model["magazine"] ?? root["magazine"])?[gun];
             var shell = (JObject)model["shell"]?[gun];
@@ -67,13 +77,13 @@ namespace TienTuyen.Editor
                 var track = new GripTrack { clip = clip };
                 if (poses[name] is JObject wrists)
                 {
-                    track.right = ((JArray)wrists["R"]).Select(f => Pose((JArray)f)).ToArray();
-                    track.left = ((JArray)wrists["L"]).Select(f => Pose((JArray)f)).ToArray();
+                    track.right = ((JArray)wrists["R"]).Select(f => Palm(Pose((JArray)f), from, to, "R")).ToArray();
+                    track.left = ((JArray)wrists["L"]).Select(f => Palm(Pose((JArray)f), from, to, "L")).ToArray();
                 }
                 else if (rows == null) continue;
-                var source = Take(name, bind);
-                (track.rightBones, track.rightFingers) = FingerRows(source, "R", (JArray)rows?["R"], Count(track.right, rows, "R"));
-                (track.leftBones, track.leftFingers) = FingerRows(source, "L", (JArray)rows?["L"], Count(track.left, rows, "L"));
+                var source = Take(name, from?.bind ?? bind);
+                (track.rightBones, track.rightFingers) = Carry(FingerRows(source, "R", (JArray)rows?["R"], Count(track.right, rows, "R")), from, to);
+                (track.leftBones, track.leftFingers) = Carry(FingerRows(source, "L", (JArray)rows?["L"], Count(track.left, rows, "L")), from, to);
                 if (magazine?["takes"]?[name] is JObject path) Magazine(track, path, name);
                 if (shell?["takes"]?[name] is JArray held) (track.shellFrom, track.shellTo) = ((int)held[0], (int)held[1]);
                 tracks.Add(track);
@@ -81,6 +91,13 @@ namespace TienTuyen.Editor
             data.tracks = tracks.ToArray();
             data.magazineBox = magazine == null ? new Bounds() : MagazineBox(magazine, gun);
             Shell(data, shell);
+            // The shell is held in the left Hand bone's space: the same place on the gun from the body's own wrist.
+            if (data.HasShell && to != null)
+            {
+                var (offset, turn) = to.Fit(from, "L");
+                var inverse = Quaternion.Inverse(turn);
+                data.shell = new GripPose(inverse * (data.shell.position - offset), inverse * data.shell.rotation);
+            }
             EditorUtility.SetDirty(data);
             AssetDatabase.SaveAssets();
             return data;
@@ -264,6 +281,157 @@ namespace TienTuyen.Editor
                 ?? throw new FileNotFoundException("No source take " + name + " under " + root);
             var take = JObject.Parse(File.ReadAllText(file));
             return new SourceTake { bones = take["bones"].ToObject<string[]>(), frames = (JArray)take["frames"] }.Follow(bind);
+        }
+
+        /// <summary>A body's finger bones at bind: local rotations, and each bone's segment as a direction in its own frame
+        /// (to the next joint; the last bone's to its farthest skinned vertex, the fingertip).</summary>
+        private sealed class FingerRig
+        {
+            public readonly Dictionary<string, Quaternion> bind;
+            public readonly Dictionary<string, Vector3> along = new Dictionary<string, Vector3>();
+            // Each finger's root joint (Finger0..4) in its Hand bone's frame, by name.
+            public readonly Dictionary<string, Vector3> knuckles = new Dictionary<string, Vector3>();
+
+            public FingerRig(GameObject body)
+            {
+                bind = Bind(body);
+                var bones = body.GetComponentsInChildren<Transform>(true).Where(t => t.name.Contains("_Finger")).ToDictionary(t => t.name);
+                foreach (var bone in bones.Values)
+                {
+                    if (Next(bone.name) is string next && bones.TryGetValue(next, out var child)) along[bone.name] = child.localPosition.normalized;
+                    if (Regex.IsMatch(bone.name, @"_Finger\d$")) knuckles[bone.name] = bone.parent.InverseTransformPoint(bone.position);
+                }
+                foreach (var skin in body.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+                {
+                    var mesh = skin.sharedMesh;
+                    if (mesh == null) continue;
+                    var vertices = mesh.vertices;
+                    var weights = mesh.boneWeights;
+                    var bindposes = mesh.bindposes;
+                    for (int b = 0; b < skin.bones.Length; b++)
+                    {
+                        var bone = skin.bones[b];
+                        if (bone == null || along.ContainsKey(bone.name) || !bones.ContainsKey(bone.name)) continue;
+                        Vector3 tip = Vector3.zero;
+                        for (int v = 0; v < vertices.Length; v++)
+                            if (weights[v].boneIndex0 == b && weights[v].weight0 >= .5f)
+                            {
+                                Vector3 p = bindposes[b].MultiplyPoint3x4(vertices[v]);
+                                if (p.sqrMagnitude > tip.sqrMagnitude) tip = p;
+                            }
+                        if (tip != Vector3.zero) along[bone.name] = tip.normalized;
+                    }
+                }
+            }
+
+            /// <summary>
+            /// The rigid move (in this body's hand frame: offset, then turn) that best lays this hand's knuckle roots onto
+            /// <paramref name="other"/>'s (least squares, Horn's quaternion), so a point p of this hand sits at offset + turn · p
+            /// in the other hand's frame.
+            /// </summary>
+            public (Vector3 offset, Quaternion turn) Fit(FingerRig other, string side)
+            {
+                var pairs = knuckles.Where(k => k.Key.Contains("_" + side + "_Finger") && other.knuckles.ContainsKey(k.Key))
+                    .Select(k => (mine: k.Value, theirs: other.knuckles[k.Key])).ToArray();
+                if (pairs.Length < 3) return (Vector3.zero, Quaternion.identity);
+                Vector3 a = pairs.Aggregate(Vector3.zero, (sum, q) => sum + q.mine) / pairs.Length;
+                Vector3 b = pairs.Aggregate(Vector3.zero, (sum, q) => sum + q.theirs) / pairs.Length;
+                var m = new double[3, 3];
+                foreach (var (mine, theirs) in pairs)
+                {
+                    Vector3 x = mine - a, y = theirs - b;
+                    for (int i = 0; i < 3; i++)
+                        for (int j = 0; j < 3; j++) m[i, j] += x[i] * y[j];
+                }
+                double sxx = m[0, 0], sxy = m[0, 1], sxz = m[0, 2], syx = m[1, 0], syy = m[1, 1], syz = m[1, 2], szx = m[2, 0], szy = m[2, 1], szz = m[2, 2];
+                double[,] n =
+                {
+                    { sxx + syy + szz, syz - szy, szx - sxz, sxy - syx },
+                    { syz - szy, sxx - syy - szz, sxy + syx, szx + sxz },
+                    { szx - sxz, sxy + syx, -sxx + syy - szz, syz + szy },
+                    { sxy - syx, szx + sxz, syz + szy, -sxx - syy + szz },
+                };
+                // The largest eigenvector by power iteration, shifted so every eigenvalue is positive.
+                double shift = 0;
+                for (int i = 0; i < 4; i++)
+                    for (int j = 0; j < 4; j++) shift += Math.Abs(n[i, j]);
+                var v = new double[] { 1, 0, 0, 0 };
+                for (int it = 0; it < 500; it++)
+                {
+                    var w = new double[4];
+                    for (int i = 0; i < 4; i++)
+                    {
+                        w[i] = shift * v[i];
+                        for (int j = 0; j < 4; j++) w[i] += n[i, j] * v[j];
+                    }
+                    double length = Math.Sqrt(w.Sum(x => x * x));
+                    for (int i = 0; i < 4; i++) v[i] = w[i] / length;
+                }
+                var turn = new Quaternion((float)v[1], (float)v[2], (float)v[3], (float)v[0]);
+                return (b - turn * a, turn);
+            }
+        }
+
+        /// <summary>
+        /// A wrist frame (weapon space) for the authored body's hand, as the frame for <paramref name="to"/>'s hand that puts
+        /// its knuckles where the authored hand's were. Kept without both rigs.
+        /// </summary>
+        private static GripPose Palm(GripPose wrist, FingerRig from, FingerRig to, string side)
+        {
+            if (from == null || to == null) return wrist;
+            var (offset, turn) = to.Fit(from, side);
+            return new GripPose(wrist.position + wrist.rotation * offset, wrist.rotation * turn);
+        }
+
+        /// <summary>The next bone of a finger chain (Finger1 → Finger11 → Finger12), or null after the last.</summary>
+        private static string Next(string bone)
+        {
+            string digits = bone.Substring(bone.LastIndexOf("_Finger", StringComparison.Ordinal) + "_Finger".Length);
+            return digits.Length == 1 ? bone + "1" : digits.Length == 2 && digits[1] == '1' ? bone.Substring(0, bone.Length - 1) + "2" : null;
+        }
+
+        /// <summary>
+        /// One frame of finger rotations posed on <paramref name="from"/>, carried onto <paramref name="to"/> by shape: down each
+        /// chain, in the hand's frame (which the grip sets alike on every body), each bone takes its bind rotation under its
+        /// posed parent, swung so its segment points where the source bone's does. The bodies' bind fingers differ in curl and
+        /// roll, so neither the same local rotations nor the same turn from bind give the same hand. Without both rigs the
+        /// rotations are kept.
+        /// </summary>
+        private static Quaternion[] Carry(string[] bones, Quaternion[] locals, int offset, FingerRig from, FingerRig to)
+        {
+            var result = new Quaternion[bones.Length];
+            Array.Copy(locals, offset, result, 0, bones.Length);
+            if (from == null || to == null) return result;
+            var index = bones.Select((b, i) => (b, i)).ToDictionary(e => e.b, e => e.i);
+            foreach (string first in bones.Where(b => Regex.IsMatch(b, @"_Finger\d$")))
+            {
+                // The authored hand's frame seen from the body's hand, whose wrist frame is fitted by Palm.
+                Quaternion source = Quaternion.Inverse(to.Fit(from, first.Contains("_R_Finger") ? "R" : "L").turn), target = Quaternion.identity;
+                for (string bone = first; bone != null && index.TryGetValue(bone, out int i); bone = Next(bone))
+                {
+                    if (!from.along.TryGetValue(bone, out var fromAlong) || !to.along.TryGetValue(bone, out var toAlong) || !to.bind.TryGetValue(bone, out var rest)) break;
+                    Quaternion posed = source * result[i], start = target * rest;
+                    Quaternion end = Quaternion.FromToRotation(start * toAlong, posed * fromAlong) * start;
+                    result[i] = Quaternion.Inverse(target) * end;
+                    source = posed;
+                    target = end;
+                }
+            }
+            return result;
+        }
+
+        private static FingerPose[] Carry(FingerPose[] fingers, FingerRig from, FingerRig to)
+        {
+            var rotations = Carry(fingers.Select(f => f.bone).ToArray(), fingers.Select(f => f.rotation).ToArray(), 0, from, to);
+            return fingers.Select((f, i) => new FingerPose { bone = f.bone, rotation = rotations[i] }).ToArray();
+        }
+
+        private static (string[], Quaternion[]) Carry((string[] bones, Quaternion[] rows) track, FingerRig from, FingerRig to)
+        {
+            if (track.bones.Length == 0) return track;
+            for (int at = 0; at < track.rows.Length; at += track.bones.Length)
+                Array.Copy(Carry(track.bones, track.rows, at, from, to), 0, track.rows, at, track.bones.Length);
+            return track;
         }
 
         /// <summary>Every finger of the side: the take's first-frame rotation × the delta (if any).</summary>
