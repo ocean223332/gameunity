@@ -858,6 +858,7 @@ namespace TienTuyen.Presentation
 
             public CombatState State => game.State;
             public WeaponDefinition ActiveWeapon => game.ActiveWeapon;
+            public bool LauncherEquipped => game.LauncherEquipped;
             public WeaponDefinition WeaponAt(int slot) => game.WeaponAt(slot);
             public int SelectedEntry => game.SelectedEntry;
             public int WeaponCount => game.WeaponCount;
@@ -887,6 +888,7 @@ namespace TienTuyen.Presentation
     {
         CombatState State { get; }
         WeaponDefinition ActiveWeapon { get; }
+        bool LauncherEquipped { get; }
         WeaponDefinition WeaponAt(int slot);
         /// <summary>Equal to <see cref="WeaponCount"/> while the knife is in hand.</summary>
         int SelectedEntry { get; }

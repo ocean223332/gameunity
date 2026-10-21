@@ -26,6 +26,9 @@ namespace TienTuyen.Presentation
         private RunDialogView dialog;
         private UpgradeView upgrade;
         private ShopView shop;
+        private SettingsView settings;
+        private UiButton settingsButton;
+        private bool settingsOpen;
         private TMP_Text debugLabel;
         private CombatState previousState = (CombatState)(-1);
 
@@ -42,6 +45,10 @@ namespace TienTuyen.Presentation
             upgrade = new UpgradeView(root, game, ChooseUpgrade, kind => CombatText.UpgradePreview(game, kind));
             shop = new ShopView(root, game, Ui);
             dialog = new RunDialogView(root, game, OnPrimary, () => { game.ReturnToMenu(); Ui("UI_Click"); });
+            settingsButton = UiButton.Create("OpenSettings", root, UiButton.Style.Secondary, "CÀI ĐẶT", OpenSettings);
+            UiKit.Place(settingsButton.GetComponent<RectTransform>(), UiKit.TopRight, UiKit.TopRight,
+                new Vector2(-30, -30), new Vector2(180, 46));
+            settings = new SettingsView(root, CloseSettings);
             debugLabel = UiKit.Text("DebugCheats", root, "", UiTheme.Body, 15, UiTheme.Gold, TextAlignmentOptions.BottomLeft);
             UiKit.Place(debugLabel, UiKit.BottomLeft, UiKit.BottomLeft, new Vector2(24, 165), new Vector2(650, 26));
             Refresh(0f);
@@ -69,6 +76,7 @@ namespace TienTuyen.Presentation
 
         private void OnDisable()
         {
+            if (settingsOpen) { settingsOpen = false; PlayerSettings.Save(); }
             previousState = (CombatState)(-1);
             if (EventSystem.current != null) EventSystem.current.sendNavigationEvents = false;
         }
@@ -79,7 +87,7 @@ namespace TienTuyen.Presentation
             if (canvasObject != null) Destroy(canvasObject);
         }
 
-        private UiScreen[] Screens => new UiScreen[] { hud, menu, upgrade, shop, dialog };
+        private UiScreen[] Screens => new UiScreen[] { hud, menu, upgrade, shop, dialog, settings };
 
         /// <summary>
         /// The canvas is a scene root rather than a child of the combat object, so
@@ -117,6 +125,7 @@ namespace TienTuyen.Presentation
 
         private void HandleShortcuts()
         {
+            if (settingsOpen) return;
             var keyboard = Keyboard.current;
             if (keyboard == null) return;
             if (game.State == CombatState.Menu)
@@ -136,12 +145,17 @@ namespace TienTuyen.Presentation
         private void Refresh(float deltaTime)
         {
             CombatState state = game.State;
+            bool canConfigure = state == CombatState.Menu || state == CombatState.Paused;
+            if (settingsOpen && !canConfigure) CloseSettings();
             debugLabel.text = game.DebugCheatsUsed ? (game.DebugInvulnerable ? "TEST · BẤT TỬ BẬT · F6 tắt · F9 boss · F10 +1.000 tiền" : "TEST · BẤT TỬ TẮT · F6 bật · F9 boss · F10 +1.000 tiền") : "";
             hud.Show(state != CombatState.Menu && !game.CommanderCinematic);
-            menu.Show(state == CombatState.Menu);
+            menu.Show(state == CombatState.Menu && !settingsOpen);
             upgrade.Show(state == CombatState.Upgrade);
             shop.Show(state == CombatState.Shop);
-            dialog.Show(state == CombatState.Paused || state == CombatState.Defeat || state == CombatState.Victory);
+            dialog.Show(!settingsOpen && (state == CombatState.Paused || state == CombatState.Defeat || state == CombatState.Victory));
+            settingsButton.gameObject.SetActive(canConfigure && !settingsOpen);
+            if (canConfigure && !settingsOpen) settingsButton.transform.SetAsLastSibling();
+            settings.Show(settingsOpen);
             // After Show, so the focused button is already active and receives OnSelect.
             if (state != previousState) EnterState(state);
 
@@ -150,6 +164,29 @@ namespace TienTuyen.Presentation
             if (upgrade.Animate(deltaTime) && upgrade.Shown) upgrade.Refresh();
             if (shop.Animate(deltaTime) && shop.Shown) shop.Refresh();
             dialog.Animate(deltaTime);
+            settings.Animate(deltaTime);
+        }
+
+        private void OpenSettings()
+        {
+            if (game.State != CombatState.Menu && game.State != CombatState.Paused) return;
+            settingsOpen = true;
+            Refresh(0f);
+            EventSystem.current?.SetSelectedGameObject(settings.Sensitivity.gameObject);
+            Ui("UI_Click");
+        }
+
+        private void CloseSettings()
+        {
+            settingsOpen = false;
+            PlayerSettings.Save();
+            settings.Show(false);
+            if (game.State == CombatState.Menu || game.State == CombatState.Paused)
+            {
+                settingsButton.gameObject.SetActive(true);
+                Focus(settingsButton);
+            }
+            Ui("UI_Click");
         }
 
         private void EnterState(CombatState state)
