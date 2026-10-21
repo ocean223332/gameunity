@@ -12,7 +12,7 @@ namespace TienTuyen.Combat.Tests
         public void EveryPresetLightsTheSceneAndRunsReachAllOfThemNeverTwiceInARowUnlessOneIsForced()
         {
             var presets = LightingPreset.All;
-            Assert.That(presets.Length, Is.GreaterThanOrEqualTo(2), "Sunny and overcast at least");
+            Assert.That(presets.Length, Is.GreaterThanOrEqualTo(2), "Misty and Overcast at least");
             foreach (var preset in presets)
             {
                 // A preset whose sun points up or has no strength leaves the soldiers unreadable.

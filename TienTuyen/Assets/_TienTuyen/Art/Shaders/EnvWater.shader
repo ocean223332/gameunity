@@ -142,7 +142,7 @@ Shader "TienTuyen/Environment/Water"
                     float2 along = normalize(input.along);
                     float time = fmod(_Time.y, 600.0);
                     float speed = RiverSpeed(s, halfWidth, bank);
-                    // Sun or not: the presets' haze stands in for the cloud over the sun (Sunny 0.3, Overcast 0.45, Misty 0.6).
+                    // Sun or not: the presets' haze stands in for the cloud over the sun (Overcast 0.45, Misty 0.6; under 0.33 reads as sun).
                     half sunny = 1.0 - smoothstep(0.33, 0.42, _EnvHaze.x);
                     // The current: long thin streaks and foam dashes (they read as moving even in a still), R.A.M 2019's
                     // flow-stretched ripples close up, its ripple height and its foam, all carried along the river at the

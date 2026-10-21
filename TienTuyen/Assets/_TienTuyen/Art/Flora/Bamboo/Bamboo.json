@@ -39,6 +39,7 @@
    "card": true
   }
  ],
+ "noCard": false,
  "height": 13.363,
  "radius": 4.231,
  "tris": [

@@ -66,3 +66,9 @@ Desktop.ini
 /tools/intro_video/exact_subs/
 /tools/intro_video/frames/
 /tools/intro_video/check_*/
+
+# Scratch scripts and the scenes the Unity Test Framework writes next to Assets on every PlayMode run.
+/tmp/
+/TienTuyen/Assets/InitTestScene*.unity
+/TienTuyen/Assets/InitTestScene*.unity.meta
+**/__pycache__.meta

@@ -1,0 +1,6 @@
+{
+  "name": "TienTuyen.Duel",
+  "rootNamespace": "TienTuyen.Duel",
+  "references": ["TienTuyen.Content", "TienTuyen.Progression", "TienTuyen.Combat", "Unity.Netcode.Runtime", "Unity.Networking.Transport", "Unity.Collections"],
+  "autoReferenced": true
+}

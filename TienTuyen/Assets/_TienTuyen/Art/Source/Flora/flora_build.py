@@ -721,6 +721,20 @@ def leaf_multiply(mul):
     return recolour
 
 
+def leaf_grade(saturation, mul):
+    """Pulls the texels towards their own grey by 1 - saturation, then multiplies them; keeps alpha. For a leaf atlas
+    too pure to take the weather's light: a multiply alone cannot add the blue that grey light needs to act on."""
+    m, lum = np.array(mul, np.float32), np.array((.2126, .7152, .0722), np.float32)
+
+    def recolour(px):
+        out = px.copy()
+        rgb = px[:, :, :3]
+        grey = (rgb @ lum)[:, :, None]
+        out[:, :, :3] = np.clip((grey + (rgb - grey) * saturation) * m, 0, 1)
+        return out
+    return recolour
+
+
 def needle_albedo(needles):
     """Moves the needle texels' mean colour and brightness onto the species' needle colour, keeping their detail.
     Only green-leaning texels count as needles; the atlas' brown twigs and bark keep their colour."""
@@ -855,6 +869,10 @@ if SPECIES in TP or SPECIES == "Bamboo":
     for m in lod0.data.materials:
         base, cut, nrm = material_info(m)
         save[m.name] = (base, nrm, m.name in leaf_names)
+        if SPECIES == "Bamboo" and m.name in leaf_names:
+            # The pack's leaves are pure lime (no blue, saturation ~1) and brighter than the jungle around them, so
+            # under Overcast and Misty they kept glowing while their neighbours went grey-green.
+            extra[m.name] = dict(tint=leaf_grade(0.6, (0.88, 0.84, 0.88)))
     tile = 1024 if H > 3 else 512
 elif SPECIES in PH:
     asset, nodes, H, sphere, stiff, r0, r1, leafy = PH[SPECIES]

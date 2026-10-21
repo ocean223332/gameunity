@@ -53,6 +53,24 @@ namespace TienTuyen.Progression
             modifiers.Add(characterTrait);
         }
 
+        public bool CommanderRewardClaimed { get; private set; }
+        private bool rocketRewardChoice;
+        private readonly int[] rocketUpgrades = new int[3];
+        public int RocketUpgradeLevel(UpgradeKind kind) => kind >= UpgradeKind.RocketDamage && kind <= UpgradeKind.RocketRadius ? rocketUpgrades[(int)kind-(int)UpgradeKind.RocketDamage] : 0;
+        public float RocketDamageFactor => 1f + .25f * rocketUpgrades[0];
+        public float RocketReloadFactor => 1f - .15f * rocketUpgrades[1];
+        public float RocketRadius => 2.5f + .5f * rocketUpgrades[2];
+        public int LauncherSlot { get { for(int i=0;i<weapons.Count;i++) if(weapons[i].Id=="weapon.rpg18") return i; return -1; } }
+        public bool TryClaimCommanderReward(int replaceSlot)
+        {
+            if(CommanderRewardClaimed || replaceSlot<0 || replaceSlot>=weapons.Count) return false;
+            long currency=checked(CurrencyMinor+2000);
+            var weapon=new OwnedWeapon("weapon.rpg18",1,0);
+            if(LauncherSlot<0) { if(weapons.Count<MaxWeaponSlots) weapons.Add(weapon); else weapons[replaceSlot]=weapon; }
+            CurrencyMinor=currency;CommanderRewardClaimed=true;PendingUpgrades++;rocketRewardChoice=true;
+            return true;
+        }
+
         public void AddCurrency(long minor)
         {
             if (minor < 0) throw new ArgumentOutOfRangeException(nameof(minor));
@@ -133,6 +151,15 @@ namespace TienTuyen.Progression
                 UpgradeKind.Health, UpgradeKind.Damage, UpgradeKind.AttackSpeed,
                 UpgradeKind.Armor, UpgradeKind.Speed, UpgradeKind.Regen
             };
+            if(LauncherSlot>=0)
+            {
+                var rockets=new List<UpgradeKind>();
+                foreach(var kind in new[]{UpgradeKind.RocketDamage,UpgradeKind.RocketReload,UpgradeKind.RocketRadius})
+                    if(RocketUpgradeLevel(kind)<3) rockets.Add(kind);
+                if(rocketRewardChoice && rockets.Count==3) {currentChoices=rockets.ToArray();rocketRewardChoice=false;return true;}
+                pool.AddRange(rockets);
+            }
+            rocketRewardChoice=false;
             currentChoices = new UpgradeKind[3];
             for (int i = 0; i < 3; i++)
             {
@@ -150,7 +177,12 @@ namespace TienTuyen.Progression
             bool offered = false;
             foreach (UpgradeKind option in currentChoices) offered |= option == choice;
             if (!offered) return false;
-            modifiers.Add(ProgressionRules.Upgrade(choice));
+            if(choice>=UpgradeKind.RocketDamage && choice<=UpgradeKind.RocketRadius)
+            {
+                if(LauncherSlot<0 || RocketUpgradeLevel(choice)>=3) return false;
+                rocketUpgrades[(int)choice-(int)UpgradeKind.RocketDamage]++;
+            }
+            else modifiers.Add(ProgressionRules.Upgrade(choice));
             currentChoices = null;
             PendingUpgrades--;
             return true;

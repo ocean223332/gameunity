@@ -30,6 +30,13 @@ namespace TienTuyen.Presentation.Interface
 
         public UiButton StartButton { get; }
 
+        /// <summary>
+        /// Opens the 1v1 duel. TienTuyen.Duel.Presentation's DuelStage.Register writes it BeforeSceneLoad in every play
+        /// session, PlayMode tests included, so whenever that assembly is compiled in, this menu builds the duel button.
+        /// The menu shows the entry only when it is set.
+        /// </summary>
+        public static Action DuelEntry;
+
         public MenuView(Transform parent, CombatGame game, Action<WeaponKind> choose, Action start) : base("MainMenu", parent)
         {
             this.game = game;
@@ -82,6 +89,11 @@ namespace TienTuyen.Presentation.Interface
             fitter.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
             var build = UiKit.Caption("Build", Root, "VERTICAL SLICE P2  ·  6 ĐỢT  ·  3 VŨ KHÍ", 10, UiTheme.Faint, TextAlignmentOptions.BottomRight);
             UiKit.Place(build, UiKit.BottomRight, UiKit.BottomRight, new Vector2(-30, 30), new Vector2(400, 16));
+            if (DuelEntry != null)
+            {
+                var duel = UiButton.Create("Duel", Root, UiButton.Style.Secondary, "ĐỐI KHÁNG 1V1", () => DuelEntry?.Invoke());
+                UiKit.Place(duel.GetComponent<RectTransform>(), UiKit.BottomRight, UiKit.BottomRight, new Vector2(-30, 58), new Vector2(240, 46));
+            }
         }
 
         private void BuildCard(int index, RectTransform content)

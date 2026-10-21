@@ -27,6 +27,7 @@ namespace TienTuyen.Presentation
         private static readonly Color Skin = Hex("#B98966");
         private static readonly Color Metal = Hex("#39433E");
         private static readonly Color Wood = Hex("#79553D");
+        private static readonly Color Leather = Hex("#3B2E22"), LeatherEdge = Hex("#2C2219");
         private static readonly Color Sand = Hex("#9D8A67");
         private static readonly Color Enemy = Hex("#666158");
         private static readonly Color EnemyDark = Hex("#454A45");
@@ -57,6 +58,8 @@ namespace TienTuyen.Presentation
         private LineRenderer tracerBeam;
         private Transform tracer, heroMarker;
         private CombatCharacterRig playerRig;
+        private Transform menuStep;
+        private float menuStepTop;
         private Vector3 lastShotDirection = Vector3.forward, presentationTracerEnd;
         private float shotAimRemaining;
         private readonly List<Transform> bulletTransforms = new List<Transform>();
@@ -294,8 +297,13 @@ namespace TienTuyen.Presentation
             };
             // The hero on the ValveBiped bind (HeroValveImporter); the plain hero model until it is imported.
             var profile = Resources.Load<SkinnedCharacterProfile>("Characters/PAVN/PAVN_ValveProfile");
+            playerRig.StandAtEase = true;
             if (playerRig.InitializeSkinned(profile, weapons, new Vector3(0, -.8f, 0)))
+            {
                 DisableChildren(root, "Torso", "Backpack", "Head", "Helmet", "LegL", "LegR");
+                BuildHeroKnife(root);
+                BuildMenuStep(root);
+            }
             else
             {
                 if (AttachImportedModel(root, "hero", "HeroBlenderModel", new Vector3(0, -.8f, 0), Vector3.one))
@@ -303,6 +311,73 @@ namespace TienTuyen.Presentation
                 playerRig.Initialize(root.Find("HeroBlenderModel"), weapons);
             }
             return root.gameObject;
+        }
+
+        /// <summary>The knife's slash clip runs faster than authored so its blow lands on the game's contact.</summary>
+        private static float KnifeClipRate(SkinnedCharacterProfile profile) =>
+            profile != null && profile.meleeContactTime > 0f ? profile.meleeContactTime / CombatRules.KnifeContactSeconds : 1f;
+
+        /// <summary>The hero's CS2 knife and its sheath on the hip (the rig places both every frame).</summary>
+        private void BuildHeroKnife(Transform root)
+        {
+            var model = Resources.Load<GameObject>("Models/hero_knife");
+            if (model == null) return;
+            var knife = UnityEngine.Object.Instantiate(model, root);
+            knife.name = "HeroKnife";
+            var steel = Resources.Load<Material>("Models/hero_knife_mat");
+            foreach (var renderer in knife.GetComponentsInChildren<Renderer>())
+            {
+                if (steel != null) renderer.sharedMaterial = steel;
+                renderer.shadowCastingMode = ShadowCastingMode.On;
+            }
+            // A leather scabbard round the blade, from the guard to past the tip (knife frame: +X the blade, +Y its edge).
+            var sheath = new GameObject("HeroSheath").transform;
+            sheath.SetParent(root, false);
+            MakeCube("Scabbard", sheath, new Vector3(.155f, -.004f, 0f), new Vector3(.19f, .052f, .022f), Leather, .008f);
+            MakeCube("Throat", sheath, new Vector3(.068f, -.004f, 0f), new Vector3(.018f, .058f, .028f), LeatherEdge, .004f);
+            playerRig.AttachKnife(knife.transform, sheath);
+        }
+
+        /// <summary>The sandbags the menu hero sets his raised foot on: two bags stacked along his foot, its
+        /// crown at the step's top (the rig turns it with the hero and shows it only while the foot is up).</summary>
+        private void BuildMenuStep(Transform root)
+        {
+            var parts = new List<CombineInstance>();
+            var materials = new List<Material>();
+            void Bag(string part, Vector3 at, float yaw, Vector3 size)
+            {
+                var bag = PropLibrary.Get("sandbag", part);
+                if (bag == null) return;
+                var frame = Matrix4x4.TRS(at, Quaternion.Euler(0f, yaw, 0f), new Vector3(size.x / .62f, size.y / .2f, size.z / .37f)) * bag.Local;
+                for (int i = 0; i < bag.Mesh.subMeshCount; i++)
+                {
+                    parts.Add(new CombineInstance { mesh = bag.Mesh, subMeshIndex = i, transform = frame });
+                    materials.Add(bag.Materials[Mathf.Min(i, bag.Materials.Length - 1)]);
+                }
+            }
+            Bag("bag_a_ground", new Vector3(0f, -.01f, 0f), 92f, new Vector3(.62f, .2f, .38f));
+            Bag("bag_b", new Vector3(.01f, .17f, -.01f), 86f, new Vector3(.56f, .2f, .36f));
+            if (parts.Count == 0) return;
+            var mesh = new Mesh { name = "MenuStep" };
+            var merged = new CombineInstance[parts.Count];
+            for (int i = 0; i < parts.Count; i++)
+            {
+                var single = new Mesh();
+                single.CombineMeshes(new[] { parts[i] }, true, true);
+                merged[i] = new CombineInstance { mesh = single };
+            }
+            mesh.CombineMeshes(merged, false, false);
+            mesh.RecalculateBounds();
+            var step = new GameObject("MenuStep");
+            step.transform.SetParent(root, false);
+            step.AddComponent<MeshFilter>().sharedMesh = mesh;
+            var renderer = step.AddComponent<MeshRenderer>();
+            renderer.sharedMaterials = materials.ToArray();
+            renderer.shadowCastingMode = ShadowCastingMode.On;
+            // The top bag's crown takes the sole, pressed in a few millimetres.
+            menuStepTop = mesh.bounds.max.y - .018f;
+            menuStep = step.transform;
+            step.SetActive(false);
         }
 
         private void BuildWeapon(Transform parent, string name, Vector3 localPosition, Vector3 scale, Color color, float bevel)
@@ -476,6 +551,7 @@ namespace TienTuyen.Presentation
             int weaponIndex = WeaponVisualIndex(slot);
             if (playerRig != null)
             {
+                playerRig.ExternalLauncher=game.LauncherEquipped;
                 playerRig.SelectWeapon(weaponIndex);
                 playerRig.DrawProgress = game.State == CombatState.Playing && game.IsSwitching ? game.SwitchProgress : -1f;
                 playerRig.Crouch = game.Crouch;
@@ -483,6 +559,12 @@ namespace TienTuyen.Presentation
                 // On the menu shot the hero stands relaxed and turned to the camera; gameplay aim and fire stay out of it.
                 bool menuShot = thirdPersonCamera != null && thirdPersonCamera.MenuBlend > .4f;
                 playerRig.Relaxed = menuShot;
+                bool knifeOut = game.State == CombatState.Playing && game.SelectedEntry == game.WeaponCount;
+                playerRig.KnifeInHand = knifeOut;
+                playerRig.KnifeSwing = game.State == CombatState.Playing && game.KnifeSwinging
+                    ? game.KnifeSwingTime * KnifeClipRate(playerRig.Profile) : -1f;
+                // The menu hero rests the weapon on his shoulder; the intro title over the valley keeps the low carry.
+                playerRig.ShoulderRest = menuShot && thirdPersonCamera.TitleVista <= 0f;
                 // Aiming down the sights shoulders the weapon with the bore on the crosshair; otherwise it rides the low-ready.
                 playerRig.AimWeight = thirdPersonCamera != null ? thirdPersonCamera.AimBlend : 0f;
                 playerRig.AimPoint = shotAimRemaining > 0 ? presentationTracerEnd :
@@ -496,6 +578,12 @@ namespace TienTuyen.Presentation
                 playerRig.ReloadPhases = rounds.HasValue ? new Vector2(rounds.Value.StartSeconds, rounds.Value.EndSeconds) : Vector2.zero;
                 float reload = remaining > 0 ? 1f - remaining / Mathf.Max(.01f, playerRig.ReloadSeconds) : -1f;
                 playerRig.Tick(dt, velocity, aim, reload, hitTimer / .18f, game.Health <= 0 ? 1f : 0f);
+                if (menuStep != null)
+                {
+                    bool stepping = playerRig.StepFrame(out Vector3 top, out Quaternion turn);
+                    if (menuStep.gameObject.activeSelf != stepping) menuStep.gameObject.SetActive(stepping);
+                    if (stepping) menuStep.SetPositionAndRotation(top - Vector3.up * menuStepTop, turn);
+                }
             }
             if (heroMarker != null) heroMarker.localScale = MarkerScale(HeroMarkerDiameter, 1f + Mathf.Sin(time * 4f) * .035f);
         }
@@ -511,6 +599,7 @@ namespace TienTuyen.Presentation
 
         private void OnWeaponFired(int slot, Vector3 start, Vector3 end)
         {
+            if(game.WeaponAt(slot)?.Id==TienTuyen.Content.ContentIds.Rpg18)return;
             if (!arenaBuilt || playerRig == null) return;
             lastShotDirection = end - start;
             lastShotDirection.y = 0;
@@ -543,6 +632,8 @@ namespace TienTuyen.Presentation
             foreach (var pair in enemyVisuals)
             {
                 Transform actor = pair.Key; EnemyVisual visual = pair.Value;
+                if(game.IsCommanderActor(actor)){visual.root.gameObject.SetActive(false);continue;}
+                visual.root.gameObject.SetActive(true);
                 bool active = actor.gameObject.activeSelf;
                 bool wasActive = previousEnemyActive[actor];
                 previousEnemyActive[actor] = active;
@@ -676,6 +767,7 @@ namespace TienTuyen.Presentation
 
         private void OnEnemyDamaged(Transform actor, float damage, bool critical, bool killed)
         {
+            if(game.IsCommanderActor(actor))return;
             if (!enemyVisuals.TryGetValue(actor, out var visual)) return;
             visual.hitRemaining = .18f;
             if (!killed) return;
@@ -696,7 +788,7 @@ namespace TienTuyen.Presentation
         {
             foreach (var warning in warnings)
             {
-                if (!warning.gameObject.activeSelf) continue;
+                if (!warning.gameObject.activeSelf || game.IsCommanderWarning(warning)) continue;
                 float pulse = .88f + Mathf.Abs(Mathf.Sin(time * 8f));
                 warning.localScale = new Vector3(pulse, .02f, pulse);
                 var renderer = warning.GetComponent<Renderer>();

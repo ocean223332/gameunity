@@ -5,6 +5,7 @@ namespace TienTuyen.Content
 {
     public static class ContentIds
     {
+        public const string Rpg18 = "weapon.rpg18";
         public const string Rifle = "weapon.rifle";
         public const string Smg = "weapon.smg";
         public const string Shotgun = "weapon.shotgun";
@@ -131,7 +132,8 @@ namespace TienTuyen.Content
                 new WeaponDefinition(ContentIds.Rifle, "Súng trường", 24f, 1, 0.35f, 12, 2.4333f, 10f, 20),
                 new WeaponDefinition(ContentIds.Smg, "Tiểu liên", 10f, 1, 0.12f, 24, 2.9333f, 6.5f, 18),
                 new WeaponDefinition(ContentIds.Shotgun, "Súng tản đạn", 8f, 6, 0.85f, 5,
-                    new RoundReload(0.6f, 0.175f, 0.4667f), 4.5f, 22)
+                    new RoundReload(0.6f, 0.175f, 0.4667f), 4.5f, 22),
+                new WeaponDefinition(ContentIds.Rpg18, "RPG-18", 140f, 1, 1.2f, 1, 4f, 24f, 80)
             },
             new[]
             {

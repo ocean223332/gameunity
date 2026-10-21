@@ -248,6 +248,8 @@ namespace TienTuyen.Presentation
             game.PlayerDamaged += OnPlayerDamaged;
             game.EnemyMeleeSwing += OnEnemyMeleeSwing;
             game.EnemyMeleeStruck += OnEnemyMeleeStruck;
+            game.KnifeSwung += OnKnifeSwung;
+            game.KnifeStruck += OnKnifeStruck;
             game.EnemyChargeStarted += OnEnemyChargeStarted;
             game.SurfaceImpact += OnSurfaceImpact;
             game.BulletNearMiss += OnBulletNearMiss;
@@ -270,6 +272,8 @@ namespace TienTuyen.Presentation
             game.PlayerDamaged -= OnPlayerDamaged;
             game.EnemyMeleeSwing -= OnEnemyMeleeSwing;
             game.EnemyMeleeStruck -= OnEnemyMeleeStruck;
+            game.KnifeSwung -= OnKnifeSwung;
+            game.KnifeStruck -= OnKnifeStruck;
             game.EnemyChargeStarted -= OnEnemyChargeStarted;
             game.SurfaceImpact -= OnSurfaceImpact;
             game.BulletNearMiss -= OnBulletNearMiss;
@@ -285,6 +289,7 @@ namespace TienTuyen.Presentation
 
         private void OnWeaponFired(int slot, Vector3 start, Vector3 end)
         {
+            if(game.WeaponAt(slot)?.Id==TienTuyen.Content.ContentIds.Rpg18)return;
             string id = game.WeaponAt(slot)?.Id;
             string clip = id == ContentIds.Smg
                 ? "SMG_Shot__mp5_01"
@@ -322,6 +327,16 @@ namespace TienTuyen.Presentation
         private void OnEnemyMeleeStruck(Transform actor)
         {
             PlayWorld(KnifeVariant(false), actor.position, .02f);
+        }
+
+        private void OnKnifeSwung()
+        {
+            PlaySfx(KnifeVariant(true));
+        }
+
+        private void OnKnifeStruck(Transform enemy)
+        {
+            PlayWorld(KnifeVariant(false), enemy.position, .02f);
         }
 
         private void OnEnemyChargeStarted(Transform actor, EnemyActionKind kind)
@@ -368,6 +383,8 @@ namespace TienTuyen.Presentation
         private void OnWeaponSwitched(int from, int to)
         {
             reload = null;
+            // The knife comes out of its sheath without a draw sound.
+            if (to == game.WeaponCount) return;
             string id = game.WeaponAt(to)?.Id;
             string clip = id == ContentIds.Smg
                 ? "MP5SD_Draw__mp5_draw"

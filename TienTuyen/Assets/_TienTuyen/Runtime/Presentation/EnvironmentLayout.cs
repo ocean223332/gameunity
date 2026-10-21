@@ -71,8 +71,8 @@ namespace TienTuyen.Presentation
 
         /// <summary>
         /// Where the water leaves the karst (x): the main fall, two tiers with a pool on the ledge between them, and
-        /// its taller, slender twin off the tower beside it. Both sit just left of the sunny preset's low sun as the
-        /// station looks south, so they are backlit.
+        /// its taller, slender twin off the tower beside it. Both sit just left of the low south-western shaft sun the
+        /// presets share (CombatEnvironment) as the station looks south, so they are backlit.
         /// </summary>
         public const float FallX = -108f, TwinFallX = -190f;
         /// <summary>The karst wall runs along the river's south bank between these x (m), tapering at both ends.</summary>

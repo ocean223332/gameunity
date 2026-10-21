@@ -1,0 +1,45 @@
+[
+ {
+  "take": "idle1",
+  "source_sequence": "idle1",
+  "fps": 30.0,
+  "frame_count": 61,
+  "duration_s": 2.0
+ },
+ {
+  "take": "draw",
+  "source_sequence": "draw",
+  "fps": 30.0,
+  "frame_count": 31,
+  "duration_s": 1.0,
+  "done": {
+   "frame": 16.5,
+   "time_s": 0.55,
+   "from": "knife settled; the blade-up pose (frame 11) lands at 2/3 of the draw"
+  }
+ },
+ {
+  "take": "slash1",
+  "source_sequence": "light_hit1",
+  "fps": 30.0,
+  "frame_count": 36,
+  "duration_s": 1.1667,
+  "done": {
+   "frame": 2.77,
+   "time_s": 0.0923,
+   "from": "blade crosses the centre of the view (contact)"
+  }
+ },
+ {
+  "take": "slash2",
+  "source_sequence": "light_hit2",
+  "fps": 30.0,
+  "frame_count": 36,
+  "duration_s": 1.1667,
+  "done": {
+   "frame": 2.4,
+   "time_s": 0.08,
+   "from": "blade crosses the centre of the view (contact)"
+  }
+ }
+]

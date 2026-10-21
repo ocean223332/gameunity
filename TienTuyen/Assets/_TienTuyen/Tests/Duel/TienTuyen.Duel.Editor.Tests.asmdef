@@ -1,0 +1,7 @@
+{
+  "name": "TienTuyen.Duel.Editor.Tests",
+  "references": ["TienTuyen.Duel", "TienTuyen.Combat", "TienTuyen.Content"],
+  "includePlatforms": ["Editor"],
+  "optionalUnityReferences": ["TestAssemblies"],
+  "autoReferenced": false
+}

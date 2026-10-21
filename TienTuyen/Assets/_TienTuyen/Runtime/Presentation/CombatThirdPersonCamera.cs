@@ -16,6 +16,7 @@ namespace TienTuyen.Presentation
     [RequireComponent(typeof(Camera))]
     public sealed class CombatThirdPersonCamera : MonoBehaviour
     {
+        public bool EncounterCamera { get; set; }
         public float Sensitivity = .11f;
         public float Distance = 4.3f, AimDistance = 2.5f;
         public float FieldOfView = 56f, AimFieldOfView = 40f;
@@ -31,12 +32,9 @@ namespace TienTuyen.Presentation
         public float FirstPersonFieldOfView = 70f, FirstPersonAimFieldOfView = 52f;
         public const float FirstPersonMinPitch = -60f, FirstPersonMaxPitch = 70f;
 
-        // Main-menu hero shot: the camera looks along MenuLookYaw at a hero whose shoulders are turned MenuTurn
-        // degrees off square-on, who stands in the right third of the frame, clear of the left-hand panel; at
-        // that turn the low-ready rifle stays inside the frame. The low-ready idle holds the shoulders
-        // MenuBodyOffset degrees clockwise of the character's forward, so the facing the rig is given is turned
-        // back by that much.
-        public const float MenuLookYaw = 62f, MenuTurn = 59f, MenuBodyOffset = 27f, MenuFieldOfView = 26f;
+        // Main-menu hero shot: the camera looks along MenuLookYaw at the hero, who stands in the right third of the frame,
+        // clear of the left-hand panel, and faces the camera square-on.
+        public const float MenuLookYaw = 62f, MenuFieldOfView = 38f;
         public const float MenuDistance = 3.5f, MenuCameraHeight = 1f, MenuFocusHeight = 1.12f, MenuHeroScreenX = .75f;
 
         private CombatGame game;
@@ -70,8 +68,13 @@ namespace TienTuyen.Presentation
             firstPerson = on;
             if (!on) pitch = Mathf.Clamp(pitch, MinPitch, MaxPitch);
         }
-        /// <summary>Planar facing the rig is given on the menu so that the hero's body turns toward the camera, a little off square-on.</summary>
-        public static Vector3 MenuHeroFacing => Quaternion.Euler(0, MenuLookYaw + 180f + MenuTurn - MenuBodyOffset, 0) * Vector3.forward;
+        /// <summary>Planar facing the rig is given on the menu: square-on to the camera, which stands left of the hero by the
+        /// right-third shift (16:9).</summary>
+        public static Vector3 MenuHeroFacing => Quaternion.Euler(0, MenuHeroYaw, 0) * Vector3.forward;
+        private static float MenuHeroYaw => MenuLookYaw + 180f + Mathf.Atan2(MenuShift(16f / 9f), MenuDistance) * Mathf.Rad2Deg;
+        // Standing the camera left of the hero puts him right of centre without turning the lens away from him.
+        private static float MenuShift(float aspect) =>
+            MenuDistance * Mathf.Tan(MenuFieldOfView * .5f * Mathf.Deg2Rad) * aspect * (MenuHeroScreenX * 2f - 1f);
 
         private struct Shot
         {
@@ -126,7 +129,7 @@ namespace TienTuyen.Presentation
             var mouse = Mouse.current;
             if (mouse != null && live && Cursor.lockState == CursorLockMode.Locked)
             {
-                look += mouse.delta.ReadValue() * Sensitivity;
+                look += mouse.delta.ReadValue() * Sensitivity * PlayerSettings.MouseSensitivity;
                 fire |= mouse.leftButton.isPressed;
                 aim |= mouse.rightButton.isPressed;
             }
@@ -157,6 +160,7 @@ namespace TienTuyen.Presentation
 
         private void LateUpdate()
         {
+            if(EncounterCamera)return;
             if (game == null || player == null || view == null) return;
             float dt = Mathf.Min(Time.unscaledDeltaTime, .05f);
             bool paused = game.State == CombatState.Paused, menu = game.State == CombatState.Menu;
@@ -166,7 +170,7 @@ namespace TienTuyen.Presentation
                 // does not turn and the camera swings round behind him.
                 if (game.State == CombatState.Playing && lastState == CombatState.Menu)
                 {
-                    yaw = MenuLookYaw + 180f + MenuTurn - MenuBodyOffset;
+                    yaw = MenuHeroYaw;
                     pitch = 12f;
                     cinematic = 0f;
                 }
@@ -224,7 +228,7 @@ namespace TienTuyen.Presentation
         private static float Smooth(float t) => t * t * (3f - 2f * t);
 
         /// <summary>
-        /// The hero in the right third of the frame, knee-up, seen from the front. Position and aim
+        /// The whole hero in the right third of the frame, seen from the front. Position and aim
         /// breathe on slow, unrelated cycles so the shot never looks frozen.
         /// </summary>
         private Shot MenuShot()
@@ -233,11 +237,7 @@ namespace TienTuyen.Presentation
             float breathe = Mathf.Sin(time * 1.15f), drift = Mathf.Sin(time * .37f + 1.3f), sway = Mathf.Sin(time * .23f);
             Quaternion look = Quaternion.Euler(0, MenuLookYaw, 0);
             Vector3 feet = player.position - Vector3.up * .8f;
-            // Standing the camera left of the hero puts him right of centre without turning the lens
-            // away from him; the shift tracks the aspect.
-            float halfHeight = MenuDistance * Mathf.Tan(MenuFieldOfView * .5f * Mathf.Deg2Rad);
-            float aspect = view.aspect > .1f ? view.aspect : 16f / 9f;
-            float shift = halfHeight * aspect * (MenuHeroScreenX * 2f - 1f);
+            float shift = MenuShift(view.aspect > .1f ? view.aspect : 16f / 9f);
             Vector3 position = feet - look * Vector3.forward * MenuDistance - look * Vector3.right * shift + Vector3.up * MenuCameraHeight;
             position += look * Vector3.right * (sway * .035f) + Vector3.up * (breathe * .009f + drift * .012f) +
                 look * Vector3.forward * (drift * .03f);

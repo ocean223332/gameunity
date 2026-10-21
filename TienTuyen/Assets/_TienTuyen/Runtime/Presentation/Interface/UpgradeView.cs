@@ -76,6 +76,9 @@ namespace TienTuyen.Presentation.Interface
         {
             switch (kind)
             {
+                case UpgradeKind.RocketDamage: return "RPG-18: +25% sát thương mỗi cấp, tối đa 3 cấp.";
+                case UpgradeKind.RocketReload: return "RPG-18: giảm 15% thời gian nạp mỗi cấp, tối đa 3 cấp.";
+                case UpgradeKind.RocketRadius: return "RPG-18: +0,5 m bán kính nổ mỗi cấp, tối đa 3 cấp.";
                 case UpgradeKind.Health: return "Tăng lượng sinh lực tối đa.";
                 case UpgradeKind.Damage: return "Mọi vũ khí gây thêm sát thương.";
                 case UpgradeKind.AttackSpeed: return "Mọi vũ khí bắn nhanh hơn.";
@@ -89,6 +92,9 @@ namespace TienTuyen.Presentation.Interface
         {
             switch (kind)
             {
+                case UpgradeKind.RocketDamage: return "RPG · ĐẦU NỔ";
+                case UpgradeKind.RocketReload: return "RPG · NẠP NHANH";
+                case UpgradeKind.RocketRadius: return "RPG · VÙNG NỔ";
                 case UpgradeKind.Health: return "THỂ LỰC";
                 case UpgradeKind.Damage: return "SÁT THƯƠNG";
                 case UpgradeKind.AttackSpeed: return "TỐC BẮN";

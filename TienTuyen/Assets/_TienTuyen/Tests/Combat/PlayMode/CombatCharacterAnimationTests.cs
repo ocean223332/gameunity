@@ -172,8 +172,6 @@ namespace TienTuyen.Combat.Tests
             hero.Crouch = 0f;
         }
 
-        // The right cheek in the hero's bind pose (body mesh space, metres).
-        private static readonly Vector3 CheekBind = new Vector3(.035f, -.088f, 1.49f);
         private const float ProbeRadius = .01f;
 
         [Test]
@@ -185,9 +183,20 @@ namespace TienTuyen.Combat.Tests
             SkinnedMeshRenderer skin = null;
             foreach (var s in hero.GetComponentsInChildren<SkinnedMeshRenderer>())
                 if (skin == null || s.sharedMesh.vertexCount > skin.sharedMesh.vertexCount) skin = s;
-            Vector3 cheek = skin.sharedMesh.bindposes[Array.IndexOf(skin.bones, head)].MultiplyPoint(CheekBind);
+            int headIndex = Array.IndexOf(skin.bones, head);
+            var face = new List<int>();
+            // These arrays are read-only views owned by the mesh.
+            var counts = skin.sharedMesh.GetBonesPerVertex();
+            var weights = skin.sharedMesh.GetAllBoneWeights();
+            int offset = 0;
+            for (int i = 0; i < counts.Length; i++)
+            {
+                // Weights are sorted descending; the first influence is the dominant bone.
+                if (counts[i] > 0 && weights[offset].boneIndex == headIndex) face.Add(i);
+                offset += counts[i];
+            }
+            Assert.That(face, Is.Not.Empty, "The cheek probe must sample vertices dominated by the Avatar's Head bone.");
             var baked = new Mesh();
-            List<int> face = null;
             var drifts = new List<string>();
             // Level, then the clamps of the shouldered pitch (+10 up, -15 down).
             foreach (float pitch in new[] { 0f, 10f, -15f })
@@ -204,34 +213,47 @@ namespace TienTuyen.Combat.Tests
                 }
                 skin.BakeMesh(baked, false);
                 var posed = baked.vertices;
-                if (face == null)
-                {
-                    // The face over the comb: skin within 5 cm of the cheek (renderer-local, the body's metres).
-                    face = new List<int>();
-                    Vector3 centre = skin.transform.InverseTransformPoint(head.TransformPoint(cheek));
-                    for (int i = 0; i < posed.Length; i++)
-                        if ((posed[i] - centre).sqrMagnitude < .05f * .05f) face.Add(i);
-                }
-                // The gap: the face's nearest distance to the weapon, from a probe sphere's overlap (negative inside it).
-                var root = hero.CurrentWeaponRoot;
+                // Keep the calibrated penetration metric for the assertion. The unbounded triangle distance
+                // is diagnostic until its agreement with that metric has been measured in the contact region.
+                var surface = WeaponSurface(WornModel(hero), skin.transform, false);
                 var colliders = new List<MeshCollider>();
-                foreach (var part in root.GetComponentsInChildren<MeshFilter>())
+                foreach (var part in hero.CurrentWeaponRoot.GetComponentsInChildren<MeshFilter>())
                     colliders.Add(part.gameObject.AddComponent<MeshCollider>());
-                float scale = skin.transform.lossyScale.y, gap = float.MaxValue;
+                float scale = skin.transform.lossyScale.y, gap = float.MaxValue, nearest = float.MaxValue;
+                float maxMetricDifference = 0;
+                int comparable = 0, signDisagreements = 0;
+                int contact = -1, nearestVertex = -1;
+                float contactDistance = float.MaxValue;
                 var probe = new GameObject("Face probe").AddComponent<SphereCollider>();
                 probe.radius = ProbeRadius * scale;
                 Physics.SyncTransforms();
                 foreach (int i in face)
                 {
+                    float triangleGap = NearestSurfaceGap(posed[i], surface);
+                    float distance = Mathf.Abs(triangleGap);
+                    if (distance < nearest) { nearest = distance; nearestVertex = i; }
+                    float pointGap = float.MaxValue;
                     Vector3 p = skin.transform.TransformPoint(posed[i]);
                     foreach (var collider in colliders)
-                        if (Physics.ComputePenetration(probe, p, Quaternion.identity, collider, collider.transform.position, collider.transform.rotation, out _, out float depth))
-                            gap = Mathf.Min(gap, ProbeRadius - depth / scale);
+                        if (Physics.ComputePenetration(probe, p, Quaternion.identity, collider, collider.transform.position,
+                            collider.transform.rotation, out _, out float depth))
+                            pointGap = Mathf.Min(pointGap, ProbeRadius - depth / scale);
+                    if (pointGap < gap) { gap = pointGap; contact = i; contactDistance = distance; }
+                    if (pointGap == float.MaxValue || Mathf.Abs(triangleGap) > ProbeRadius) continue;
+                    comparable++;
+                    maxMetricDifference = Mathf.Max(maxMetricDifference, Mathf.Abs(pointGap - triangleGap));
+                    if (pointGap * triangleGap < 0) signDisagreements++;
                 }
                 Object.DestroyImmediate(probe.gameObject);
                 foreach (var collider in colliders) Object.DestroyImmediate(collider);
-                TestContext.WriteLine("pitch " + pitch + ": cheek " + (gap * 1000f).ToString("F1") + " mm over the comb");
-                if (gap < -.003f || gap > .005f) drifts.Add(pitch + " deg: " + (gap * 1000f).ToString("F1") + " mm");
+                // If the bounded probe finds no overlap, locate the nearest head vertex instead.
+                if (contact < 0) { contact = nearestVertex; contactDistance = nearest; }
+                Vector3 headLocal = head.InverseTransformPoint(skin.transform.TransformPoint(posed[contact]));
+                string diagnostic = $"pitch {pitch}: penetration {gap * 1000:F1} mm, nearest rendered surface {nearest * 1000:F1} mm; " +
+                    $"contact v{contact} head-local {headLocal.ToString("F4")} m, contact rendered surface {contactDistance * 1000:F1} mm; " +
+                    $"head samples {face.Count}, comparable samples {comparable}, maximum metric difference {maxMetricDifference * 1000:F3} mm, sign disagreements {signDisagreements}";
+                TestContext.WriteLine(diagnostic);
+                if (gap < -.003f || gap > .005f) drifts.Add(diagnostic);
             }
             hero.AimPoint = null;
             Object.Destroy(baked);
@@ -293,6 +315,28 @@ namespace TienTuyen.Combat.Tests
             Assert.That(failures, Is.Empty, "Hands must stay on their grips and no wrist may break past the approved hands " +
                 "(bend off the forearm <= 75 deg, twist <= 40 grip / 70 support, elbow a hinge when a roll bone takes the twist): " +
                 string.Join("; ", failures.GetRange(0, Mathf.Min(12, failures.Count))) + (failures.Count > 12 ? " ... " + failures.Count : ""));
+        }
+
+        [Test]
+        public void AimOrAShotAlwaysBringsTheWeaponUpFromAtEase()
+        {
+            foreach (bool shot in new[] { false, true })
+            {
+                hero.ResetPose();
+                hero.Relaxed = false;
+                hero.AimWeight = 0f;
+                hero.SelectWeapon(0);
+                for (int frame = 0; frame < 180; frame++) hero.Tick(1f / 60f, Vector3.zero, Vector3.forward);
+                Assert.That(hero.AtEaseWeight, Is.EqualTo(1f), "Standing still and unaimed lowers the hero's weapon to at-ease");
+                HandGaps(hero, out float grip, out float support);
+                Assert.That(Mathf.Max(grip, support), Is.LessThan(.02f), "Both hands stay on the weapon at ease");
+                if (shot) hero.Fire(0);
+                else hero.AimWeight = 1f;
+                // No slower than the shoulder rises to the sights (.15 s).
+                for (int frame = 0; frame < 9; frame++) hero.Tick(1f / 60f, Vector3.zero, Vector3.forward);
+                Assert.That(hero.AtEaseWeight, Is.Zero, (shot ? "A shot" : "Aim") + " must bring the weapon up from at-ease at once");
+            }
+            hero.AimWeight = 0f;
         }
 
         private static Transform Bone(CombatCharacterRig rig, HumanBodyBones bone) => rig.GetComponentInChildren<Animator>().GetBoneTransform(bone);
@@ -746,6 +790,39 @@ namespace TienTuyen.Combat.Tests
             Assert.That(surviving, Is.Zero, "Every graph must be destroyed, including rigs that were never active.");
         }
 
+        [UnityTest]
+        public IEnumerator HeroKnifeLeftHandKeepsTheCsgoWrist()
+        {
+            // The knife takes reach the hero through Humanoid retargeting from the xdR avatar, whose reference left hand is turned
+            // 67 degrees from the hero's: uncorrected, the guard hand bent back (+12 degrees) and turned palm-out. The takes' own
+            // forearm and hand rotations, given to the hero, bend its knuckles 9.1 degrees toward the palm in the stance (17.8 on
+            // the xdR body, whose knuckles sit elsewhere on the hand); mid-slash the take bends them 10 to 25 degrees that way.
+            const float SourceFlex = -9.1f, MaxOff = 5f;
+            var animator = hero.GetComponentInChildren<Animator>();
+            float Flex()
+            {
+                Vector3 forearm = animator.GetBoneTransform(HumanBodyBones.LeftLowerArm).position, wrist = animator.GetBoneTransform(HumanBodyBones.LeftHand).position;
+                Vector3 index = animator.GetBoneTransform(HumanBodyBones.LeftIndexProximal).position, middle = animator.GetBoneTransform(HumanBodyBones.LeftMiddleProximal).position;
+                Vector3 along = wrist - forearm;
+                return Vector3.SignedAngle(along, middle - wrist, Vector3.Cross(along, index - middle));
+            }
+            Assert.That(game.DrawKnife(), Is.True);
+            SetField(game, "switchRemaining", 0f);
+            yield return new WaitForSecondsRealtime(1f);
+            float stance = Flex();
+            Assert.That(game.Slash(), Is.True);
+            var swing = typeof(CombatGame).GetProperty(nameof(CombatGame.KnifeSwingTime));
+            for (int frame = 0; frame < 20; frame++)
+            {
+                swing.SetValue(game, .3f);
+                yield return null;
+            }
+            float slash = Flex();
+            swing.SetValue(game, -1f);
+            Assert.That(stance, Is.EqualTo(SourceFlex).Within(MaxOff), "stance wrist flex");
+            Assert.That(slash, Is.InRange(-25f, -5f), "slash wrist flex");
+        }
+
         [Test]
         public void InfantryDaggerContactLandsOnEveryStrikeThenReturnsToLocomotion()
         {
@@ -948,14 +1025,25 @@ namespace TienTuyen.Combat.Tests
         public void ActualWeaponMeshesAgreeWithShotDirectionAcrossPoses(int weapon)
         {
             hero.SelectWeapon(weapon);
-            var weaponRoot = hero.WeaponGrip.parent;
-            var parts = weaponRoot.GetComponentsInChildren<MeshRenderer>(false);
-            var barrel = FindMeshPart(parts, "barrel");
-            var receiver = FindMeshPart(parts, "receiver");
-            var muzzle = FindMeshPart(parts, "muzzle");
-            Assert.That(barrel, Is.Not.Null);
-            Assert.That(receiver, Is.Not.Null);
-            Assert.That(muzzle, Is.Not.Null);
+            var model = WornModel(hero);
+            var surface = WeaponSurface(model, model);
+            var bounds = new Bounds(surface[0].a, Vector3.zero);
+            foreach (var triangle in surface)
+            {
+                bounds.Encapsulate(triangle.a); bounds.Encapsulate(triangle.b); bounds.Encapsulate(triangle.c);
+            }
+            Vector3 axis = bounds.size.z > bounds.size.x && bounds.size.z > bounds.size.y ? Vector3.forward :
+                bounds.size.x > bounds.size.y ? Vector3.right : Vector3.up;
+            if (Vector3.Dot(model.Find("Muzzle").localPosition - bounds.center, axis) < 0) axis = -axis;
+            float front = Vector3.Dot(bounds.center, axis) + Vector3.Dot(bounds.extents, Abs(axis));
+            float capDepth = Vector3.Dot(bounds.size, Abs(axis)) * .02f;
+            Vector3 tip = Vector3.zero;
+            int points = 0;
+            // The leading 2% of visible body geometry is the physical muzzle; no vendor part names are needed.
+            foreach (var triangle in surface)
+            foreach (var vertex in new[] { triangle.a, triangle.b, triangle.c })
+                if (Vector3.Dot(vertex, axis) >= front - capDepth) { tip += vertex; points++; }
+            tip /= points;
 
             for (var frame = 0; frame < 240; frame++)
             {
@@ -970,12 +1058,13 @@ namespace TienTuyen.Combat.Tests
 
                 // Body/stock clearance is reviewed on the deformed skinned mesh in
                 // Play mode. Static bounds of old rigid tunic pieces cannot prove it.
-                Vector3 geometryDirection = (MeshCenter(muzzle) - MeshCenter(receiver)).normalized;
+                Vector3 physicalMuzzle = model.TransformPoint(tip);
+                Vector3 geometryDirection = (physicalMuzzle - model.TransformPoint(bounds.center)).normalized;
                 Assert.That(Vector3.Dot(geometryDirection, hero.MuzzleTransform.forward), Is.GreaterThan(.8f),
                     "The physical muzzle must be ahead of the receiver along the aim socket: " + context);
-                Assert.That(Mathf.Abs(Vector3.Dot(LongestMeshAxis(barrel), hero.MuzzleTransform.forward)), Is.GreaterThan(.97f),
+                Assert.That(Mathf.Abs(Vector3.Dot(model.TransformVector(axis).normalized, hero.MuzzleTransform.forward)), Is.GreaterThan(.97f),
                     "The real barrel axis must agree with the aim socket: " + context);
-                Assert.That(Vector3.Distance(MeshCenter(muzzle), hero.MuzzleTransform.position), Is.LessThan(.12f),
+                Assert.That(Vector3.Distance(physicalMuzzle, hero.MuzzleTransform.position), Is.LessThan(.12f),
                     "A correctly oriented socket cannot hide a displaced mesh muzzle: " + context);
             }
         }
@@ -990,24 +1079,86 @@ namespace TienTuyen.Combat.Tests
                     renderer.name + " under " + renderer.transform.root.name);
         }
 
-        private static MeshRenderer FindMeshPart(MeshRenderer[] parts, string name, bool exact = false)
+        private static Transform WornModel(CombatCharacterRig rig)
         {
-            foreach (var part in parts)
-                if (exact ? part.name == name : part.name.IndexOf(name, StringComparison.OrdinalIgnoreCase) >= 0)
-                    return part;
+            // The importer/runtime own this node convention; CS:GO mesh names are deliberately irrelevant.
+            foreach (Transform child in rig.CurrentWeaponRoot)
+                if (child.gameObject.activeInHierarchy && child.Find("Muzzle") != null) return child;
+            Assert.Fail("The active worn weapon must expose its Muzzle node.");
             return null;
         }
 
-        private static Vector3 MeshCenter(MeshRenderer renderer) =>
-            renderer.transform.TransformPoint(renderer.GetComponent<MeshFilter>().sharedMesh.bounds.center);
-
-        private static Vector3 LongestMeshAxis(MeshRenderer renderer)
+        private readonly struct SurfaceTriangle
         {
-            var size = renderer.GetComponent<MeshFilter>().sharedMesh.bounds.size;
-            var x = renderer.transform.TransformVector(Vector3.right * size.x);
-            var y = renderer.transform.TransformVector(Vector3.up * size.y);
-            var z = renderer.transform.TransformVector(Vector3.forward * size.z);
-            return (x.sqrMagnitude > y.sqrMagnitude ? x.sqrMagnitude > z.sqrMagnitude ? x : z : y.sqrMagnitude > z.sqrMagnitude ? y : z).normalized;
+            internal readonly Vector3 a, b, c, normal;
+            internal SurfaceTriangle(Vector3 a, Vector3 b, Vector3 c, Vector3 normal)
+            { this.a = a; this.b = b; this.c = c; this.normal = normal; }
+        }
+
+        private static List<SurfaceTriangle> WeaponSurface(Transform model, Transform coordinates, bool excludeMagazine = true)
+        {
+            var surface = new List<SurfaceTriangle>();
+            var magazine = model.Find(MagazineSplit.MountName);
+            foreach (var filter in model.GetComponentsInChildren<MeshFilter>())
+            {
+                var renderer = filter.GetComponent<MeshRenderer>();
+                if (renderer == null || !renderer.enabled || excludeMagazine && magazine != null && filter.transform.IsChildOf(magazine)) continue;
+                var mesh = filter.sharedMesh;
+                Assert.That(mesh, Is.Not.Null);
+                var vertices = mesh.vertices;
+                var normals = mesh.normals;
+                var indices = mesh.triangles;
+                var toCoordinates = coordinates.worldToLocalMatrix * filter.transform.localToWorldMatrix;
+                var toNormal = toCoordinates.inverse.transpose;
+                for (int i = 0; i < vertices.Length; i++) vertices[i] = toCoordinates.MultiplyPoint3x4(vertices[i]);
+                for (int i = 0; i < indices.Length; i += 3)
+                {
+                    int a = indices[i], b = indices[i + 1], c = indices[i + 2];
+                    if (Vector3.Cross(vertices[b] - vertices[a], vertices[c] - vertices[a]).sqrMagnitude < 1e-20f) continue;
+                    Vector3 normal = normals.Length == vertices.Length ? toNormal.MultiplyVector(normals[a] + normals[b] + normals[c]).normalized :
+                        Vector3.Cross(vertices[b] - vertices[a], vertices[c] - vertices[a]).normalized;
+                    surface.Add(new SurfaceTriangle(vertices[a], vertices[b], vertices[c], normal));
+                }
+            }
+            Assert.That(surface, Is.Not.Empty, "The worn gun must have active rendered body triangles.");
+            return surface;
+        }
+
+        private static Vector3 Abs(Vector3 value) => new Vector3(Mathf.Abs(value.x), Mathf.Abs(value.y), Mathf.Abs(value.z));
+
+        private static float NearestSurfaceGap(Vector3 point, List<SurfaceTriangle> surface)
+        {
+            float nearest = float.MaxValue, side = 1;
+            foreach (var triangle in surface)
+            {
+                Vector3 delta = point - ClosestPoint(point, triangle.a, triangle.b, triangle.c);
+                if (delta.sqrMagnitude >= nearest) continue;
+                nearest = delta.sqrMagnitude;
+                side = Vector3.Dot(delta, triangle.normal) < 0 ? -1 : 1;
+            }
+            return Mathf.Sqrt(nearest) * side;
+        }
+
+        private static Vector3 ClosestPoint(Vector3 p, Vector3 a, Vector3 b, Vector3 c)
+        {
+            Vector3 ab = b - a, ac = c - a, ap = p - a;
+            float d1 = Vector3.Dot(ab, ap), d2 = Vector3.Dot(ac, ap);
+            if (d1 <= 0 && d2 <= 0) return a;
+            Vector3 bp = p - b;
+            float d3 = Vector3.Dot(ab, bp), d4 = Vector3.Dot(ac, bp);
+            if (d3 >= 0 && d4 <= d3) return b;
+            float vc = d1 * d4 - d3 * d2;
+            if (vc <= 0 && d1 >= 0 && d3 <= 0) return a + ab * (d1 / (d1 - d3));
+            Vector3 cp = p - c;
+            float d5 = Vector3.Dot(ab, cp), d6 = Vector3.Dot(ac, cp);
+            if (d6 >= 0 && d5 <= d6) return c;
+            float vb = d5 * d2 - d1 * d6;
+            if (vb <= 0 && d2 >= 0 && d6 <= 0) return a + ac * (d2 / (d2 - d6));
+            float va = d3 * d6 - d5 * d4;
+            if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0)
+                return b + (c - b) * ((d4 - d3) / (d4 - d3 + d5 - d6));
+            float inverse = 1 / (va + vb + vc);
+            return a + ab * (vb * inverse) + ac * (vc * inverse);
         }
 
         private Transform CreateTarget()

@@ -20,6 +20,9 @@ namespace TienTuyen.Presentation
     /// Its takes (idle, draw, fire1.., reload, or start_reload/insert/after_reload) are played to the game's timing:
     /// the draw reaches its "done" moment (&lt;name&gt;.takes.json beside the model) when the game's draw ends, then plays
     /// out unless something interrupts; the reload is fitted whole into the game's reload; each shot restarts a fire take.
+    /// The knife in hand (5, or a quick slash on F) shows the model in Resources/Viewmodels/knife/ in place of the gun's:
+    /// draw and idle as a gun's, and slash takes (slash1..) in turn, each landing its "done" moment on the game's contact.
+    /// A model's view.json sets the vertical field of view its takes were made for.
     /// Presentation only: it reads the game and never changes it.
     /// </summary>
     [DisallowMultipleComponent]
@@ -31,6 +34,7 @@ namespace TienTuyen.Presentation
         /// <summary>Vertical field of view the imported viewmodels were animated for (90 horizontal at 4:3).</summary>
         public float AuthoredFieldOfView = 73.7f;
         public Vector3 HipOffset = new Vector3(.17f, -.17f, .38f), AimOffset = new Vector3(0f, -.105f, .3f);
+        private const string KnifeId = "knife";
 
         private sealed class Viewmodel
         {
@@ -41,7 +45,12 @@ namespace TienTuyen.Presentation
             public Sights sights;
             public Vector3 hipPosition;
             public Quaternion hipRotation;
+            public float fieldOfView;
         }
+
+        /// <summary>Layout of view.json beside a model: the vertical field of view its takes were made for.</summary>
+        [System.Serializable]
+        private sealed class ViewFile { public float vertical_fov = 0; }
 
         /// <summary>Rear and front sight and the gun's up, in the Muzzle empty's frame so they follow the animated gun.</summary>
         private sealed class Sights { public Vector3 rear, front, up; public float eyeBehindRear; }
@@ -59,9 +68,9 @@ namespace TienTuyen.Presentation
 
         private sealed class Flash { public FlashFile file; public Material burst, flame; public GameObject root; }
 
-        private CombatGame game;
+        private IFirstPersonSource game;
         private Transform player, body;
-        private CombatThirdPersonCamera view;
+        private IFirstPersonSource view;
         private Camera mainCamera, overlay;
         // Set while first person swaps STP for SMAA: the upscaling and camera anti-aliasing to put back.
         private UpscalingFilterSelection? shippedUpscaling;
@@ -97,12 +106,33 @@ namespace TienTuyen.Presentation
             return true;
         }
 
-        public void Initialize(CombatGame combat, Transform actor, CombatThirdPersonCamera camera)
+        /// <summary>
+        /// The body's own first-person hands (its profile's firstPersonArms): each viewmodel shows "Arms_&lt;name&gt;" in
+        /// place of "Arms" when it has one. Null or empty keeps "Arms" (the hero's).
+        /// </summary>
+        internal string ArmsSet
+        {
+            get => armsSet;
+            set
+            {
+                armsSet = value;
+                foreach (var model in viewmodels.Values)
+                    if (model != null) ShowArms(model.root);
+            }
+        }
+
+        private string armsSet;
+
+        public void Initialize(CombatGame combat, Transform actor, CombatThirdPersonCamera camera) =>
+            Initialize(new StationSource(combat, camera), actor);
+
+        /// <summary>Binds the view to any first-person player, the duel's included; <paramref name="actor"/> carries its body as "HeroVisual".</summary>
+        internal void Initialize(IFirstPersonSource source, Transform actor)
         {
             if (game != null) game.WeaponFired -= OnWeaponFired;
-            game = combat;
+            game = source;
             player = actor;
-            view = camera;
+            view = source;
             mainCamera = GetComponent<Camera>();
             game.WeaponFired += OnWeaponFired;
             if (overlay == null) BuildOverlay();
@@ -180,7 +210,7 @@ namespace TienTuyen.Presentation
         private void LateUpdate()
         {
             if (game == null || view == null) return;
-            bool active = view.FirstPersonWeight > .5f && game.State != CombatState.Menu && game.ActiveWeapon != null;
+            bool active = view.FirstPersonWeight > .5f && game.State != CombatState.Menu && game.ActiveWeapon != null && !game.LauncherEquipped;
             HideBody(active);
             Active = active;
             if (overlay.enabled != active) Stack(active);
@@ -195,7 +225,9 @@ namespace TienTuyen.Presentation
             }
             if (game.State == CombatState.Paused) return;
             float dt = Mathf.Clamp(Time.unscaledDeltaTime, .0001f, .05f);
-            Show(game.ActiveWeapon);
+            // Without its own model the knife leaves the gun's in view.
+            Viewmodel knife = game.SelectedEntry == game.WeaponCount ? Model(KnifeId, null) : null;
+            Show(knife ?? Model(game.ActiveWeapon.Id, game.ActiveWeapon));
 
             Vector3 step = player.position - lastPlayer;
             step.y = 0;
@@ -283,28 +315,35 @@ namespace TienTuyen.Presentation
             shown?.takes?.Shot();
         }
 
-        private void Show(WeaponDefinition weapon)
+        /// <summary>The viewmodel for this id, built on first use; null for the knife without a model of its own.</summary>
+        private Viewmodel Model(string id, WeaponDefinition weapon)
         {
-            if (!viewmodels.TryGetValue(weapon.Id, out var model))
+            if (!viewmodels.TryGetValue(id, out var model))
             {
-                model = Build(weapon);
-                viewmodels.Add(weapon.Id, model);
+                model = Build(id, weapon);
+                viewmodels.Add(id, model);
             }
+            return model;
+        }
+
+        private void Show(Viewmodel model)
+        {
             if (model == shown) return;
             if (shown != null) shown.root.gameObject.SetActive(false);
             shown = model;
             shown.root.gameObject.SetActive(true);
-            overlay.fieldOfView = shown.takes != null ? AuthoredFieldOfView : ViewmodelFieldOfView;
+            overlay.fieldOfView = shown.fieldOfView > 0 ? shown.fieldOfView : shown.takes != null ? AuthoredFieldOfView : ViewmodelFieldOfView;
         }
 
-        private Viewmodel Build(WeaponDefinition weapon)
+        private Viewmodel Build(string id, WeaponDefinition weapon)
         {
-            string folder = "Viewmodels/" + weapon.Id;
+            string folder = "Viewmodels/" + id;
             GameObject prefab = null;
             foreach (var candidate in Resources.LoadAll<GameObject>(folder))
                 if (candidate.transform.parent == null) { prefab = candidate; break; }
+            if (prefab == null && weapon == null) return null;
             Transform root = prefab != null ? Instantiate(prefab, rig, false).transform : BuildStandIn(weapon);
-            root.name = "Viewmodel_" + weapon.Id;
+            root.name = "Viewmodel_" + id;
             foreach (var renderer in root.GetComponentsInChildren<Renderer>(true))
             {
                 renderer.gameObject.layer = ViewmodelLayer;
@@ -323,7 +362,7 @@ namespace TienTuyen.Presentation
                         catch (System.ArgumentException) { look = null; }
                     }
                 // Without a file: a rifle's flash, or a shotgun's wider and shorter one.
-                look ??= weapon.PelletsPerShot > 1 ? new FlashFile { burst = .11f, length = .065f, width = .085f, brightness = 3.2f } : new FlashFile();
+                look ??= weapon != null && weapon.PelletsPerShot > 1 ? new FlashFile { burst = .11f, length = .065f, width = .085f, brightness = 3.2f } : new FlashFile();
                 model.look = BuildFlash(model.muzzle, look);
                 model.flash = model.look.root;
             }
@@ -339,7 +378,14 @@ namespace TienTuyen.Presentation
                 foreach (var text in Resources.LoadAll<TextAsset>(folder))
                     if (text.name == "sights" || text.name.EndsWith(".sights", System.StringComparison.Ordinal)) sights = text.text;
                 if (model.takes != null && sights != null) model.sights = LoadSights(root, model.muzzle, sights);
+                foreach (var text in Resources.LoadAll<TextAsset>(folder))
+                    if (text.name == "view" || text.name.EndsWith(".view", System.StringComparison.Ordinal))
+                    {
+                        try { model.fieldOfView = JsonUtility.FromJson<ViewFile>(text.text)?.vertical_fov ?? 0; }
+                        catch (System.ArgumentException) { model.fieldOfView = 0; }
+                    }
             }
+            ShowArms(root);
             model.hipPosition = root.localPosition;
             model.hipRotation = root.localRotation;
             if (model.flash != null) model.flash.SetActive(false);
@@ -350,16 +396,18 @@ namespace TienTuyen.Presentation
         /// <summary>
         /// Puts the model's "Viewmodel" empty at the overlay camera, looking where the file looks. Up is the file's
         /// Blender +Z (the empty's local +Z after import); forward is the empty's axis, square to up, nearest the Muzzle
-        /// empty. Snapping to an axis keeps the gun's authored offset instead of aiming the muzzle at the centre.
+        /// empty, or for a model without one (a knife) its "Forward" empty. Snapping to an axis keeps the gun's authored
+        /// offset instead of aiming the muzzle at the centre.
         /// </summary>
         private static void Mount(Transform root, Transform muzzle)
         {
             var anchor = Find(root, "Viewmodel");
             if (anchor == null || anchor == root) return;
             Vector3 up = Vector3.forward, forward = Vector3.down;
-            if (muzzle != null)
+            var ahead = muzzle != null ? muzzle : Find(root, "Forward");
+            if (ahead != null)
             {
-                Vector3 toMuzzle = anchor.InverseTransformDirection(muzzle.position - anchor.position);
+                Vector3 toMuzzle = anchor.InverseTransformDirection(ahead.position - anchor.position);
                 forward = Mathf.Abs(toMuzzle.x) > Mathf.Abs(toMuzzle.y)
                     ? new Vector3(Mathf.Sign(toMuzzle.x), 0, 0)
                     : new Vector3(0, Mathf.Sign(toMuzzle.y), 0);
@@ -580,6 +628,19 @@ namespace TienTuyen.Presentation
             return part.transform;
         }
 
+        /// <summary>The viewmodel's arms for <see cref="ArmsSet"/>: its "Arms_&lt;set&gt;" if it has one, else its own "Arms".</summary>
+        private void ShowArms(Transform root)
+        {
+            var own = string.IsNullOrEmpty(armsSet) ? null : Find(root, "Arms_" + armsSet);
+            var hero = Find(root, "Arms");
+            if (own == null && !string.IsNullOrEmpty(armsSet))
+                Debug.LogWarning($"{root.name} has no Arms_{armsSet}: it keeps the hero's arms.");
+            own?.gameObject.SetActive(true);
+            hero?.gameObject.SetActive(own == null);
+            foreach (Transform child in hero?.parent ?? root)
+                if (child.name.StartsWith("Arms_", System.StringComparison.Ordinal) && child != own) child.gameObject.SetActive(false);
+        }
+
         private static Transform Find(Transform root, string name)
         {
             if (root.name == name) return root;
@@ -638,8 +699,10 @@ namespace TienTuyen.Presentation
         /// <summary>A viewmodel's takes, sampled by hand so the game, not the clip, decides how long each lasts.</summary>
         private sealed class Takes
         {
-            private AnimationClip idle, draw, reload, reloadStart, reloadInsert, reloadEnd, current, shot, tail;
-            private readonly List<AnimationClip> fires = new List<AnimationClip>();
+            private AnimationClip idle, draw, reload, reloadStart, reloadInsert, reloadEnd, current, shot, tail, slash;
+            private readonly List<AnimationClip> fires = new List<AnimationClip>(), slashes = new List<AnimationClip>();
+            private int slashCount;
+            private float slashSeen;
             private readonly Dictionary<string, float> doneAt = new Dictionary<string, float>();
             private readonly System.Random fireRandom = new System.Random(1714);
             private PlayableGraph graph;
@@ -664,7 +727,9 @@ namespace TienTuyen.Presentation
                     else if (name == "insert") takes.reloadInsert = clip;
                     else if (name == "after_reload") takes.reloadEnd = clip;
                     else if (name.StartsWith("fire", System.StringComparison.Ordinal)) takes.fires.Add(clip);
+                    else if (name.StartsWith("slash", System.StringComparison.Ordinal)) takes.slashes.Add(clip);
                 }
+                takes.slashes.Sort((a, b) => string.CompareOrdinal(a.name, b.name));
                 if (takes.idle == null) return null;
                 // takes.json: [{ "take": name, ..., "done": { "frame": n, "time_s": seconds } }]. "done" is the moment the
                 // source game counts the action finished (reload: rounds granted; draw: ready to fire); takes without it
@@ -705,7 +770,7 @@ namespace TienTuyen.Presentation
                 graph.Evaluate(0);
             }
 
-            public void Tick(CombatGame game, float dt)
+            public void Tick(IFirstPersonSource game, float dt)
             {
                 idleTime += dt;
                 shotTime += dt;
@@ -714,6 +779,22 @@ namespace TienTuyen.Presentation
                 // The pump shotgun inserts one shell per missing round, counted when the reload starts.
                 if (reloadNow && !reloading) insertCount = Mathf.Max(1, game.MagazineSize - game.Ammo);
                 reloading = reloadNow;
+                float swing = game.KnifeSwingTime;
+                if (swing < 0 || slashes.Count == 0) slash = null;
+                else
+                {
+                    // Each slash takes the next take; a new one starts at a smaller swing time than the last seen.
+                    if (slash == null || swing < slashSeen) slash = slashes[slashCount++ % slashes.Count];
+                    slashSeen = swing;
+                    // Up to the game's contact the take is timed to reach its own contact ("done") there; after it,
+                    // follow-through and settling play at the take's speed, past the slash's end if nothing interrupts.
+                    float contact = CombatRules.KnifeContactSeconds, done = Done(slash);
+                    tailTime = swing < contact ? swing * done / contact : done + swing - contact;
+                    tail = slash;
+                    Play(slash, tailTime);
+                    graph.Evaluate(0);
+                    return;
+                }
                 if (game.IsSwitching && draw != null) PlayToDone(draw, game.SwitchProgress);
                 else if (reloadNow) PlayReload(1f - game.ReloadRemaining / Mathf.Max(.01f, game.ReloadDuration));
                 else if (shot != null && shotTime < shot.length) Play(shot, shotTime);
@@ -766,5 +847,65 @@ namespace TienTuyen.Presentation
                 if (graph.IsValid()) graph.Destroy();
             }
         }
+
+        /// <summary>The station's hero: its game and its camera, read as they always were.</summary>
+        private sealed class StationSource : IFirstPersonSource
+        {
+            private readonly CombatGame game;
+            private readonly CombatThirdPersonCamera view;
+
+            public StationSource(CombatGame game, CombatThirdPersonCamera view) { this.game = game; this.view = view; }
+
+            public CombatState State => game.State;
+            public WeaponDefinition ActiveWeapon => game.ActiveWeapon;
+            public bool LauncherEquipped => game.LauncherEquipped;
+            public WeaponDefinition WeaponAt(int slot) => game.WeaponAt(slot);
+            public int SelectedEntry => game.SelectedEntry;
+            public int WeaponCount => game.WeaponCount;
+            public bool IsSwitching => game.IsSwitching;
+            public float SwitchProgress => game.SwitchProgress;
+            public float ReloadRemaining => game.ReloadRemaining;
+            public float ReloadDuration => game.ReloadDuration;
+            public int Ammo => game.Ammo;
+            public int MagazineSize => game.MagazineSize;
+            public float KnifeSwingTime => game.KnifeSwingTime;
+            public event System.Action<int, Vector3, Vector3> WeaponFired
+            {
+                add => game.WeaponFired += value;
+                remove => game.WeaponFired -= value;
+            }
+            public float FirstPersonWeight => view.FirstPersonWeight;
+            public float Yaw => view.Yaw;
+            public float AimBlend => view.AimBlend;
+        }
+    }
+
+    /// <summary>
+    /// What <see cref="CombatFirstPersonView"/> reads each frame, named as on CombatGame and CombatThirdPersonCamera: the
+    /// station's hero, or another first-person player (the duel's) that maps its own state onto the same meanings.
+    /// </summary>
+    internal interface IFirstPersonSource
+    {
+        CombatState State { get; }
+        WeaponDefinition ActiveWeapon { get; }
+        bool LauncherEquipped { get; }
+        WeaponDefinition WeaponAt(int slot);
+        /// <summary>Equal to <see cref="WeaponCount"/> while the knife is in hand.</summary>
+        int SelectedEntry { get; }
+        int WeaponCount { get; }
+        bool IsSwitching { get; }
+        float SwitchProgress { get; }
+        float ReloadRemaining { get; }
+        float ReloadDuration { get; }
+        int Ammo { get; }
+        int MagazineSize { get; }
+        /// <summary>Seconds into a knife slash, or -1.</summary>
+        float KnifeSwingTime { get; }
+        /// <summary>Every shot: weapon slot, start and end.</summary>
+        event System.Action<int, Vector3, Vector3> WeaponFired;
+        /// <summary>Past half, the view is first person.</summary>
+        float FirstPersonWeight { get; }
+        float Yaw { get; }
+        float AimBlend { get; }
     }
 }

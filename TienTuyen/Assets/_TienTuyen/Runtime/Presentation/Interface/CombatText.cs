@@ -52,8 +52,17 @@ namespace TienTuyen.Presentation.Interface
                 StatsBeforeAfter(before, after, "   ·   ") + $"\nTiếp tế: {game.Currency} → {game.Currency - offer.Price}";
         }
 
-        public static string UpgradePreview(CombatGame game, UpgradeKind kind) =>
-            StatsBeforeAfter(game.Stats, game.Run.PreviewStats(ProgressionRules.Upgrade(kind)), "\n");
+        public static string UpgradePreview(CombatGame game, UpgradeKind kind)
+        {
+            if(kind>=UpgradeKind.RocketDamage && kind<=UpgradeKind.RocketRadius)
+            {
+                int level=game.Run.RocketUpgradeLevel(kind);
+                if(kind==UpgradeKind.RocketDamage)return $"Cấp {level} → {level+1}/3\nSát thương RPG {140*game.Run.RocketDamageFactor:0} → {140*(game.Run.RocketDamageFactor+.25f):0}";
+                if(kind==UpgradeKind.RocketReload)return $"Cấp {level} → {level+1}/3\nNạp {4*game.Run.RocketReloadFactor:0.0}s → {4*(game.Run.RocketReloadFactor-.15f):0.0}s";
+                return $"Cấp {level} → {level+1}/3\nBán kính {game.Run.RocketRadius:0.0}m → {game.Run.RocketRadius+.5f:0.0}m";
+            }
+            return StatsBeforeAfter(game.Stats,game.Run.PreviewStats(ProgressionRules.Upgrade(kind)),"\n");
+        }
 
         public static string StatsBeforeAfter(ProgressionStats before, ProgressionStats after, string separator)
         {

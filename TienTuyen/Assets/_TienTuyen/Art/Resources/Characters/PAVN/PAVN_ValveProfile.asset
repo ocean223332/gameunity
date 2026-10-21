@@ -24,8 +24,9 @@ MonoBehaviour:
   reload: {fileID: -614494759756961371, guid: 20550f7151e9a834692c2244e2d338ad, type: 3}
   hit: {fileID: 0}
   death: {fileID: -6342246027399269078, guid: 332c137a795802e48b19a792fd0ff815, type: 3}
-  meleeAttack: {fileID: 0}
-  meleeContactTime: 0
+  meleeAttack: {fileID: 4285215494567231982, guid: 332c137a795802e48b19a792fd0ff815, type: 3}
+  meleeContactTime: 0.26666668
+  knifeIdle: {fileID: 2221430889938196818, guid: 332c137a795802e48b19a792fd0ff815, type: 3}
   guardHold: 0
   runCarriesUpperBody: 0
   fistChannel: {x: 0, y: 0}
@@ -995,10 +996,8 @@ MonoBehaviour:
   walkBackwardSpeed: 2.0429246
   walkLeftSpeed: 1.4208771
   walkRightSpeed: 1.6369311
-  bannerSource: {fileID: 919132149155446097, guid: db264defb73a21c4495892748724bbc2, type: 3}
-  bannerOffset: {x: 0, y: 0, z: 0}
-  chestBack: {x: 0.011267188, y: -0.064969, z: -0.000000008227454}
   modelScale: 1
+  firstPersonArms: 
   weaponSets:
   - weapon: rifle
     model: {fileID: 919132149155446097, guid: b0bece43209a5234d8865130c2ca752e, type: 3}

@@ -18,7 +18,7 @@ namespace TienTuyen.Presentation
         // Mirrors CombatGame's movement clamp.
         public const float ArenaHalfX = EnvironmentLayout.HalfX, ArenaHalfZ = EnvironmentLayout.HalfZ;
 
-        // The sunny preset's low sun in the south-west; the shafts through the forest are built along it.
+        // A fixed low sun in the south-west, the same for every preset; the shafts through the forest are built along it.
         private static readonly Vector3 ShaftSun = new Vector3(.55f, -.4f, .73f).normalized;
 
         private CombatGame game;

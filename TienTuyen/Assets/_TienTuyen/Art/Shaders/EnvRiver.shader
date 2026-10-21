@@ -198,6 +198,12 @@ Shader "TienTuyen/Environment/River"
                 surface.alpha = alpha;
                 half4 color = UniversalFragmentPBR(inputData, surface);
                 color.rgb += passed * (1.0 - surface.specular.x);
+                // A low sun through thick haze glints dimmer: the sun path's brightness (its highlight and the probe's sun
+                // disc) is eased under the bloom threshold, by how much the sun's long slant through the haze takes. None at
+                // Overcast's haze and height; in Misty, where bloom spread it into a near-white bar, it peaks at 0.8.
+                half dimmed = 1.0 - saturate(exp(-1.2 * (_EnvHaze.x / max(_MainLightPosition.y, 0.05) - 0.75)));
+                half bright = max(Luminance(color.rgb), 1e-4), over = max(bright - 0.45, 0.0);
+                color.rgb *= lerp(1.0, (bright - over + over / (1.0 + over / 0.35)) / bright, saturate(dimmed * 2.0));
 
                 // Foam: a thin, broken fringe where the water meets the bank (from the depth), and a trail drifting
                 // downstream from each plunge along the south bank, spreading and thinning.

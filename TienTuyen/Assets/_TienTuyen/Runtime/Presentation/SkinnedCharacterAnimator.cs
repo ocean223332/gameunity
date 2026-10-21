@@ -35,6 +35,33 @@ namespace TienTuyen.Presentation
         private const float DrawDip = 40f, DrawDipIn = .15f, DrawDipOut = .4f;
         // Share of the arms the generic hit clip takes from a carried weapon's clips.
         private const float CarriedHitShare = .5f;
+        // The at-ease low carry, in the pose frame (right, up, forward) at the hero's size: the right wrist from the hips, the
+        // bore (muzzle down and forward across the belly to the left) and the weapon's top; the elbows' bend directions.
+        private static readonly Vector3 AtEaseWrist = new Vector3(.16f, .28f, .12f), AtEaseBore = new Vector3(-.7f, -.48f, .51f),
+            AtEaseTop = new Vector3(.07f, 1f, .39f), AtEaseRightElbow = new Vector3(0f, -1f, -.2f), AtEaseLeftElbow = new Vector3(-.3f, -1f, -.3f);
+        // At ease the feet stand square under the hips, this much (of the hip joints' spacing) apart, the knees this share
+        // of the legs' length from straight.
+        private const float AtEaseFeet = 1.15f, AtEaseKnee = .985f;
+        // The shoulder carry (the menu hero, over the at-ease stance), in the pose frame at the hero's size: the right wrist from
+        // the right shoulder joint, the bore (muzzle up and back over the shoulder) and the weapon's top; the right elbow's bend
+        // direction; the left arm's hang from its shoulder (out, down, forward).
+        // The receiver on top of the shoulder, the muzzle up and back past the head, the hand on the grip out beside the shoulder
+        // (clear of the face) with the elbow out and a little forward; the chin a little up.
+        private static readonly Vector3 ShoulderWrist = new Vector3(.08f, .04f, .17f), ShoulderBore = new Vector3(-.2f, .75f, -.62f),
+            ShoulderTop = new Vector3(-.6f, -.3f, -.5f), ShoulderElbow = new Vector3(1f, -.3f, -.1f), ShoulderHang = new Vector3(-.06f, -1f, .08f);
+        // The free left hand on the shoulder carry hangs loose, in the pose frame: the wrist this share of the arm's length
+        // from the shoulder joint along HangLine (a little out from the thigh), the elbow bending back, the palm to the thigh.
+        private static readonly Vector3 HangLine = new Vector3(-.045f, -1f, .04f), HangElbow = new Vector3(-.2f, 0f, -1f),
+            HangPalm = new Vector3(1f, 0f, 0f);
+        private const float HangReach = .985f;
+        // Its fingers' curl, half closed (degrees, root to tip), and the thumb's.
+        private static readonly Vector3 HangCurl = new Vector3(35f, 45f, 30f), HangThumbCurl = new Vector3(15f, 20f, 15f);
+        // And the left foot up on a step StepHeight high, its sole's centre at StepPlace (pose frame, metres from the root),
+        // out to his left side, the toes turned StepToeOut out, the hips StepLean forward and the standing foot as far back.
+        private static readonly Vector3 StepPlace = new Vector3(-.28f, 0f, .14f);
+        public const float StepHeight = .36f;
+        private const float StepToeOut = 30f, StepLean = .04f;
+        private const float ShoulderChin = 4f;
         // A fist-held blade leans this far (tan) from the thumb side toward the knuckles.
         private const float BladeLean = .35f;
         // Most a clavicle turns (degrees) to bring a grip-solved hand within reach.
@@ -92,11 +119,11 @@ namespace TienTuyen.Presentation
         private float crouch, walk;
         private AnimationMixerPlayable locoMixer, bodyMixer, upperMixer;
         private AnimationLayerMixerPlayable layers;
-        private AnimationClipPlayable aimPlayable, reloadPlayable, hitPlayable, deathPlayable, meleePlayable;
+        private AnimationClipPlayable aimPlayable, reloadPlayable, hitPlayable, deathPlayable, meleePlayable, knifeIdlePlayable;
         private AnimationMixerPlayable chargeMixer;
         private readonly AnimationClipPlayable[] charge = new AnimationClipPlayable[3];
         private readonly float[] chargeWeights = new float[3];
-        private readonly bool hasAim, hasReload, hasHit, hasDeath, hasMelee;
+        private readonly bool hasAim, hasReload, hasHit, hasDeath, hasMelee, hasKnifeIdle;
         private readonly bool[] hasCharge = new bool[3];
         private const float ActionFadeTime = .08f;
 
@@ -109,6 +136,25 @@ namespace TienTuyen.Presentation
         private struct Follower { public Transform bone, leader; public Quaternion bind, leaderUnbind; }
         private readonly Follower[] followers;
         private readonly FistJoint[] fist = new FistJoint[0];
+        // The left hand's finger joints: bind rotation and bend axis (parent frame), joint 0-2 and whether it is the thumb.
+        private struct CurlJoint { public Transform bone; public Quaternion bind; public Vector3 axis; public int joint; public bool thumb; }
+        private readonly CurlJoint[] leftCurl = new CurlJoint[0];
+        // The hero's knife in his right fist closed as on the AK's pistol grip: the handle inside the middle finger's curl,
+        // across the fist along the knuckles, the blade out of the thumb side leaning BladeLean toward the knuckles and the
+        // edge facing them.
+        private readonly HandGripData knifeGrip;
+        // The sheath on the right hip, behind the seam, in the belt frame (x right, y up, z forward; model metres from the
+        // pelvis bone), the knife's tip down and the flat against the hip.
+        private static readonly Vector3 SheathPlace = new Vector3(.2f, .22f, -.05f);
+        private static readonly Quaternion SheathTurn = Quaternion.AngleAxis(8f, Vector3.right) * Quaternion.LookRotation(Vector3.right, Vector3.back);
+        private bool knifeInHand;
+        private float knifeReady;
+        // The knife takes are Humanoid on the xdR avatar, whose reference left hand is turned from the hero's: retargeted, the
+        // hero's left hand comes out bent back and rolled palm-out by this turn (its own frame; measured, the same within
+        // 0.2 degrees over the stance, run and slash). Taken back, the hand sits on the forearm as CS:GO's does.
+        private static readonly Quaternion KnifeLeftHandTurn = new Quaternion(-.53419f, -.12219f, .03834f, .83561f);
+        // The stance's free left hand, a guard: its fingers half closed (degrees, root to tip), and the thumb's.
+        private static readonly Vector3 GuardCurl = new Vector3(30f, 40f, 25f), GuardThumbCurl = new Vector3(10f, 15f, 10f);
         private readonly Transform[] spineChain, headChain;
         private readonly float[] weights = new float[5];
         private readonly float[] targetWeights = new float[5];
@@ -118,7 +164,20 @@ namespace TienTuyen.Presentation
         private readonly SolePoint[] leftSole, rightSole;
 
         private float phase, idleTime, legYaw, reloadWeight, hitTime = -1f, lastHit, deathTime, deathWeight;
-        private float meleeWeight, chargeWeight, aimShare, reloadShare, hitWeight, forwardRun, holdAim;
+        private float meleeWeight, chargeWeight, aimShare, reloadShare, hitWeight, forwardRun, holdAim, atEase;
+        // The face's forward and up in the Head bone's frame, from the bind pose.
+        private readonly Vector3 headFace, headUp;
+        // The left arm's direction and hand at bind, in the pose frame, which the shoulder carry's hanging arm turns down.
+        private readonly Vector3 leftArmRest;
+        private readonly Quaternion leftHandRest;
+        private float shoulderRest;
+        // The bind pose's upright pelvis (in the pose frame) and straight spine and neck (local), which at ease stands to.
+        private readonly Quaternion hipsUpright;
+        private readonly Transform[] uprightChain;
+        private readonly Quaternion[] uprightLocal;
+        // Clavicles at bind (level, back and down) for the proud shoulder carry.
+        private readonly Transform[] clavicles;
+        private readonly Quaternion[] clavicleLocal;
         private bool dying, anchorKnown, gripKnown, directionKnown, disposed;
         private Vector3 aimAnchor;
         private Quaternion rightGrip = Quaternion.identity, leftGrip = Quaternion.identity;
@@ -166,6 +225,12 @@ namespace TienTuyen.Presentation
         public float ActionWeight => Mathf.Max(meleeWeight, chargeWeight);
         /// <summary>The held weapon rides the Weapon bone on its clip set (not the fitted <see cref="WeaponHold"/>).</summary>
         public bool Carrying => carrySet >= 0;
+        /// <summary>0..1 a carried weapon lowered from the shoulder into the at-ease carry across the belly.</summary>
+        public float AtEase { get => atEase; set => atEase = Mathf.Clamp01(value); }
+        /// <summary>Share of the at-ease carry that is the shoulder carry instead of the low carry across the belly.</summary>
+        public float ShoulderRest { get => shoulderRest; set => shoulderRest = Mathf.Clamp01(value); }
+        /// <summary>The top centre of the step the shoulder carry puts the left foot on (world, under the sole).</summary>
+        public Vector3 StepTop => pose.position + pose.rotation * StepPlace + pose.up * StepHeight;
 
         /// <summary>Index of the profile's clip set for a game weapon id, or -1 (also when the model has no weapon bones).</summary>
         public int FindWeaponSet(string weapon)
@@ -230,6 +295,22 @@ namespace TienTuyen.Presentation
             chain.Clear();
             foreach (var bone in new[] { Bone(HumanBodyBones.Neck), Bone(HumanBodyBones.Head) }) if (bone != null) chain.Add(bone);
             headChain = chain.ToArray();
+            if (headChain.Length > 0)
+            {
+                Quaternion bindHead = Quaternion.Inverse(headChain[headChain.Length - 1].rotation);
+                headFace = bindHead * Vector3.Cross(rightUpperLeg.position - leftUpperLeg.position, pose.up).normalized;
+                headUp = bindHead * pose.up;
+            }
+            hipsUpright = Quaternion.Inverse(pose.rotation) * hips.rotation;
+            leftArmRest = Quaternion.Inverse(pose.rotation) * (leftHand.position - leftUpperArm.position).normalized;
+            leftHandRest = Quaternion.Inverse(pose.rotation) * leftHand.rotation;
+            chain.Clear();
+            chain.AddRange(spineChain);
+            if (headChain.Length > 1) chain.Add(headChain[0]);
+            uprightChain = chain.ToArray();
+            uprightLocal = System.Array.ConvertAll(uprightChain, bone => bone.localRotation);
+            clavicles = System.Array.FindAll(new[] { Bone(HumanBodyBones.LeftShoulder), Bone(HumanBodyBones.RightShoulder) }, bone => bone != null);
+            clavicleLocal = System.Array.ConvertAll(clavicles, bone => bone.localRotation);
 
             // Sole clearance from the bind pose, before any clip is applied (feet at model y=0).
             float ground = model.position.y;
@@ -245,6 +326,7 @@ namespace TienTuyen.Presentation
                 FistSocket(supportSocket, leftHand, HumanBodyBones.LeftIndexProximal, HumanBodyBones.LeftRingProximal, HumanBodyBones.LeftThumbProximal);
             }
             if (profile.guardHold) fist = BindFist();
+            leftCurl = BindLeftCurl();
             followers = Followers(model);
             chestBindInverse = Quaternion.Inverse(Chest.rotation) * pose.rotation;
             shoulderWidth = Vector3.Distance(pose.InverseTransformPoint(leftUpperArm.position), pose.InverseTransformPoint(rightUpperArm.position));
@@ -257,7 +339,10 @@ namespace TienTuyen.Presentation
             hasDeath = profile.death != null;
             hasAim = profile.aim != null; hasReload = profile.reload != null; hasHit = profile.hit != null;
             hasMelee = profile.meleeAttack != null;
+            hasKnifeIdle = profile.knifeIdle != null;
             sets = profile.weaponSets ?? new WeaponClipSet[0];
+            foreach (var set in sets)
+                if (set.grip != null && (knifeGrip == null || set.grip.gun == "ak47")) knifeGrip = set.grip;
             carryClips = new AnimationClipPlayable[sets.Length * CarrySlots];
             if (sets.Length > 0)
             {
@@ -313,7 +398,7 @@ namespace TienTuyen.Presentation
             reloadPlayable = AnimationClipPlayable.Create(graph, hasReload ? profile.reload : profile.idle);
             hitPlayable = AnimationClipPlayable.Create(graph, hasHit ? profile.hit : profile.idle);
             meleePlayable = AnimationClipPlayable.Create(graph, hasMelee ? profile.meleeAttack : profile.idle);
-            upperMixer = AnimationMixerPlayable.Create(graph, sets.Length > 0 ? 5 : 4);
+            upperMixer = AnimationMixerPlayable.Create(graph, sets.Length > 0 ? 6 : 4);
             graph.Connect(aimPlayable, 0, upperMixer, 0);
             graph.Connect(reloadPlayable, 0, upperMixer, 1);
             graph.Connect(hitPlayable, 0, upperMixer, 2);
@@ -328,6 +413,9 @@ namespace TienTuyen.Presentation
                     graph.Connect(carryClips[i], 0, carryMixer, i);
                 }
                 graph.Connect(carryMixer, 0, upperMixer, 4);
+                knifeIdlePlayable = AnimationClipPlayable.Create(graph, hasKnifeIdle ? profile.knifeIdle : profile.idle);
+                Freeze(knifeIdlePlayable);
+                graph.Connect(knifeIdlePlayable, 0, upperMixer, 5);
             }
 
             layers = AnimationLayerMixerPlayable.Create(graph, sets.Length > 0 ? 3 : 2);
@@ -531,7 +619,7 @@ namespace TienTuyen.Presentation
         {
             phase = 0; idleTime = 0; legYaw = 0; reloadWeight = 0; hitTime = -1f; lastHit = 0;
             dying = false; deathTime = 0; deathWeight = 0;
-            meleeWeight = chargeWeight = 0;
+            meleeWeight = chargeWeight = knifeReady = 0;
             System.Array.Clear(chargeWeights, 0, chargeWeights.Length);
             anchorKnown = gripKnown = false;
             directionKnown = false;
@@ -651,6 +739,9 @@ namespace TienTuyen.Presentation
             bool swinging = !dying && hasMelee && action.kind == CharacterActionKind.Melee;
             meleeWeight = Mathf.MoveTowards(meleeWeight, swinging ? 1f : 0f, fade);
             if (swinging) meleePlayable.SetTime(ClipTime(meleePlayable, action.time, false));
+            // The hero's knife in hand between slashes: its ready stance owns the arms.
+            knifeReady = Mathf.MoveTowards(knifeReady, knifeInHand && !swinging && !dying ? 1f : 0f, fade);
+            if (knifeReady > 0f) knifeIdlePlayable.SetTime(ClipTime(knifeIdlePlayable, idleTime, true));
             hitWeight = hitting ? 1f - meleeWeight : 0f;
             if (hitting)
             {
@@ -689,6 +780,7 @@ namespace TienTuyen.Presentation
             if (sets.Length > 0)
             {
                 upperMixer.SetInputWeight(4, 0f);
+                upperMixer.SetInputWeight(5, 0f);
                 layers.SetInputWeight(2, 0f);
             }
             float upper = Mathf.Min(1f, aimWeight + reloadShare + hitWeight + meleeWeight);
@@ -704,7 +796,7 @@ namespace TienTuyen.Presentation
         {
             // The generic hit flinch takes only part of the arms, so the left hand still reaches the fore-end.
             float hit = hitWeight * CarriedHitShare;
-            float carried = Mathf.Max(0f, 1f - meleeWeight);
+            float carried = Mathf.Max(0f, 1f - meleeWeight - knifeReady);
             float ready = 1f - reloadShare, fire = fireWeight * ready, stand = (ready - fire) * (1f - carryMoving);
             // The chest and head take the aim as far as the weapon is brought to the sights: from the hip they keep the clip's.
             holdAim = carried * ready * (1f - drawDip) * aimShare;
@@ -725,6 +817,7 @@ namespace TienTuyen.Presentation
             upperMixer.SetInputWeight(2, 0f);
             upperMixer.SetInputWeight(3, meleeWeight);
             upperMixer.SetInputWeight(4, carried);
+            upperMixer.SetInputWeight(5, knifeReady);
             layers.SetInputWeight(1, (1f - deathWeight) * (1f - chargeWeight));
             layers.SetInputWeight(2, hit * (1f - deathWeight) * (1f - chargeWeight));
         }
@@ -846,6 +939,7 @@ namespace TienTuyen.Presentation
             }
             CarryThroughHit();
             FollowFingers();
+            if (hasKnifeIdle) KnifeGuardHand();
             // A carried weapon rides the chest as the clips place it (the bake keeps it there), though it hangs under the lowest
             // spine bone: the leg-yaw twist below turns that bone by only its share.
             Transform torso = Chest;
@@ -872,6 +966,7 @@ namespace TienTuyen.Presentation
                     float square = yaw - Vector3.SignedAngle(Vector3.ProjectOnPlane(pose.forward, up), Vector3.ProjectOnPlane(hipsForward, up), up);
                     if (spineChain.Length > 0) spineChain[0].rotation = Quaternion.AngleAxis(square, up) * spineChain[0].rotation;
                     if (onChest) weaponBone.SetPositionAndRotation(torso.TransformPoint(weaponOnChest), torso.rotation * weaponTurnOnChest);
+                    if (onChest && atEase > 0f) AtEaseCarry();
                     // The whole spine takes the aim, so the arms, the weapon and the cheek on its stock move as one.
                     Pitch(spineChain, AimPitch(aimPoint) * holdAim);
                     AimCarried(weaponRoot, weaponMuzzle, aimPoint);
@@ -990,6 +1085,95 @@ namespace TienTuyen.Presentation
         private static float Elevation(Vector3 v, Vector3 up) => Mathf.Atan2(Vector3.Dot(v, up), Vector3.ProjectOnPlane(v, up).magnitude) * Mathf.Rad2Deg;
 
         /// <summary>
+        /// The at-ease carry: the Weapon bone moves (by <see cref="AtEase"/>) off the shoulder to lie across the belly, the
+        /// pistol grip by the right hip and the muzzle down and forward to the left. The hands then grip it as anywhere else.
+        /// </summary>
+        private void AtEaseCarry()
+        {
+            var data = sets[carrySet].grip;
+            if (data == null) return;
+            Vector3 r = pose.right, u = pose.up, f = pose.forward;
+            Vector3 Pose(Vector3 v) => r * v.x + u * v.y + f * v.z;
+            AtEaseStance(r, u, f);
+            // Spine and neck straight up over the pelvis, square to the facing.
+            for (int i = 0; i < uprightChain.Length; i++)
+                uprightChain[i].localRotation = Quaternion.Slerp(uprightChain[i].localRotation, uprightLocal[i], atEase);
+            if (headChain.Length > 0)
+            {
+                // The face straight ahead, level.
+                Transform head = headChain[headChain.Length - 1];
+                Quaternion ahead = Quaternion.AngleAxis(-ShoulderChin * shoulderRest, r) * Quaternion.LookRotation(f, u) *
+                    Quaternion.Inverse(Quaternion.LookRotation(headFace, headUp));
+                head.rotation = Quaternion.Slerp(head.rotation, ahead, atEase);
+            }
+            for (int i = 0; i < clavicles.Length; i++)
+                clavicles[i].localRotation = Quaternion.Slerp(clavicles[i].localRotation, clavicleLocal[i], atEase * shoulderRest);
+            float k = shoulderWidth * pose.lossyScale.x / WeaponHold.HeroShoulderWidth;
+            Quaternion low = Quaternion.LookRotation(Pose(AtEaseBore), Pose(AtEaseTop));
+            Vector3 position = hips.position + Pose(AtEaseWrist) * k - low * (data.right.position * weaponBone.lossyScale.x);
+            if (shoulderRest > 0f)
+            {
+                Quaternion high = Quaternion.LookRotation(Pose(ShoulderBore), Pose(ShoulderTop));
+                Vector3 raised = rightUpperArm.position + Pose(ShoulderWrist) * k - high * (data.right.position * weaponBone.lossyScale.x);
+                low = Quaternion.Slerp(low, high, shoulderRest);
+                position = Vector3.Lerp(position, raised, shoulderRest);
+            }
+            weaponBone.SetPositionAndRotation(Vector3.Lerp(weaponBone.position, position, atEase), Quaternion.Slerp(weaponBone.rotation, low, atEase));
+        }
+
+        /// <summary>
+        /// The at-ease stance under the carry: the pelvis upright and square to the facing over the middle of the clip's feet and
+        /// raised until the knees are nearly straight, the feet hip-width apart and pointing ahead, all by <see cref="AtEase"/>.
+        /// </summary>
+        private void AtEaseStance(Vector3 r, Vector3 u, Vector3 f)
+        {
+            Vector3 leftAnkle = leftFoot.position, rightAnkle = rightFoot.position;
+            Quaternion leftTurn = leftFoot.rotation, rightTurn = rightFoot.rotation;
+            // The clip's toe directions, before the hips move the feet.
+            Vector3 leftToe = leftToes != null ? leftToes.position - leftAnkle : leftTurn * Vector3.forward;
+            Vector3 rightToe = rightToes != null ? rightToes.position - rightAnkle : rightTurn * Vector3.forward;
+            Vector3 hipsFrom = hips.position;
+            Quaternion hipsTurn = hips.rotation;
+            hips.rotation = pose.rotation * hipsUpright;
+            Vector3 centre = (leftAnkle + rightAnkle) * .5f;
+            float ankle = Vector3.Dot(centre - pose.position, u);
+            centre = pose.position + Vector3.ProjectOnPlane(centre - pose.position, u) + u * ankle;
+            Vector3 joints = (leftUpperLeg.position + rightUpperLeg.position) * .5f;
+            hips.position += Vector3.ProjectOnPlane(centre - joints, u);
+            float half = Vector3.Distance(leftUpperLeg.position, rightUpperLeg.position) * .5f * AtEaseFeet;
+            Vector3 leftTarget = centre - r * half, rightTarget = centre + r * half;
+            if (shoulderRest > 0f)
+            {
+                leftTarget = Vector3.Lerp(leftTarget, StepTop + u * footHeight, shoulderRest);
+                rightTarget -= f * (StepLean * shoulderRest);
+                hips.position += f * (StepLean * shoulderRest);
+            }
+            float raise = float.MaxValue;
+            foreach (var (upper, lower, foot, target) in new[] { (leftUpperLeg, leftLowerLeg, leftFoot, leftTarget), (rightUpperLeg, rightLowerLeg, rightFoot, rightTarget) })
+            {
+                float length = ((lower.position - upper.position).magnitude + (foot.position - lower.position).magnitude) * AtEaseKnee;
+                Vector3 d = upper.position - target;
+                float flat = Vector3.ProjectOnPlane(d, u).magnitude;
+                raise = Mathf.Min(raise, Mathf.Sqrt(Mathf.Max(0f, length * length - flat * flat)) - Vector3.Dot(d, u));
+            }
+            hips.position += u * raise;
+            hips.SetPositionAndRotation(Vector3.Lerp(hipsFrom, hips.position, atEase), Quaternion.Slerp(hipsTurn, hips.rotation, atEase));
+            // The raised foot arcs up over the step's edge rather than through it.
+            Vector3 over = u * (Mathf.Sin(Mathf.PI * atEase) * StepHeight * .6f * shoulderRest);
+            Place(leftUpperLeg, leftLowerLeg, leftFoot, Vector3.Lerp(leftAnkle, leftTarget, atEase) + over, leftTurn, leftToe,
+                Quaternion.AngleAxis(-StepToeOut * shoulderRest, u) * f);
+            Place(rightUpperLeg, rightLowerLeg, rightFoot, Vector3.Lerp(rightAnkle, rightTarget, atEase), rightTurn, rightToe, f);
+
+            void Place(Transform upper, Transform lower, Transform foot, Vector3 target, Quaternion turn, Vector3 toe, Vector3 point)
+            {
+                Vector3 flat = Vector3.ProjectOnPlane(toe, u);
+                Quaternion ahead = flat.sqrMagnitude > 1e-8f ? Quaternion.FromToRotation(flat, point) : Quaternion.identity;
+                SolveTwoBone(upper, lower, foot, target);
+                foot.rotation = Quaternion.Slerp(Quaternion.identity, ahead, atEase) * turn;
+            }
+        }
+
+        /// <summary>
         /// The weapon rides the Weapon bone (its root takes the bone's frame): a draw dips it about the right shoulder, a shot
         /// kicks it back and lifts the muzzle about the right wrist. The wrist targets under the bone ride along (written to
         /// <paramref name="grip"/> and <paramref name="support"/>) and both arms are solved onto them with the wrists kept in
@@ -1068,6 +1252,20 @@ namespace TienTuyen.Presentation
             Vector3 wrist = position + rotation * (local * scale);
             Quaternion hand = rotation * turn;
             Vector3 elbowOffset = arm.lower.position - arm.upper.position;
+            if (atEase > 0f)
+            {
+                Vector3 hang = left ? AtEaseLeftElbow : Vector3.Lerp(AtEaseRightElbow, ShoulderElbow, shoulderRest);
+                hang = (pose.right * hang.x + pose.up * hang.y + pose.forward * hang.z).normalized * elbowOffset.magnitude;
+                elbowOffset = Vector3.Lerp(elbowOffset, hang, atEase);
+                if (left && shoulderRest > 0f)
+                {
+                    float share = shoulderRest * atEase;
+                    FreeHand(arm, out Vector3 freeWrist, out Quaternion freeHand, out Vector3 freeElbow);
+                    wrist = Vector3.Lerp(wrist, freeWrist, share);
+                    hand = Quaternion.Slerp(hand, freeHand, share);
+                    elbowOffset = Vector3.Lerp(elbowOffset, freeElbow.normalized * elbowOffset.magnitude, share);
+                }
+            }
             ShoulderReach(arm, Bone(left ? HumanBodyBones.LeftShoulder : HumanBodyBones.RightShoulder), wrist);
             // The clip's elbow offset from the shoulder; SolveArm keeps its part across the shoulder-wrist line.
             SolveArm(arm, wrist, hand, elbowOffset);
@@ -1097,6 +1295,72 @@ namespace TienTuyen.Presentation
                 blended += w;
                 BlendFingers(track, left, frame, w / blended);
             }
+            if (left && shoulderRest > 0f && atEase > 0f)
+                foreach (var joint in leftCurl)
+                {
+                    Vector3 curl = joint.thumb ? HangThumbCurl : HangCurl;
+                    joint.bone.localRotation = Quaternion.Slerp(joint.bone.localRotation,
+                        Quaternion.AngleAxis(curl[joint.joint], joint.axis) * joint.bind, shoulderRest * atEase);
+                }
+        }
+
+        /// <summary>
+        /// The free left hand on the shoulder carry, hanging loose: its wrist, hand rotation (on the forearm's line, palm to the
+        /// thigh) and elbow direction. Solves the arm to find the forearm. The left hand's socket sits on its back, so
+        /// <see cref="HandFrame"/> is given the palm's opposite.
+        /// </summary>
+        private void FreeHand(Arm arm, out Vector3 wrist, out Quaternion hand, out Vector3 elbow)
+        {
+            Vector3 Pose(Vector3 v) => pose.right * v.x + pose.up * v.y + pose.forward * v.z;
+            float reach = ((arm.lower.position - arm.upper.position).magnitude + (arm.hand.position - arm.lower.position).magnitude) * HangReach;
+            wrist = arm.upper.position + Pose(HangLine).normalized * reach;
+            elbow = Pose(HangElbow);
+            hand = HandFrame(arm, true, Pose(HangLine), -Pose(HangPalm));
+            SolveArm(arm, wrist, hand, elbow);
+            hand = HandFrame(arm, true, wrist - arm.lower.position, -Pose(HangPalm));
+        }
+
+        /// <summary>The hero's left hand on the knife's stance and slash: the clip's wrist as CS:GO has it, and in the stance the
+        /// fingers half closed in a guard (the slash keeps its clip's fist).</summary>
+        private void KnifeGuardHand()
+        {
+            float knife = Mathf.Max(knifeReady, meleeWeight);
+            if (knife <= 0f) return;
+            leftHand.localRotation = Quaternion.Slerp(leftHand.localRotation, leftHand.localRotation * Quaternion.Inverse(KnifeLeftHandTurn), knife);
+            if (knifeReady <= 0f) return;
+            foreach (var joint in leftCurl)
+            {
+                Vector3 curl = joint.thumb ? GuardThumbCurl : GuardCurl;
+                joint.bone.localRotation = Quaternion.Slerp(joint.bone.localRotation, Quaternion.AngleAxis(curl[joint.joint], joint.axis) * joint.bind, knifeReady);
+            }
+        }
+
+        /// <summary>The left hand's finger joints, read at bind (fingers open): each one's bend axis toward the palm.</summary>
+        private CurlJoint[] BindLeftCurl()
+        {
+            var joints = new List<CurlJoint>();
+            Transform index = Bone(HumanBodyBones.LeftIndexProximal), middle = Bone(HumanBodyBones.LeftMiddleProximal);
+            Transform thumb = Bone(HumanBodyBones.LeftThumbIntermediate);
+            if (index == null || middle == null || thumb == null) return joints.ToArray();
+            Vector3 along = ((index.position + middle.position) * .5f - leftHand.position).normalized;
+            Vector3 palm = Vector3.Cross(along, Vector3.ProjectOnPlane(index.position - middle.position, along));
+            if (Vector3.Dot(palm, thumb.position - leftHand.position) < 0f) palm = -palm;
+            palm.Normalize();
+            foreach (var first in new[] { HumanBodyBones.LeftThumbProximal, HumanBodyBones.LeftIndexProximal, HumanBodyBones.LeftMiddleProximal,
+                                          HumanBodyBones.LeftRingProximal, HumanBodyBones.LeftLittleProximal })
+            {
+                Transform[] bones = { Bone(first), Bone(first + 1), Bone(first + 2) };
+                if (System.Array.IndexOf(bones, null) >= 0) continue;
+                // The tip bone has no child to aim at: its segment continues the middle one.
+                Vector3[] segments = { bones[1].position - bones[0].position, bones[2].position - bones[1].position, bones[2].position - bones[1].position };
+                for (int i = 0; i < 3; i++)
+                    joints.Add(new CurlJoint
+                    {
+                        bone = bones[i], bind = bones[i].localRotation, joint = i, thumb = first == HumanBodyBones.LeftThumbProximal,
+                        axis = Quaternion.Inverse(bones[i].parent.rotation) * Vector3.Cross(segments[i], palm).normalized
+                    });
+            }
+            return joints.ToArray();
         }
 
         /// <summary>One side's finger rotations of <paramref name="track"/> at <paramref name="frame"/> (interpolated, clamped),
@@ -1446,6 +1710,46 @@ namespace TienTuyen.Presentation
             foreach (var joint in fist) joint.bone.localRotation = joint.curl * joint.bind;
         }
 
+        /// <summary>The hero's knife is in the right hand: its ready stance and slash clips take the arms (the caller passes the
+        /// slash as a melee action and no gun). Set before <see cref="Advance"/>.</summary>
+        public bool KnifeInHand { set => knifeInHand = value && hasKnifeIdle && sets.Length > 0; }
+
+        /// <summary>The hero's knife in the closed right fist (native +X the blade, +Y its edge, the origin where the fist
+        /// closes), the fingers round its handle as round the AK's pistol grip. Call after <see cref="Apply"/>.</summary>
+        public void HoldKnife(Transform knife)
+        {
+            if (knifeGrip != null)
+            {
+                var fingers = knifeGrip.rightFingers;
+                var bones = FingerBones(fingers);
+                for (int i = 0; i < fingers.Length; i++)
+                    if (bones[i] != null) bones[i].localRotation = fingers[i].rotation;
+                FollowFingers();
+            }
+            Transform index = Bone(HumanBodyBones.RightIndexProximal), middle = Bone(HumanBodyBones.RightMiddleProximal);
+            if (index == null || middle == null) return;
+            Transform little = Bone(HumanBodyBones.RightLittleProximal);
+            if (little == null) little = Bone(HumanBodyBones.RightRingProximal);
+            if (little == null) little = middle;
+            Vector3 along = ((index.position + middle.position) * .5f - rightHand.position).normalized;
+            Vector3 across = Vector3.ProjectOnPlane(index.position - little.position, along).normalized;
+            Vector3 blade = (across + along * BladeLean).normalized;
+            Transform curl = Bone(HumanBodyBones.RightMiddleIntermediate), tip = Bone(HumanBodyBones.RightMiddleDistal);
+            Vector3 inside = curl != null && tip != null ? (middle.position + curl.position + tip.position + gripSocket.position) * .25f : gripSocket.position;
+            knife.SetPositionAndRotation(inside, Quaternion.LookRotation(Vector3.Cross(blade, along), Vector3.ProjectOnPlane(along, blade)));
+        }
+
+        /// <summary>The sheath's place on the right hip, following the pelvis: the knife's frame as it rests in it.</summary>
+        public void SheathPose(out Vector3 position, out Quaternion rotation)
+        {
+            // Upright on the body, turning with the hips.
+            Vector3 up = pose.up;
+            Vector3 right = Vector3.ProjectOnPlane(rightUpperLeg.position - leftUpperLeg.position, up).normalized;
+            Quaternion belt = Quaternion.LookRotation(Vector3.Cross(right, up), up);
+            position = hips.position + belt * SheathPlace * pose.lossyScale.x;
+            rotation = belt * SheathTurn;
+        }
+
         /// <summary>The right hand's fist round a blade's handle: each finger joint's bind rotation turned toward the palm,
         /// read at bind (fingers open).</summary>
         private FistJoint[] BindFist()
@@ -1476,6 +1780,16 @@ namespace TienTuyen.Presentation
                 Vector3 axis = Quaternion.Inverse(bones[i].parent.rotation) * Vector3.Cross(segments[i], palm).normalized;
                 joints.Add(new FistJoint { bone = bones[i], bind = bones[i].localRotation, curl = Quaternion.AngleAxis(degrees[i], axis) });
             }
+        }
+
+        /// <summary>The hand's rotation that points its knuckles along <paramref name="fingers"/> and its palm toward
+        /// <paramref name="palm"/> (the palm side is where its socket sits off the wrist-knuckle line).</summary>
+        private Quaternion HandFrame(Arm arm, bool left, Vector3 fingers, Vector3 palm)
+        {
+            Transform middle = Bone(left ? HumanBodyBones.LeftMiddleProximal : HumanBodyBones.RightMiddleProximal);
+            Vector3 along = middle != null ? arm.hand.InverseTransformDirection(middle.position - arm.hand.position) : Vector3.right;
+            Vector3 side = Vector3.ProjectOnPlane(arm.hand.InverseTransformDirection(arm.socket.position - arm.hand.position), along);
+            return Quaternion.LookRotation(fingers, palm) * Quaternion.Inverse(Quaternion.LookRotation(along, side));
         }
 
         /// <summary>Clip-led hold: the palm socket onto <paramref name="target"/>, keeping the clip's elbow bend.</summary>

@@ -19,7 +19,7 @@ namespace TienTuyen.Presentation
         public Color SunColor = Color.white;
         public float SunIntensity = 2f;
         [Range(0, 1)] public float ShadowStrength = .85f;
-        /// <summary>Strength of the shafts through the canopy gaps; their geometry follows the sunny preset's sun.</summary>
+        /// <summary>Strength of the shafts through the canopy gaps; their geometry follows CombatEnvironment's fixed shaft sun, shared by every preset.</summary>
         public float ShaftIntensity = .26f;
 
         [Header("Sky")]
