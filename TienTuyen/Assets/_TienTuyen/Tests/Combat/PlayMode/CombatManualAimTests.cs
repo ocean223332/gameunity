@@ -457,6 +457,51 @@ namespace TienTuyen.Combat.Tests
                 "The reload take is still moving the gun after the game's reload ended.");
         }
 
+        [Test]
+        public void AHeadshotDealsMoreDamageAndFeedbackMatchesHpRemoved()
+        {
+            var enemy = CreateTarget(new Vector3(4f, .8f, 0));
+            float feedback = 0;
+            bool headshot = false;
+            game.DamageFeedback += (point, damage, head, critical) => { feedback = damage; headshot = head; };
+            SetField(game, "rng", new System.Random(123));
+            float before = (float)GetField(enemy.entry, "hp");
+            game.SetViewInput(90, new Vector3(4, 1, 0), true, new Vector3(0, 1, 0), Vector3.right);
+            Invoke("FireWeapon");
+            float bodyDamage = feedback;
+            Assert.That(bodyDamage, Is.GreaterThan(0));
+            Assert.That(headshot, Is.False);
+            Assert.That(before - (float)GetField(enemy.entry, "hp"), Is.EqualTo(bodyDamage).Within(.01f));
+
+            ((float[])GetField(game, "weaponFireTimer"))[0] = 0;
+            SetField(game, "rng", new System.Random(123));
+            before = (float)GetField(enemy.entry, "hp");
+            game.SetViewInput(90, new Vector3(4, 1.8f, 0), true, new Vector3(0, 1.8f, 0), Vector3.right);
+            Invoke("FireWeapon");
+            Assert.That(headshot, Is.True);
+            Assert.That(feedback, Is.EqualTo(bodyDamage * CombatRules.HeadshotMultiplier).Within(.01f));
+            Assert.That(before - (float)GetField(enemy.entry, "hp"), Is.EqualTo(feedback).Within(.01f));
+        }
+
+        [Test]
+        public void MissesHaveNoDamageFeedbackAndLethalHitsReportOnlyRemainingHp()
+        {
+            var enemy = CreateTarget(new Vector3(4f, .8f, 0));
+            int reports = 0;
+            float damageReported = 0;
+            game.DamageFeedback += (point, damage, head, critical) => { reports++; damageReported = damage; };
+            game.SetViewInput(90, new Vector3(4, 3, 0), true, new Vector3(0, 3, 0), Vector3.right);
+            Invoke("FireWeapon");
+            Assert.That(reports, Is.Zero);
+
+            SetField(enemy.entry, "hp", 1f);
+            ((float[])GetField(game, "weaponFireTimer"))[0] = 0;
+            game.SetViewInput(90, new Vector3(4, 1, 0), true, new Vector3(0, 1, 0), Vector3.right);
+            Invoke("FireWeapon");
+            Assert.That(reports, Is.EqualTo(1));
+            Assert.That(damageReported, Is.EqualTo(1f));
+        }
+
         private (object entry, Transform transform) CreateTarget(Vector3 position, int slot = 0)
         {
             SetField(game, "spawnTimer", 0f);
