@@ -23,12 +23,23 @@ namespace TienTuyen.Presentation.Interface
                 game.Stats.DamageFactor * (1 + game.Stats.AttackSpeedBonus);
         }
 
+        private static float RocketDamage(CombatGame game, WeaponDefinition weapon, int tier)
+        {
+            float tierFactor = tier == 1 ? 1f : tier == 2 ? 1.35f : 1.8f;
+            return weapon.DamagePerHit * tierFactor * game.Run.RocketDamageFactor * game.Stats.DamageFactor;
+        }
+
+        private static float RocketReload(CombatGame game, WeaponDefinition weapon) =>
+            weapon.ReloadSeconds * game.Run.RocketReloadFactor * game.Stats.ReloadFactor;
+
         /// <summary>One short line for an offer card.</summary>
         public static string OfferSummary(CombatGame game, ShopOffer offer)
         {
             if (offer.Kind == OfferKind.Weapon)
             {
                 var weapon = ContentCatalog.P2.GetWeapon(offer.Id);
+                if (weapon.Id == ContentIds.Rpg18)
+                    return $"{RocketDamage(game, weapon, offer.Tier):0} ST  ·  {RocketReload(game, weapon):0.0}s  ·  {game.Run.RocketRadius:0.0}m";
                 return $"DPS {WeaponDps(game, weapon, offer.Tier):0}  ·  băng {weapon.MagazineSize}";
             }
             return $"Đã có {game.Run.PassiveCount(offer.Id)} / {offer.StackCap}";
@@ -39,6 +50,14 @@ namespace TienTuyen.Presentation.Interface
             if (offer.Kind == OfferKind.Weapon)
             {
                 var weapon = ContentCatalog.P2.GetWeapon(offer.Id);
+                if (weapon.Id == ContentIds.Rpg18)
+                    return $"<b>{weapon.DisplayName}</b> · bậc {offer.Tier}\n" +
+                        $"Sát thương mỗi rocket: {RocketDamage(game, weapon, offer.Tier):0.0}   ·   Nạp: {RocketReload(game, weapon):0.0}s   ·   Bán kính nổ: {game.Run.RocketRadius:0.0} m\n" +
+                        $"Băng đạn: 1   ·   Ô vũ khí: {game.WeaponCount} → {game.WeaponCount + 1}/4   ·   Tiếp tế: {game.Currency} → {game.Currency - offer.Price}";
+                if (weapon.Id == ContentIds.Smg)
+                    return $"<b>{weapon.DisplayName}</b> · bậc {offer.Tier}\n" +
+                        $"DPS gần: {WeaponDps(game, weapon, offer.Tier):0.0} · Băng: {weapon.MagazineSize} · Tầm đạn: {CombatRules.SmgManualShotRange * game.Stats.RangeFactor:0.#} m · Giảm sau {weapon.Range * CombatRules.ManualAimRangeFactor * game.Stats.RangeFactor:0.#} m, còn 25% ở xa\n" +
+                        $"Ô vũ khí: {game.WeaponCount} → {game.WeaponCount + 1}/4   ·   Tiếp tế: {game.Currency} → {game.Currency - offer.Price}";
                 // Only the weapon in hand fires, so compare with the best one owned instead of adding up.
                 float best = 0;
                 for (int slot = 0; slot < game.WeaponCount; slot++)
@@ -57,8 +76,17 @@ namespace TienTuyen.Presentation.Interface
             if(kind>=UpgradeKind.RocketDamage && kind<=UpgradeKind.RocketRadius)
             {
                 int level=game.Run.RocketUpgradeLevel(kind);
-                if(kind==UpgradeKind.RocketDamage)return $"Cấp {level} → {level+1}/3\nSát thương RPG {140*game.Run.RocketDamageFactor:0} → {140*(game.Run.RocketDamageFactor+.25f):0}";
-                if(kind==UpgradeKind.RocketReload)return $"Cấp {level} → {level+1}/3\nNạp {4*game.Run.RocketReloadFactor:0.0}s → {4*(game.Run.RocketReloadFactor-.15f):0.0}s";
+                int slot = game.LauncherEquipped ? game.ActiveWeaponSlot : game.Run.LauncherSlot;
+                int tier = slot >= 0 ? game.Run.Weapons[slot].Tier : 1;
+                var weapon = ContentCatalog.P2.GetWeapon(ContentIds.Rpg18);
+                if (kind == UpgradeKind.RocketDamage)
+                {
+                    float tierFactor = tier == 1 ? 1f : tier == 2 ? 1.35f : 1.8f;
+                    float baseDamage = weapon.DamagePerHit * tierFactor * game.Stats.DamageFactor;
+                    return $"Cấp {level} → {level+1}/3\nSát thương RPG bậc {tier}: {baseDamage * game.Run.RocketDamageFactor:0} → {baseDamage * (game.Run.RocketDamageFactor + .25f):0}";
+                }
+                if (kind == UpgradeKind.RocketReload)
+                    return $"Cấp {level} → {level+1}/3\nNạp {RocketReload(game, weapon):0.0}s → {weapon.ReloadSeconds * (game.Run.RocketReloadFactor - .15f) * game.Stats.ReloadFactor:0.0}s";
                 return $"Cấp {level} → {level+1}/3\nBán kính {game.Run.RocketRadius:0.0}m → {game.Run.RocketRadius+.5f:0.0}m";
             }
             return StatsBeforeAfter(game.Stats,game.Run.PreviewStats(ProgressionRules.Upgrade(kind)),"\n");

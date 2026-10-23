@@ -135,6 +135,7 @@ Damage order: weapon damage by tier → total damage modifier → critical → t
 Class names describe gameplay roles and are not yet associated with specific military units or uniforms.
 
 ## 7. Weapons and builds
+Current manual-aim SMG tuning (2026-10-23 playtest follow-up): shots reach 40 metres times the run range factor. They retain full damage through 9.75 metres times that factor, fall linearly to 25% damage at 29.25 metres times the factor, and retain that floor until maximum reach. This extends manually aimed normal-mode fire; the original automatic-targeting range in the MVP table below remains 6.5. Cover still blocks the complete shot ray. See `smg-long-range-fix.md` for diagnosis and regression evidence.
 
 - A maximum of **4 weapon slots**, with duplicate types allowed. This is an arcade abstraction requiring user approval; it must not be presented as a real soldier simultaneously using four guns.
 - Each weapon has its own cooldown, magazine, and reload; it reloads automatically when empty. There is no finite ammunition reserve or ammunition-type pickup system.

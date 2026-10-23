@@ -33,7 +33,7 @@ namespace TienTuyen.Presentation
         private const int FadeSteps = 4;
         // A plant casts shadows out to this many metres per metre of its height (0: out to the shadow distance), so
         // knee-high cover stops filling the shadow cascades long before the trees do.
-        internal static float ShadowMetresPerHeight;
+        internal static float ShadowMetresPerHeight = 8f;
 
         private sealed class Part
         {

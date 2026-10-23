@@ -190,7 +190,7 @@ namespace TienTuyen.Presentation.Interface
                 (chosen.Kind != OfferKind.Weapon || game.WeaponCount < ProgressionRun.MaxWeaponSlots);
             buy.Label.text = chosen == null ? "MUA HÀNG ĐÃ CHỌN" : $"MUA  ·  {chosen.Price} TIẾP TẾ";
             preview.text = chosen == null ? "Ô này đã trống. Chọn một ô còn hàng để xem chỉ số." : CombatText.OfferPreview(game, chosen);
-            reroll.Label.text = $"ĐỔI HÀNG  ·  {game.Shop.NextRerollPrice}";
+            reroll.Label.text = $"ĐỔI Ô CHƯA KHÓA  ·  {game.Shop.NextRerollPrice}";
             reroll.Button.interactable = hasUnlocked && game.Currency >= game.Shop.NextRerollPrice;
             bandage.Button.interactable = !game.BandageUsed && game.Health < game.MaxHealth && game.Currency >= 15;
             combine.Button.interactable = HasMatchingWeapons();
