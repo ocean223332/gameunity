@@ -212,6 +212,15 @@ namespace TienTuyen.Combat
         private const float ManualRangeFactor = 1.5f, ManualAimRadius = 0.62f;
         // How tall an enemy is for the crosshair ray, from his feet; generous over the visible models.
         private const float BodyHeight = 2.0f, EliteBodyHeight = 2.6f;
+        // The imported commander is 1.85 m tall and displayed at 1.3 times its original size.
+        private const float CommanderBodyHeight = 1.85f * 1.3f;
+        private const float CoverHeight = 1.1f;
+
+        private float EnemyBodyHeight(Enemy enemy) => ReferenceEquals(enemy, commander)
+            ? CommanderBodyHeight : enemy.elite ? EliteBodyHeight : BodyHeight;
+
+        private float EnemyAimRadius(Enemy enemy) => ManualAimRadius *
+            (ReferenceEquals(enemy, commander) || enemy.elite ? 1.3f : 1f);
         private static readonly Vector2[] Directions = { Vector2.right, Vector2.left, Vector2.up, Vector2.down };
 
         private struct Cover
@@ -388,7 +397,10 @@ namespace TienTuyen.Combat
             manualAim = true;
             viewYaw = yawDegrees;
             triggerHeld = trigger;
-            Vector3 direction = player != null ? aimPoint - player.position : Vector3.zero;
+            // The crosshair can meet the ground behind the hero when the camera is close to cover.
+            // In that case the view still looks forward; never turn the gun toward that ground point.
+            Vector3 direction = hasViewRay ? viewRayDirection :
+                player != null ? aimPoint - player.position : Vector3.zero;
             direction.y = 0;
             // A crosshair point almost under the soldier has no stable direction.
             if (direction.sqrMagnitude < 1f) direction = Quaternion.Euler(0, yawDegrees, 0) * Vector3.forward;
@@ -1329,13 +1341,13 @@ namespace TienTuyen.Combat
             {
                 // Keep the hit on the view ray so the tracer and impact share the actual
                 // head/chest point under the crosshair, including pitched aim.
-                Vector3 rayOrigin = hasViewRay ? viewRayOrigin : start;
+                Vector3 rayOrigin = hasViewRay ? ShotRayOrigin(viewRayOrigin, viewRayDirection) : start;
                 Vector3 rayDirection = hasViewRay ? viewRayDirection : aimDirection;
                 end = AimTargetPoint(target, rayOrigin, rayDirection);
             }
             else
             {
-                Vector3 rayOrigin = hasViewRay ? viewRayOrigin : start;
+                Vector3 rayOrigin = hasViewRay ? ShotRayOrigin(viewRayOrigin, viewRayDirection) : start;
                 Vector3 rayDirection = hasViewRay ? viewRayDirection : aimDirection;
                 hitCover = RayHitsCover(rayOrigin, rayDirection, range, out float hit);
                 float distance = hitCover ? hit : range;
@@ -1370,7 +1382,7 @@ namespace TienTuyen.Combat
                     float alongRay = Vector2.Dot(new Vector2(position.x - viewRayOrigin.x,
                         position.z - viewRayOrigin.z), planar) / Mathf.Max(.000001f, planar.sqrMagnitude);
                     float height = viewRayOrigin.y + viewRayDirection.y * alongRay - (position.y - .8f);
-                    headshot = CombatRules.IsHeadshot(height, enemy.elite ? EliteBodyHeight : BodyHeight);
+                    headshot = CombatRules.IsHeadshot(height, EnemyBodyHeight(enemy));
                 }
                 float damage = ShotDamage(slot, weapon, out bool critical);
                 ApplyDetailedShotDamage(enemy, damage * (headshot ? CombatRules.HeadshotMultiplier : 1f), critical, headshot, end);
@@ -1382,17 +1394,53 @@ namespace TienTuyen.Combat
         /// between the hero and it along the aim.</summary>
         private int FindAimTarget(float range)
         {
-            float reach = RayHitsCover(player.position, aimDirection, range, out float coverDistance) ? coverDistance : range;
-            int best = hasViewRay ? CrosshairEnemy(viewRayOrigin, viewRayDirection, reach)
-                // Without a view ray the crosshair is level at chest height along the aim.
-                : CrosshairEnemy(player.position, aimDirection, reach);
+            Vector3 origin = hasViewRay ? ShotRayOrigin(viewRayOrigin, viewRayDirection) : player.position;
+            Vector3 direction = hasViewRay ? viewRayDirection : aimDirection;
+            int best = CrosshairEnemy(origin, direction, range);
+            if (best >= 0)
+            {
+                float distance = Vector3.Distance(origin, AimTargetPoint(best, origin, direction));
+                if (RayHitsCover(origin, direction, distance, out _)) best = -1;
+            }
             targetIndex = best;
             return best;
         }
 
+        // TPS camera rays start behind the soldier. Only their forward part can stop a shot.
+        private Vector3 ShotRayOrigin(Vector3 origin, Vector3 direction)
+        {
+            var planar = new Vector3(direction.x, 0, direction.z);
+            float along = planar.sqrMagnitude > .000001f
+                ? Vector3.Dot(player.position - origin, planar) / planar.sqrMagnitude : 0;
+            Vector3 forwardOrigin = origin + direction * Mathf.Max(0, along);
+            // If the camera ray met the floor behind the hero, fire down from the gun instead.
+            // Starting the projected ray underground would miss the ground's forward intersection.
+            return forwardOrigin.y <= 0 ? player.position + Vector3.up * .08f : forwardOrigin;
+        }
+
         private Vector3 AimTargetPoint(int target, Vector3 origin, Vector3 direction)
         {
-            Vector3 center = enemies[target].body.transform.position + Vector3.up * .45f;
+            var enemy = enemies[target];
+            if (ReferenceEquals(enemy, commander))
+            {
+                // Intersect the same finite body column used by targeting, including its head.
+                Vector3 position = enemy.body.transform.position;
+                float bodyRadius = EnemyAimRadius(enemy);
+                Vector3 offset = origin - position;
+                float a = direction.x * direction.x + direction.z * direction.z;
+                float bodyB = offset.x * direction.x + offset.z * direction.z;
+                float bodyC = offset.x * offset.x + offset.z * offset.z - bodyRadius * bodyRadius;
+                float bodyDiscriminant = bodyB * bodyB - a * bodyC;
+                if (a > .000001f && bodyDiscriminant >= 0)
+                {
+                    float near = Mathf.Max(0, (-bodyB - Mathf.Sqrt(bodyDiscriminant)) / a);
+                    float far = (-bodyB + Mathf.Sqrt(bodyDiscriminant)) / a;
+                    if (ClipAxis(origin.y, direction.y, position.y - .8f,
+                        position.y - .8f + EnemyBodyHeight(enemy), ref near, ref far))
+                        return origin + direction * near;
+                }
+            }
+            Vector3 center = enemy.body.transform.position + Vector3.up * .45f;
             const float radius = .62f;
             float b = Vector3.Dot(origin - center, direction);
             float c = (origin - center).sqrMagnitude - radius * radius;
@@ -1446,11 +1494,11 @@ namespace TienTuyen.Combat
                 var offset = new Vector2(position.x - origin.x, position.z - origin.z);
                 float along = Vector2.Dot(offset, planar);
                 if (along <= 0 || along >= bestAlong) continue;
-                float radius = ManualAimRadius * (enemies[i].elite ? 1.3f : 1f);
+                float radius = EnemyAimRadius(enemies[i]);
                 if ((offset - planar * along).sqrMagnitude > radius * radius) continue;
                 // The ray's height above the enemy's feet where it passes him; the actor sits at capsule centre.
                 float height = origin.y + direction.y * (along / speed) - (position.y - .8f);
-                if (height < -.1f || height > (enemies[i].elite ? EliteBodyHeight : BodyHeight)) continue;
+                if (height < -.1f || height > EnemyBodyHeight(enemies[i])) continue;
                 var fromHero = new Vector2(position.x - player.position.x, position.z - player.position.z);
                 if (Vector2.Dot(fromHero, planar) <= 0) continue;
                 if (Vector2.Dot(fromHero, new Vector2(aimDirection.x, aimDirection.z)) >= reach) continue;
@@ -1675,8 +1723,8 @@ namespace TienTuyen.Combat
             foreach (var cover in covers)
             {
                 var box = Primitive("Cover", PrimitiveType.Cube,
-                    new Vector3(cover.center.x, .55f, cover.center.y),
-                    new Vector3(cover.half.x * 2, 1.1f, cover.half.y * 2), CoverMaterial);
+                    new Vector3(cover.center.x, CoverHeight * .5f, cover.center.y),
+                    new Vector3(cover.half.x * 2, CoverHeight, cover.half.y * 2), CoverMaterial);
                 box.transform.SetParent(transform, true);
             }
             var person = Primitive("Player", PrimitiveType.Capsule, new Vector3(0, .8f, 0), new Vector3(.72f, .8f, .72f), PlayerMaterial);
@@ -1852,12 +1900,13 @@ namespace TienTuyen.Combat
         {
             hitDistance = float.MaxValue;
             if (distance <= 0) return false;
-            // A segment/axis-aligned box sweep in XZ avoids layer dependence and includes the cover edge.
+            // Sweep the actual finite cover box: a shot above the sandbags must clear it.
             foreach (var cover in covers)
             {
                 float near = 0, far = distance;
                 if (!ClipAxis(origin.x, direction.x, cover.center.x - cover.half.x, cover.center.x + cover.half.x, ref near, ref far)) continue;
                 if (!ClipAxis(origin.z, direction.z, cover.center.y - cover.half.y, cover.center.y + cover.half.y, ref near, ref far)) continue;
+                if (!ClipAxis(origin.y, direction.y, 0, CoverHeight, ref near, ref far)) continue;
                 hitDistance = Mathf.Min(hitDistance, near);
             }
             return hitDistance <= distance;

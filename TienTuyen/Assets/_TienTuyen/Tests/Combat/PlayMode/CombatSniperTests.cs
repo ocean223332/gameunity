@@ -90,8 +90,9 @@ namespace TienTuyen.Combat.Tests
             Assert.That(game.Health, Is.EqualTo(before));
         }
 
-        [Test]
-        public void CoverStopsSniperRound()
+        [TestCase(.9f, false)]
+        [TestCase(1.45f, true)]
+        public void SniperRoundOnlyStopsWhenItIntersectsVisibleCover(float height, bool hits)
         {
             var enemy = ActivateSniper();
             game.TogglePause();
@@ -102,9 +103,15 @@ namespace TienTuyen.Combat.Tests
             Set(enemy, "aimDirection", Vector2.down);
             Set(enemy, "aimTimer", .01f);
             Invoke("UpdateEnemies", .02f);
+            // The standing sniper's 1.45 m round clears 1.1 m bags. Lower the test shot to
+            // also verify the same physical box blocks rounds that actually intersect it.
+            var bullet = ((Array)Get(game, "bullets")).Cast<object>().Single(b => (bool)Get(b, "active"));
+            var round = ((GameObject)Get(bullet, "body")).transform;
+            var position = round.position;
+            round.position = new Vector3(position.x, height, position.z);
             float before = game.Health;
             for (int i = 0; i < 10; i++) Invoke("UpdateBullets", .05f);
-            Assert.That(game.Health, Is.EqualTo(before));
+            Assert.That(game.Health < before, Is.EqualTo(hits));
             Assert.That(((Array)Get(game, "bullets")).Cast<object>().Any(b => (bool)Get(b, "active")), Is.False);
         }
 

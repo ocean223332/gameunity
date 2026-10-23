@@ -7,6 +7,43 @@ namespace TienTuyen.Duel.Tests
     public sealed class DuelCombatResolverTests
     {
         [Test]
+        public void ThirdPersonCameraCoverBehindMuzzleDoesNotBlockForwardTarget()
+        {
+            // North warehouse wall spans z=5.1..5.9; the shooter and target are already north of it.
+            var shooter = At(0, 5f, 7f);
+            var target = At(1, 5f, 11f);
+            Vector3 muzzle = DuelPlayerSim.MuzzlePosition(shooter);
+            var attack = new DuelAttack(DuelAttackKind.Shot, 0, 12,
+                muzzle - Vector3.forward * 3f, Vector3.forward);
+            Assert.That(DuelArenaLayout.RayHitsCover(attack.Origin, attack.Direction, 3f, out _), Is.True,
+                "Fixture: the trailing camera ray crosses the wall behind the shooter.");
+            Assert.That(DuelArenaLayout.RayHitsCover(muzzle, attack.Direction, 4f, out _), Is.False,
+                "Fixture: the actual forward shot is clear.");
+            var result = DuelCombatResolver.Resolve(shooter, attack, target);
+            Assert.That(result.Damage, Is.EqualTo(DuelPlayerSim.WeaponAt(0).DamagePerHit));
+            Assert.That(result.HitCount, Is.EqualTo(1));
+            Assert.That(result.HitCover, Is.False);
+            Assert.That(Vector3.Dot(result.HitPoint - muzzle, attack.Direction), Is.GreaterThan(0));
+        }
+
+        [Test]
+        public void ThirdPersonMissDoesNotReportCoverImpactBehindMuzzle()
+        {
+            var shooter = At(0, 5f, 7f);
+            var target = At(1, 7f, 11f);
+            Vector3 muzzle = DuelPlayerSim.MuzzlePosition(shooter);
+            var attack = new DuelAttack(DuelAttackKind.Shot, 0, 12,
+                muzzle - Vector3.forward * 3f, Vector3.forward);
+            var result = DuelCombatResolver.Resolve(shooter, attack, target);
+            Assert.That(result.HitCount, Is.Zero);
+            Assert.That(result.HitCover, Is.False,
+                "The wall behind the muzzle must not create a backward tracer/impact when the forward ray misses.");
+            Assert.That(Vector3.Dot(result.HitPoint - muzzle, attack.Direction), Is.GreaterThan(0));
+            Assert.That(Vector3.Distance(result.HitPoint, muzzle),
+                Is.EqualTo(DuelPlayerSim.WeaponAt(0).Range).Within(.001f));
+        }
+
+        [Test]
         public void ShotOverLowCoverHitsStandingTargetButMissesCrouchingTarget()
         {
             var low = LowCover();

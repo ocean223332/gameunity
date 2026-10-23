@@ -21,8 +21,6 @@ namespace TienTuyen.Duel.Presentation
     /// </summary>
     internal sealed class DuelFirstPerson : IDuelAimSource, IFirstPersonSource
     {
-        public bool LauncherEquipped => false;
-
         public const float Sensitivity = .11f, PadDegreesPerSecond = 170f;
         public const float FieldOfView = 70f, AimFieldOfView = 52f;
         public const float MinPitch = -60f, MaxPitch = 70f;
@@ -177,6 +175,7 @@ namespace TienTuyen.Duel.Presentation
         private int lastGun;
 
         public CombatState State => pose.Dead ? CombatState.Menu : CombatState.Playing;
+        public bool LauncherEquipped => false;
         public WeaponDefinition ActiveWeapon
         {
             get

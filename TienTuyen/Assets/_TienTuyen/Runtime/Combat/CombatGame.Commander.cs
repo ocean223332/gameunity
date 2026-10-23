@@ -155,7 +155,7 @@ namespace TienTuyen.Combat
             int target=manualAim ? FindAimTarget(36) : FindTarget(24);
             if(!manualAim && target<0) return;
             Vector3 from=player.position+Vector3.up*.65f;
-            Vector3 origin=hasViewRay ? viewRayOrigin : from;
+            Vector3 origin=hasViewRay ? ShotRayOrigin(viewRayOrigin,viewRayDirection) : from;
             Vector3 direction=hasViewRay ? viewRayDirection : aimDirection;
             float distance=30;
             if(target>=0) distance=Vector3.Distance(origin,AimTargetPoint(target,origin,direction));

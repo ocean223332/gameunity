@@ -502,6 +502,70 @@ namespace TienTuyen.Combat.Tests
             Assert.That(damageReported, Is.EqualTo(1f));
         }
 
+        [Test]
+        public void ShotAboveSandbagsHitsTheExposedEnemyBehindThem()
+        {
+            player.position = new Vector3(-5f, .8f, -3.4f);
+            var enemy = CreateTarget(new Vector3(-11f, .8f, -3.4f));
+            float before = (float)GetField(enemy.entry, "hp");
+            var eye = new Vector3(-5f, 1.4f, -3.4f);
+            game.SetViewInput(-90f, eye + Vector3.left * 6f, true, eye, Vector3.left);
+            Invoke("FireWeapon");
+            Assert.That(game.AimOnTarget, Is.True, "A 1.4 m ray clears the visible 1.1 m sandbags.");
+            Assert.That((float)GetField(enemy.entry, "hp"), Is.LessThan(before));
+        }
+
+        [Test]
+        public void LowShotStillStopsOnTheSandbags()
+        {
+            player.position = new Vector3(-5f, .8f, -3.4f);
+            var enemy = CreateTarget(new Vector3(-11f, .8f, -3.4f));
+            float before = (float)GetField(enemy.entry, "hp");
+            Vector3 impact = Vector3.positiveInfinity;
+            game.ShotImpact += (point, hit) => impact = point;
+            var eye = new Vector3(-5f, .7f, -3.4f);
+            game.SetViewInput(-90f, eye + Vector3.left * 6f, true, eye, Vector3.left);
+            Invoke("FireWeapon");
+            Assert.That(game.AimOnTarget, Is.False);
+            Assert.That((float)GetField(enemy.entry, "hp"), Is.EqualTo(before));
+            Assert.That(impact.x, Is.EqualTo(-6.8f).Within(.02f));
+        }
+
+        [Test]
+        public void CoverBetweenThirdPersonCameraAndHeroCannotSendShotBehindHero()
+        {
+            player.position = new Vector3(-6f, .8f, -3.4f);
+            Vector3 start = Vector3.zero, end = Vector3.zero;
+            game.WeaponFired += (slot, from, to) => { start = from; end = to; };
+            var eye = new Vector3(-11f, .9f, -3.4f);
+            game.SetViewInput(90f, new Vector3(5f, .9f, -3.4f), true, eye, Vector3.right);
+            Invoke("FireWeapon");
+            Assert.That(game.Ammo, Is.LessThan(game.MagazineSize));
+            Assert.That(Vector3.Dot(end - start, Vector3.right), Is.GreaterThan(0),
+                "An obstacle behind the gun must not reverse the tracer.");
+        }
+
+        [Test]
+        public void GroundAimPointBehindHeroCannotReverseViewRayDirection()
+        {
+            player.position = new Vector3(-6f, .8f, -3.4f);
+            game.SetViewInput(90f, new Vector3(-8f, 0, -3.4f), true,
+                new Vector3(-11f, 1.6f, -3.4f), new Vector3(1, -.7f, 0));
+            Assert.That(Vector3.Dot(game.PlayerAimDirection, Vector3.right), Is.GreaterThan(.99f),
+                "The forward view ray controls aim even when it meets ground behind the player.");
+        }
+        [Test]
+        public void LookingAtGroundBehindHeroStillFiresForwardAndStopsAtGround()
+        {
+            player.position = new Vector3(-6f, .8f, -3.4f);
+            Vector3 impact = Vector3.positiveInfinity;
+            game.ShotImpact += (point, hit) => impact = point;
+            game.SetViewInput(90f, new Vector3(-8f, 0, -3.4f), true,
+                new Vector3(-11f, 1.6f, -3.4f), new Vector3(1, -.7f, 0));
+            Invoke("FireWeapon");
+            Assert.That(impact.y, Is.EqualTo(0f).Within(.02f), "Nearby downward fire must not travel underground.");
+            Assert.That(impact.x, Is.GreaterThan(player.position.x));
+        }
         private (object entry, Transform transform) CreateTarget(Vector3 position, int slot = 0)
         {
             SetField(game, "spawnTimer", 0f);

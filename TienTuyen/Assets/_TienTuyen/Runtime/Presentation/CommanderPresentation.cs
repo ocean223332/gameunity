@@ -29,7 +29,6 @@ namespace TienTuyen.Presentation
         private TMP_Text title,subtitle,notice;
         private AudioSource voice;
         private Material bossWarningMaterial;
-        private AudioClip launchSound,explosionSound;
         private readonly List<GameObject> flashes=new List<GameObject>();
         private readonly List<float> flashAges=new List<float>();
         private void Start()
@@ -37,8 +36,7 @@ namespace TienTuyen.Presentation
             game=GetComponent<CombatGame>();player=transform.Find("Player");cameraView=Camera.main;
             if(cameraView!=null)view=cameraView.GetComponent<CombatThirdPersonCamera>();
             voice=gameObject.AddComponent<AudioSource>();voice.spatialBlend=0;voice.volume=.9f;
-            launchSound=Noise("RPGLaunch",.3f,120);explosionSound=Noise("RPGExplosion",.8f,55);
-            game.RocketExploded+=Explosion;game.LauncherFired+=Launch;game.TransientsCleared+=Clear;
+            game.RocketExploded+=Explosion;game.TransientsCleared+=Clear;
             BuildHud();
         }
         private void BuildBoss()
@@ -109,15 +107,11 @@ namespace TienTuyen.Presentation
         {
             if(Launcher==null)return;
             if(playerGun==null){playerGun=Instantiate(Launcher,transform,false).transform;playerGun.name="PlayerRPG18";}
-            bool active=game.LauncherEquipped && game.State!=CombatState.Menu && game.State!=CombatState.Defeat && !game.CommanderCinematic;
+            bool firstPerson=view!=null && view.FirstPersonWeight>.5f && cameraView!=null;
+            bool active=game.LauncherEquipped && game.State!=CombatState.Menu && game.State!=CombatState.Defeat && !game.CommanderCinematic && !firstPerson;
             playerGun.gameObject.SetActive(active);if(!active)return;
             if(heroAnimator==null)heroAnimator=player.GetComponentInChildren<Animator>();
-            if(view!=null && view.FirstPersonWeight>.5f && cameraView!=null)
-            {
-                playerGun.position=cameraView.transform.TransformPoint(new Vector3(.22f,-.22f,.48f));
-                playerGun.rotation=cameraView.transform.rotation;
-            }
-            else if(heroAnimator!=null)FitLauncher(heroAnimator,playerGun,game.PlayerAimDirection);
+            if(heroAnimator!=null)FitLauncher(heroAnimator,playerGun,game.PlayerAimDirection);
         }
         public static void FitLauncher(Animator animator,Transform launcher,Vector3 direction)
         {
@@ -186,14 +180,12 @@ namespace TienTuyen.Presentation
             }
             else if(cameraOwned){view.EncounterCamera=false;cameraOwned=false;}
         }
-        private void Launch(bool hostile){if(launchSound!=null)AudioSource.PlayClipAtPoint(launchSound,hostile && game.CommanderActor!=null ? game.CommanderActor.position : player.position,.8f);}
         private void Explosion(Vector3 position,float radius,bool hostile)
         {
             var flash=GameObject.CreatePrimitive(PrimitiveType.Sphere);flash.name="RPGBlast";flash.transform.position=position;
             var collider=flash.GetComponent<Collider>();collider.enabled=false;Destroy(collider);
             var material=new Material(Shader.Find("Universal Render Pipeline/Unlit"));material.SetColor("_BaseColor",new Color(2.8f,.65f,.1f));flash.GetComponent<Renderer>().sharedMaterial=material;
             flashes.Add(flash);flashAges.Add(0);Smoke(position);
-            if(explosionSound!=null)AudioSource.PlayClipAtPoint(explosionSound,position,1);
             if(view!=null && player!=null && Vector3.Distance(player.position,position)<12)view.Kick(.4f,.25f);
         }
         private void Smoke(Vector3 point)
@@ -205,23 +197,15 @@ namespace TienTuyen.Presentation
             var renderer=ps.GetComponent<ParticleSystemRenderer>();renderer.sharedMaterial=ProceduralArt.Particle("CommanderSmoke",true,new Color(.24f,.23f,.2f,.6f));
             ps.Play();Destroy(go,2);
         }
-        private static AudioClip Noise(string name,float duration,float bass)
-        {
-            const int rate=22050;var data=new float[(int)(duration*rate)];var rng=new System.Random(41);
-            float filtered=0;
-            for(int i=0;i<data.Length;i++){float t=(float)i/rate;filtered=Mathf.Lerp(filtered,(float)rng.NextDouble()*2-1,.13f);data[i]=(filtered*.65f+Mathf.Sin(t*bass*Mathf.PI*2)*.35f)*Mathf.Exp(-t*6);}
-            var clip=AudioClip.Create(name,data.Length,1,rate,false);clip.SetData(data,0);return clip;
-        }
         private void Clear(){if(voice!=null)voice.Stop();if(bossRoot!=null)bossRoot.gameObject.SetActive(false);}
         private void OnDestroy()
         {
-            if(game!=null){game.RocketExploded-=Explosion;game.LauncherFired-=Launch;game.TransientsCleared-=Clear;}
+            if(game!=null){game.RocketExploded-=Explosion;game.TransientsCleared-=Clear;}
             if(cameraOwned && view!=null)view.EncounterCamera=false;
             if(graph.IsValid())graph.Destroy();
             if(canvasObject!=null)Destroy(canvasObject);if(bossRoot!=null)Destroy(bossRoot.gameObject);if(playerGun!=null)Destroy(playerGun.gameObject);
             foreach(var flash in flashes)if(flash!=null){Destroy(flash.GetComponent<Renderer>().sharedMaterial);Destroy(flash);}
             if(bossWarningMaterial!=null)Destroy(bossWarningMaterial);
-            if(launchSound!=null)Destroy(launchSound);if(explosionSound!=null)Destroy(explosionSound);
         }
     }
 }

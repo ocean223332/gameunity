@@ -63,22 +63,25 @@ namespace TienTuyen.Duel
             {
                 Vector3 ray = weapon.PelletsPerShot == 1 ? direction :
                     Spread(direction, attack.Tick, shooter.Slot, pellet, shooter.Aiming ? .5f : 1f);
-                // Exit distance of the view ray through the weapon's range sphere centred on the muzzle.
-                Vector3 offset = attack.Origin - muzzle;
+                // Ignore the trailing camera segment behind the weapon. Each pellet still follows
+                // its view ray, with range measured from the muzzle and muzzle obstruction checked below.
+                Vector3 rayOrigin = attack.Origin + ray * Mathf.Max(0, Vector3.Dot(muzzle - attack.Origin, ray));
+                // Exit distance through the weapon's range sphere centred on the muzzle.
+                Vector3 offset = rayOrigin - muzzle;
                 float b = Vector3.Dot(offset, ray);
                 float discriminant = b * b - offset.sqrMagnitude + weapon.Range * weapon.Range;
                 if (discriminant < 0) continue;
                 float rayLength = -b + Mathf.Sqrt(discriminant);
                 if (rayLength < 0) continue;
-                if (pellet == 0) endPoint = attack.Origin + ray * rayLength;
-                bool cameraBlocked = DuelArenaLayout.RayHitsCover(attack.Origin, ray, rayLength, out float coverDistance);
+                if (pellet == 0) endPoint = rayOrigin + ray * rayLength;
+                bool cameraBlocked = DuelArenaLayout.RayHitsCover(rayOrigin, ray, rayLength, out float coverDistance);
                 if (cameraBlocked && coverDistance < nearestCover)
                 {
                     nearestCover = coverDistance;
-                    coverPoint = attack.Origin + ray * coverDistance;
+                    coverPoint = rayOrigin + ray * coverDistance;
                 }
-                if (!RayHitsCapsule(attack.Origin, ray, target, rayLength, out float distance)) continue;
-                Vector3 point = attack.Origin + ray * distance;
+                if (!RayHitsCapsule(rayOrigin, ray, target, rayLength, out float distance)) continue;
+                Vector3 point = rayOrigin + ray * distance;
                 Vector3 fromMuzzle = point - muzzle;
                 if (fromMuzzle.sqrMagnitude > weapon.Range * weapon.Range) continue;
                 if (cameraBlocked && coverDistance <= distance) continue;

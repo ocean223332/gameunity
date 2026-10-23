@@ -19,6 +19,8 @@ namespace TienTuyen.Presentation
             "Music_Menu_Adagio",
             "Music_Combat_Constance",
             "Rifle_Shot__ak47_01",
+            "Rocket_Launch",
+            "Rocket_Explosion",
             "Rifle_Shot_Distant__ak47_distant",
             "SMG_Shot__mp5_01",
             "Shotgun_Shot__xm1014-1",
@@ -243,6 +245,8 @@ namespace TienTuyen.Presentation
         {
             if (game == null) game = GetComponent<CombatGame>();
             game.WeaponFired += OnWeaponFired;
+            game.LauncherFired += OnLauncherFired;
+            game.RocketExploded += OnRocketExploded;
             game.EnemyFired += OnEnemyFired;
             game.EnemyDamaged += OnEnemyDamaged;
             game.PlayerDamaged += OnPlayerDamaged;
@@ -267,6 +271,8 @@ namespace TienTuyen.Presentation
         {
             if (game == null) return;
             game.WeaponFired -= OnWeaponFired;
+            game.LauncherFired -= OnLauncherFired;
+            game.RocketExploded -= OnRocketExploded;
             game.EnemyFired -= OnEnemyFired;
             game.EnemyDamaged -= OnEnemyDamaged;
             game.PlayerDamaged -= OnPlayerDamaged;
@@ -289,7 +295,8 @@ namespace TienTuyen.Presentation
 
         private void OnWeaponFired(int slot, Vector3 start, Vector3 end)
         {
-            if(game.WeaponAt(slot)?.Id==TienTuyen.Content.ContentIds.Rpg18)return;
+            // Launch audio is emitted once through LauncherFired for both owners.
+            if (game.WeaponAt(slot)?.Id == ContentIds.Rpg18) return;
             string id = game.WeaponAt(slot)?.Id;
             string clip = id == ContentIds.Smg
                 ? "SMG_Shot__mp5_01"
@@ -297,6 +304,25 @@ namespace TienTuyen.Presentation
                     ? "Shotgun_Shot__xm1014-1"
                     : "Rifle_Shot__ak47_01";
             PlaySfx(clip);
+        }
+
+        private void OnLauncherFired(bool hostile)
+        {
+            if (hostile)
+            {
+                var actor = game.CommanderActor;
+                if (actor != null) PlayWorld("Rocket_Launch", actor.position + Vector3.up * .65f, 0f);
+            }
+            else
+            {
+                PlaySfx("Rocket_Launch", 0f);
+            }
+        }
+
+        private void OnRocketExploded(Vector3 point, float radius, bool hostile)
+        {
+            // Distinct rockets can detonate together; each must retain its own report.
+            PlayWorld("Rocket_Explosion", point, 0f);
         }
 
         private void OnEnemyFired(Transform actor, Vector3 direction)
