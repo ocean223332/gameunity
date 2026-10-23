@@ -54,3 +54,20 @@ crossfade baked across its boundary. Adagio uses source seconds 13.19–386.45 (
 seconds after the overlap); Constance uses 2.83–118.49 (114.16 seconds after overlap).
 Each file begins halfway through its baked overlap, so its end continues directly
 into its start. No gain normalization is baked into either track.
+
+## RPG launch and detonation
+
+`Rocket_Launch.wav` uses Valve's Half-Life 2 `sound/weapons/rpg/rocketfire1.wav`;
+`Rocket_Explosion.wav` uses `sound/weapons/explode3.wav`. Source: the
+[sourcesounds/hl2 mirror](https://github.com/sourcesounds/hl2/tree/84f5de61421d95ce1eb9dcf9625a90782b41b278),
+pinned to commit `84f5de61421d95ce1eb9dcf9625a90782b41b278`.
+These are proprietary Valve sound effects. The mirror states no reuse licence;
+credit does not grant a redistribution licence. Included for this coursework
+project consistently with the existing credited Valve weapon audio.
+
+The original stereo 44.1 kHz, 16-bit PCM files were mixed equally to mono and
+resampled to 48 kHz, 16-bit PCM, with no gain normalization or synthetic layers.
+Original source SHA-256 hashes:
+
+- `rocketfire1.wav`: `24746d98fa89de4bd8049b7f36bb0bf4f89ed56a3480b047c7ae7a4271f7e16f`
+- `explode3.wav`: `7526e46440273a47c6e389d235fb85d1f31e9be14f888b4f2ccec05a91a55e66`

@@ -76,6 +76,7 @@ namespace TienTuyen.Presentation
         private UpscalingFilterSelection? shippedUpscaling;
         private AntialiasingMode shippedAntialiasing;
         private Transform rig;
+        private GameObject launcherPrefab;
         private readonly Dictionary<string, Viewmodel> viewmodels = new Dictionary<string, Viewmodel>();
         private readonly Dictionary<Renderer, ShadowCastingMode> hiddenBody = new Dictionary<Renderer, ShadowCastingMode>();
         private readonly List<Renderer> scratch = new List<Renderer>();
@@ -123,8 +124,11 @@ namespace TienTuyen.Presentation
 
         private string armsSet;
 
-        public void Initialize(CombatGame combat, Transform actor, CombatThirdPersonCamera camera) =>
+        public void Initialize(CombatGame combat, Transform actor, CombatThirdPersonCamera camera)
+        {
             Initialize(new StationSource(combat, camera), actor);
+            launcherPrefab = combat.GetComponent<CommanderPresentation>()?.Launcher;
+        }
 
         /// <summary>Binds the view to any first-person player, the duel's included; <paramref name="actor"/> carries its body as "HeroVisual".</summary>
         internal void Initialize(IFirstPersonSource source, Transform actor)
@@ -210,7 +214,7 @@ namespace TienTuyen.Presentation
         private void LateUpdate()
         {
             if (game == null || view == null) return;
-            bool active = view.FirstPersonWeight > .5f && game.State != CombatState.Menu && game.ActiveWeapon != null && !game.LauncherEquipped;
+            bool active = view.FirstPersonWeight > .5f && game.State != CombatState.Menu && game.ActiveWeapon != null;
             HideBody(active);
             Active = active;
             if (overlay.enabled != active) Stack(active);
@@ -228,6 +232,18 @@ namespace TienTuyen.Presentation
             // Without its own model the knife leaves the gun's in view.
             Viewmodel knife = game.SelectedEntry == game.WeaponCount ? Model(KnifeId, null) : null;
             Show(knife ?? Model(game.ActiveWeapon.Id, game.ActiveWeapon));
+            if (game.LauncherEquipped)
+            {
+                // The world RPG has no authored arms take. Draw its actual tube at the eye, through the same
+                // depth-cleared overlay as other weapons, while the body remains shadow-only.
+                overlay.fieldOfView = mainCamera.fieldOfView;
+                SightsWeight = 0f;
+                rig.localPosition = new Vector3(.22f, -.18f, .58f);
+                rig.localRotation = Quaternion.identity;
+                lastPlayer = player.position;
+                lastYaw = view.Yaw;
+                return;
+            }
 
             Vector3 step = player.position - lastPlayer;
             step.y = 0;
@@ -338,9 +354,11 @@ namespace TienTuyen.Presentation
         private Viewmodel Build(string id, WeaponDefinition weapon)
         {
             string folder = "Viewmodels/" + id;
-            GameObject prefab = null;
-            foreach (var candidate in Resources.LoadAll<GameObject>(folder))
-                if (candidate.transform.parent == null) { prefab = candidate; break; }
+            bool launcher = weapon != null && game.LauncherEquipped && launcherPrefab != null;
+            GameObject prefab = launcher ? launcherPrefab : null;
+            if (!launcher)
+                foreach (var candidate in Resources.LoadAll<GameObject>(folder))
+                    if (candidate.transform.parent == null) { prefab = candidate; break; }
             if (prefab == null && weapon == null) return null;
             Transform root = prefab != null ? Instantiate(prefab, rig, false).transform : BuildStandIn(weapon);
             root.name = "Viewmodel_" + id;
@@ -352,7 +370,7 @@ namespace TienTuyen.Presentation
                 if (renderer is SkinnedMeshRenderer skin) skin.updateWhenOffscreen = true;
             }
             var model = new Viewmodel { root = root, muzzle = Find(root, "Muzzle"), flash = Find(root, "MuzzleFlash")?.gameObject };
-            if (model.flash == null && model.muzzle != null)
+            if (!launcher && model.flash == null && model.muzzle != null)
             {
                 FlashFile look = null;
                 foreach (var text in Resources.LoadAll<TextAsset>(folder))
@@ -366,7 +384,7 @@ namespace TienTuyen.Presentation
                 model.look = BuildFlash(model.muzzle, look);
                 model.flash = model.look.root;
             }
-            if (prefab != null)
+            if (prefab != null && !launcher)
             {
                 string events = null;
                 foreach (var text in Resources.LoadAll<TextAsset>(folder))
@@ -695,6 +713,13 @@ namespace TienTuyen.Presentation
             }
             if (game != null) game.WeaponFired -= OnWeaponFired;
             if (mainCamera != null && overlay != null) mainCamera.GetUniversalAdditionalCameraData().cameraStack.Remove(overlay);
+            // The view owns this child even when only the component is removed (duel lobby/replay).
+            // Layer 30 is shared by all overlay cameras, so an orphan's meshes would be drawn by the next view.
+            if (overlay != null)
+            {
+                overlay.gameObject.SetActive(false);
+                Destroy(overlay.gameObject);
+            }
         }
         /// <summary>A viewmodel's takes, sampled by hand so the game, not the clip, decides how long each lasts.</summary>
         private sealed class Takes
@@ -859,7 +884,6 @@ namespace TienTuyen.Presentation
             public CombatState State => game.State;
             public bool LauncherEquipped => game.LauncherEquipped;
             public WeaponDefinition ActiveWeapon => game.ActiveWeapon;
-            public bool LauncherEquipped => game.LauncherEquipped;
             public WeaponDefinition WeaponAt(int slot) => game.WeaponAt(slot);
             public int SelectedEntry => game.SelectedEntry;
             public int WeaponCount => game.WeaponCount;
@@ -890,7 +914,6 @@ namespace TienTuyen.Presentation
         CombatState State { get; }
         bool LauncherEquipped { get; }
         WeaponDefinition ActiveWeapon { get; }
-        bool LauncherEquipped { get; }
         WeaponDefinition WeaponAt(int slot);
         /// <summary>Equal to <see cref="WeaponCount"/> while the knife is in hand.</summary>
         int SelectedEntry { get; }
