@@ -21,7 +21,7 @@ namespace TienTuyen.Presentation
         // The film is cut where its last shot reaches the ridges; its black title card and the silence after it are not
         // shown. The menu's Adagio carries on from the bar the film reached there.
         public const float FilmEndSeconds = 112f;
-        public const float HandoffMenuOffsetSeconds = 46.07f;
+        public const float HandoffMenuOffsetSeconds = 66.5f;
         // The title over the live valley: the film's last frame dissolves away, the title comes up and goes, and the
         // camera swings from the drift to the menu shot as the menu appears.
         private const float DissolveSeconds = 1.2f, TitleInAt = .8f, TitleInSeconds = 1.5f, TitleOutAt = 6.2f,

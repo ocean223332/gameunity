@@ -8,6 +8,12 @@ namespace TienTuyen.Combat
     // P1 constants: the two enemy profiles are intentionally provisional graybox tuning.
     public static class CombatRules
     {
+        public const float HeadshotMultiplier = 1.6f;
+
+        // Match the upper fifth of the same body column used by the crosshair hit test.
+        public static bool IsHeadshot(float height, float bodyHeight) =>
+            bodyHeight > 0 && height >= bodyHeight * .8f && height <= bodyHeight;
+
         /// <summary>Enemies alive at once; a squad member that would pass it waits for a kill.</summary>
         public const int EnemyCap = 14;
         /// <summary>Each wave sends its enemies in squads: the first squad 1.1 s in, members 0.35 s apart, and a lull

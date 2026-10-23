@@ -129,7 +129,7 @@ namespace TienTuyen.Presentation
             var mouse = Mouse.current;
             if (mouse != null && live && Cursor.lockState == CursorLockMode.Locked)
             {
-                look += mouse.delta.ReadValue() * Sensitivity;
+                look += mouse.delta.ReadValue() * Sensitivity * PlayerSettings.MouseSensitivity;
                 fire |= mouse.leftButton.isPressed;
                 aim |= mouse.rightButton.isPressed;
             }
