@@ -13,6 +13,29 @@ namespace TienTuyen.Presentation
     [RequireComponent(typeof(CombatGame))]
     public sealed class CommanderPresentation : MonoBehaviour
     {
+        public const float HurtVoiceCooldownSeconds = 10f;
+        public const float HitPlayerVoiceCooldownSeconds = 6f;
+        private const float LockVoiceCooldownSeconds = 4.5f;
+        private static readonly (string clip, string subtitle)[] LockLines =
+        {
+            ("Lock_1", "“Target... locked.”\nĐã khóa mục tiêu."),
+            ("Lock_2", "“There is nowhere to hide!”\nKhông còn chỗ nào để trốn!")
+        };
+        private static readonly (string clip, string subtitle)[] HitPlayerLines =
+        {
+            ("HitPlayer_1", "“Direct hit!”\nTrúng đích!"),
+            ("HitPlayer_2", "“Stay down, soldier.”\nNằm yên đó, lính."),
+            ("HitPlayer_3", "“Is that all you've got?”\nChỉ có thế thôi sao?")
+        };
+        private static readonly (string clip, string subtitle)[] HurtLines =
+        {
+            ("Hurt_1", "“You'll pay for that!”\nMày sẽ phải trả giá!"),
+            ("Hurt_2", "“Is that the best you can do?”\nMày chỉ làm được đến thế thôi à?"),
+            ("Hurt_3", "“Keep pushing! Don't let up!”\nTiến lên! Không được chùn bước!")
+        };
+        private const string EnragedSubtitle = "“Get me support... now!”\nCần chi viện... ngay!";
+        private const string VictorySubtitle = "“Road's clear. Move out.”\nĐường đã thông. Tiến quân.";
+
         public SkinnedCharacterProfile Profile;
         public GameObject Launcher;
         private CombatGame game;
@@ -20,7 +43,12 @@ namespace TienTuyen.Presentation
         private Animator bossAnimator,heroAnimator;
         private Camera cameraView;
         private CombatThirdPersonCamera view;
-        private bool cameraOwned,wasCinematic,wasRetreat;
+        private bool cameraOwned,wasCinematic,wasRetreat,wasAiming;
+        private bool enragedSpoken,playVictoryOnDefeat;
+        private float hurtVoiceCooldown,lockVoiceCooldown,hitPlayerVoiceCooldown,combatSubtitleTimer;
+        private string combatSubtitle="";
+        private int currentVoicePriority,lockCursor,hitPlayerCursor,hurtCursor,lastHostileRocketFrame=-1;
+        private readonly Dictionary<string,AudioClip> voiceClips=new Dictionary<string,AudioClip>();
         private PlayableGraph graph;
         private AnimationMixerPlayable mixer;
         private Vector3 lastBoss;
@@ -35,9 +63,44 @@ namespace TienTuyen.Presentation
         {
             game=GetComponent<CombatGame>();player=transform.Find("Player");cameraView=Camera.main;
             if(cameraView!=null)view=cameraView.GetComponent<CombatThirdPersonCamera>();
-            voice=gameObject.AddComponent<AudioSource>();voice.spatialBlend=0;voice.volume=.9f;
+            voice=gameObject.AddComponent<AudioSource>();voice.spatialBlend=0;voice.volume=.95f;
+            PreloadVoiceClips();
             game.RocketExploded+=Explosion;game.TransientsCleared+=Clear;
+            game.EnemyDamaged+=OnEnemyDamaged;game.PlayerDamaged+=OnPlayerDamaged;
             BuildHud();
+        }
+        private void PreloadVoiceClips()
+        {
+            string[] ids={"Intro","Retreat","Lock_1","Lock_2","HitPlayer_1","HitPlayer_2","HitPlayer_3","Hurt_1","Hurt_2","Hurt_3","Enraged","Victory"};
+            foreach(string id in ids)
+            {
+                var clip=Resources.Load<AudioClip>("CommanderVoice/"+id);
+                if(clip!=null)voiceClips[id]=clip;
+            }
+        }
+        private void PlayBossVoice(string clipName,string lineSubtitle,int priority)
+        {
+            if(voice==null)return;
+            if(!voiceClips.TryGetValue(clipName,out var clip) || clip==null)
+            {
+                clip=Resources.Load<AudioClip>("CommanderVoice/"+clipName);
+                if(clip!=null)voiceClips[clipName]=clip;
+            }
+            if(clip==null)return;
+            voice.Stop();
+            voice.clip=clip;
+            voice.Play();
+            currentVoicePriority=priority;
+            combatSubtitle=lineSubtitle ?? "";
+            combatSubtitleTimer=clip.length+.25f;
+        }
+        private void ResetEncounterVoiceState()
+        {
+            enragedSpoken=playVictoryOnDefeat=false;
+            hurtVoiceCooldown=lockVoiceCooldown=hitPlayerVoiceCooldown=combatSubtitleTimer=0f;
+            combatSubtitle="";
+            currentVoicePriority=0;
+            wasAiming=false;
         }
         private void BuildBoss()
         {
@@ -85,22 +148,83 @@ namespace TienTuyen.Presentation
                 }
                 var marker=transform.Find("EnemyWarning_0");if(marker!=null)marker.GetComponent<Renderer>().sharedMaterial=bossWarningMaterial;
             }
-            UpdateHeroLauncher();UpdateCamera(cinematic,dt);UpdateHud(cinematic);
             if(game.State==CombatState.Paused)voice.Pause();else voice.UnPause();
+            if(game.State!=CombatState.Paused)
+            {
+                hurtVoiceCooldown=Mathf.Max(0f,hurtVoiceCooldown-dt);
+                lockVoiceCooldown=Mathf.Max(0f,lockVoiceCooldown-dt);
+                hitPlayerVoiceCooldown=Mathf.Max(0f,hitPlayerVoiceCooldown-dt);
+                if(combatSubtitleTimer>0f)
+                {
+                    float subStep=game.State==CombatState.Defeat ? Time.unscaledDeltaTime : dt;
+                    combatSubtitleTimer=Mathf.Max(0f,combatSubtitleTimer-subStep);
+                }
+                if(!voice.isPlaying)currentVoicePriority=0;
+            }
             if(cinematic && (!wasCinematic || wasRetreat!=game.CommanderRetreating))
             {
-                voice.Stop();voice.clip=Resources.Load<AudioClip>("CommanderVoice/"+(game.CommanderRetreating ? "Retreat" : "Intro"));
-                if(voice.clip!=null)voice.Play();
+                if(!game.CommanderRetreating)ResetEncounterVoiceState();
+                PlayBossVoice(game.CommanderRetreating ? "Retreat" : "Intro","",4);
                 if(game.CommanderRetreating) Smoke(game.CommanderActor.position);
             }
-            if(!cinematic && wasCinematic)voice.Stop();
+            if(!cinematic && wasCinematic)
+            {
+                voice.Stop();
+                combatSubtitleTimer=0f;
+                currentVoicePriority=0;
+            }
+            bool aiming=game.CommanderAiming;
+            if(aiming && !wasAiming && !cinematic && game.State==CombatState.Playing)
+            {
+                if(lockVoiceCooldown<=0f && (!voice.isPlaying || currentVoicePriority<1))
+                {
+                    var line=LockLines[lockCursor++%LockLines.Length];
+                    lockVoiceCooldown=LockVoiceCooldownSeconds;
+                    PlayBossVoice(line.clip,line.subtitle,1);
+                }
+            }
+            wasAiming=aiming;
             wasCinematic=cinematic;wasRetreat=game.CommanderRetreating;
+            UpdateHeroLauncher();UpdateCamera(cinematic,dt);UpdateHud(cinematic);
             for(int i=flashes.Count-1;i>=0;i--)
             {
                 if(flashes[i]==null){flashes.RemoveAt(i);flashAges.RemoveAt(i);continue;}
                 flashAges[i]+=dt;float age=flashAges[i];
                 flashes[i].transform.localScale=Vector3.one*(.3f+age*7);
                 if(age>.55f){Destroy(flashes[i].GetComponent<Renderer>().sharedMaterial);Destroy(flashes[i]);flashes.RemoveAt(i);flashAges.RemoveAt(i);}
+            }
+        }
+        private void OnEnemyDamaged(Transform actor,float damage,bool critical,bool killed)
+        {
+            if(game==null || !game.CommanderActive || game.CommanderCinematic || killed || !game.IsCommanderActor(actor))return;
+            float hp=game.CommanderHealth;
+            if(!enragedSpoken && hp>0f && hp<=CombatGame.CommanderMaxHealth*.5f)
+            {
+                enragedSpoken=true;
+                hurtVoiceCooldown=HurtVoiceCooldownSeconds;
+                PlayBossVoice("Enraged",EnragedSubtitle,3);
+                return;
+            }
+            if(hurtVoiceCooldown<=0f && (!voice.isPlaying || currentVoicePriority<1))
+            {
+                var line=HurtLines[hurtCursor++%HurtLines.Length];
+                hurtVoiceCooldown=HurtVoiceCooldownSeconds;
+                PlayBossVoice(line.clip,line.subtitle,1);
+            }
+        }
+        private void OnPlayerDamaged(Vector3 source,float damage)
+        {
+            if(game==null || !game.CommanderActive || game.CommanderCinematic)return;
+            if(game.Health<=0f)
+            {
+                playVictoryOnDefeat=true;
+                return;
+            }
+            if(lastHostileRocketFrame==Time.frameCount && hitPlayerVoiceCooldown<=0f && (!voice.isPlaying || currentVoicePriority<=1))
+            {
+                var line=HitPlayerLines[hitPlayerCursor++%HitPlayerLines.Length];
+                hitPlayerVoiceCooldown=HitPlayerVoiceCooldownSeconds;
+                PlayBossVoice(line.clip,line.subtitle,2);
             }
         }
         private void UpdateHeroLauncher()
@@ -160,8 +284,12 @@ namespace TienTuyen.Presentation
         private void UpdateHud(bool cinematic)
         {
             healthRoot.SetActive(game.CommanderActive && !cinematic && game.State==CombatState.Playing);health.fillAmount=game.CommanderHealth/CombatGame.CommanderMaxHealth;
-            topLetter.SetActive(cinematic);bottomLetter.SetActive(cinematic);subtitle.gameObject.SetActive(cinematic);
-            subtitle.text=game.CommanderRetreating ? "“Bring up the armor. We finish this ourselves.”\nĐưa thiết giáp lên. Chúng ta sẽ tự kết thúc chuyện này.   <size=15>[Giữ SPACE để bỏ qua]</size>" : "“Break their line. Take the road!”\nChọc thủng phòng tuyến. Chiếm lấy con đường!   <size=15>[Giữ SPACE để bỏ qua]</size>";
+            bool showCombatSub=!cinematic && combatSubtitleTimer>0f && !string.IsNullOrEmpty(combatSubtitle) && (game.CommanderActive || game.State==CombatState.Defeat);
+            topLetter.SetActive(cinematic);bottomLetter.SetActive(cinematic);subtitle.gameObject.SetActive(cinematic || showCombatSub);
+            if(cinematic)
+                subtitle.text=game.CommanderRetreating ? "“Bring up the armor. We finish this ourselves.”\nĐưa thiết giáp lên. Chúng ta sẽ tự kết thúc chuyện này.   <size=15>[Giữ SPACE để bỏ qua]</size>" : "“Break their line. Take the road!”\nChọc thủng phòng tuyến. Chiếm lấy con đường!   <size=15>[Giữ SPACE để bỏ qua]</size>";
+            else if(showCombatSub)
+                subtitle.text=combatSubtitle;
             bool reward=game.Run!=null && game.Run.CommanderRewardClaimed && (game.State==CombatState.Upgrade || game.State==CombatState.Shop);
             notice.text=reward ? "ĐÃ NHẬN RPG-18 · +20 TIẾP TẾ · +1 LƯỢT NÂNG CẤP\nNếu đủ 4 ô, RPG thay súng đang cầm. Đổi súng bằng con lăn/Q hoặc phím số." : "";
         }
@@ -182,6 +310,7 @@ namespace TienTuyen.Presentation
         }
         private void Explosion(Vector3 position,float radius,bool hostile)
         {
+            if(hostile)lastHostileRocketFrame=Time.frameCount;
             var flash=GameObject.CreatePrimitive(PrimitiveType.Sphere);flash.name="RPGBlast";flash.transform.position=position;
             var collider=flash.GetComponent<Collider>();collider.enabled=false;Destroy(collider);
             var material=new Material(Shader.Find("Universal Render Pipeline/Unlit"));material.SetColor("_BaseColor",new Color(2.8f,.65f,.1f));flash.GetComponent<Renderer>().sharedMaterial=material;
@@ -197,10 +326,28 @@ namespace TienTuyen.Presentation
             var renderer=ps.GetComponent<ParticleSystemRenderer>();renderer.sharedMaterial=ProceduralArt.Particle("CommanderSmoke",true,new Color(.24f,.23f,.2f,.6f));
             ps.Play();Destroy(go,2);
         }
-        private void Clear(){if(voice!=null)voice.Stop();if(bossRoot!=null)bossRoot.gameObject.SetActive(false);}
+        private void Clear()
+        {
+            if(playVictoryOnDefeat)
+            {
+                playVictoryOnDefeat=false;
+                PlayBossVoice("Victory",VictorySubtitle,4);
+            }
+            else if(voice!=null)
+            {
+                voice.Stop();
+                combatSubtitleTimer=0f;
+                currentVoicePriority=0;
+            }
+            if(bossRoot!=null)bossRoot.gameObject.SetActive(false);
+        }
         private void OnDestroy()
         {
-            if(game!=null){game.RocketExploded-=Explosion;game.TransientsCleared-=Clear;}
+            if(game!=null)
+            {
+                game.RocketExploded-=Explosion;game.TransientsCleared-=Clear;
+                game.EnemyDamaged-=OnEnemyDamaged;game.PlayerDamaged-=OnPlayerDamaged;
+            }
             if(cameraOwned && view!=null)view.EncounterCamera=false;
             if(graph.IsValid())graph.Destroy();
             if(canvasObject!=null)Destroy(canvasObject);if(bossRoot!=null)Destroy(bossRoot.gameObject);if(playerGun!=null)Destroy(playerGun.gameObject);
