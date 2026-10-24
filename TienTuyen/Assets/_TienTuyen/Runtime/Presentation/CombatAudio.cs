@@ -337,7 +337,7 @@ namespace TienTuyen.Presentation
         private void OnEnemyDamaged(Transform actor, float damage, bool critical, bool killed)
         {
             PlayWorld("Hit_Enemy__impactSoft_medium_000", actor.position, .02f);
-            if (killed) PlayWorld("Death_Vocal__die1", actor.position, .12f);
+            if (killed && !game.IsCommanderActor(actor)) PlayWorld("Death_Vocal__die1", actor.position, .12f);
         }
 
         private void OnPlayerDamaged(Vector3 source, float damage)
