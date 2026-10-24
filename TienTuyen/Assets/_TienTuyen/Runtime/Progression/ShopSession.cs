@@ -111,7 +111,7 @@ namespace TienTuyen.Progression
                         run.PassiveCount(replacements[i].Id) >= replacements[i].StackCap) return false;
                 }
             }
-            if (!hasFreeSlot || Rerolls >= (int.MaxValue - 4 - (wave - 1) / 3) / 2 ||
+            if (!hasFreeSlot || Rerolls == int.MaxValue ||
                 !run.TrySpend(NextRerollPrice)) return false;
             for (int i = 0; i < OfferSlots; i++) if (!locked[i]) offers[i] = replacements[i];
             Rerolls++;

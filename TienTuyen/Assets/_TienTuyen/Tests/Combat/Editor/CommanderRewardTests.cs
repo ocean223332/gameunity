@@ -29,6 +29,59 @@ namespace TienTuyen.Combat.Tests
             for(int i=0;i<100;i++)
                 Assert.That(new ShopOfferGenerator().RollOffers(run,5,rng).Any(o=>o.Id=="weapon.rpg18"),Is.False);
         }
+
+        [Test]
+        public void EarnedLauncherAppearsAtNormalTierPricesAndStaysUnlockedAfterSale()
+        {
+            var run = new ProgressionRun(ContentIds.Rifle);
+            Claim(run);
+            Assert.That(run.TrySellWeapon(run.LauncherSlot, out _), Is.True);
+            var rng = new Random(42);
+            bool tierOne = false, tierTwo = false;
+            for (int i = 0; i < 200; i++)
+                foreach (var offer in new ShopOfferGenerator().RollOffers(run, 5, rng))
+                    if (offer.Id == ContentIds.Rpg18)
+                    {
+                        Assert.That(offer.Tier, Is.InRange(1, 2));
+                        Assert.That(offer.Price, Is.EqualTo(offer.Tier == 1 ? 30 : 60));
+                        tierOne |= offer.Tier == 1;
+                        tierTwo |= offer.Tier == 2;
+                    }
+            Assert.That(tierOne && tierTwo, Is.True, "Both RPG tiers must be eligible after the reward, including after selling it.");
+            var freshRun = new ProgressionRun(ContentIds.Rifle);
+            for (int i = 0; i < 100; i++)
+                Assert.That(new ShopOfferGenerator().RollOffers(freshRun, 12, rng).Any(o => o.Id == ContentIds.Rpg18), Is.False);
+        }
+
+        [Test]
+        public void BoughtLaunchersMergeThroughTierThreeAndPreservePaidValue()
+        {
+            var run = new ProgressionRun(ContentIds.Rifle);
+            Claim(run);
+            run.AddCurrency(12000);
+            var shop = new ShopSession(run, 5, new[]
+            {
+                new ShopOffer(ContentIds.Rpg18, OfferKind.Weapon, 1, 30),
+                new ShopOffer(ContentIds.Rpg18, OfferKind.Weapon, 2, 60),
+                new ShopOffer(ContentIds.Rpg18, OfferKind.Weapon, 3, 120),
+                new ShopOffer(ContentIds.Rpg18, OfferKind.Weapon, 3, 120)
+            });
+            Assert.That(shop.TryPurchase(0), Is.EqualTo(PurchaseResult.Bought));
+            Assert.That(run.TryCombineWeapons(1, 2), Is.True);
+            Assert.That(run.Weapons[1].Tier, Is.EqualTo(2));
+            Assert.That(shop.TryPurchase(1), Is.EqualTo(PurchaseResult.Bought));
+            Assert.That(run.TryCombineWeapons(1, 2), Is.True);
+            Assert.That(run.Weapons[1].Tier, Is.EqualTo(3));
+            Assert.That(run.Weapons[1].PaidPrice, Is.EqualTo(90));
+            run.AddCurrency(24000);
+            Assert.That(shop.TryPurchase(2), Is.EqualTo(PurchaseResult.Bought));
+            Assert.That(shop.TryPurchase(3), Is.EqualTo(PurchaseResult.Bought));
+            long balance = run.CurrencyMinor;
+            Assert.That(run.TryCombineWeapons(1, 2), Is.False);
+            Assert.That(run.Weapons.Count, Is.EqualTo(4));
+            Assert.That(run.CurrencyMinor, Is.EqualTo(balance));
+        }
+
         [Test] public void BossRewardOffersThreeWeaponSpecificUpgrades()
         {
             var run=new ProgressionRun(ContentIds.Rifle);Claim(run);

@@ -13,6 +13,9 @@ namespace TienTuyen.Combat
         private float commanderClock, commanderAttack, commanderMove, skipCommanderHold;
         private Vector3 commanderTarget, commanderWalk;
         private bool commanderAiming;
+        private float commanderSupportTimer;
+        private const int CommanderSupportCap = 2;
+        private const float CommanderFirstSupportSeconds = 6f, CommanderSupportIntervalSeconds = 12f;
         public bool CommanderActive => commander != null && commanderPhase != 0;
         public bool CommanderCinematic => CommanderActive && (commanderPhase == 1 || commanderPhase == 3);
         public bool CommanderRetreating => commanderPhase == 3;
@@ -23,6 +26,8 @@ namespace TienTuyen.Combat
         public Vector3 CommanderTarget => commanderTarget;
         public event Action<Vector3,float,bool> RocketExploded;
         public event Action<bool> LauncherFired;
+        /// <summary>Presentation-only projectile lifetime, flight direction and owner.</summary>
+        public event Action<Transform, Vector3, bool> RocketLaunched;
         public bool IsCommanderActor(Transform actor) => CommanderActive && commander.body.transform == actor;
         public bool IsCommanderWarning(Transform marker) => CommanderActive && commander.warning.transform==marker;
         private sealed class Rocket
@@ -34,7 +39,7 @@ namespace TienTuyen.Combat
 
         private void ResetCommander()
         {
-            commanderPhase=0;commander=null;commanderAiming=false;skipCommanderHold=0;
+            commanderPhase=0;commander=null;commanderAiming=false;skipCommanderHold=0;commanderSupportTimer=0;
             foreach(var rocket in rockets) if(rocket.body!=null) Destroy(rocket.body);
             rockets.Clear();
         }
@@ -51,6 +56,7 @@ namespace TienTuyen.Combat
             commander.body.transform.position=point;commander.body.transform.localScale=new Vector3(.7f,.85f,.7f);commander.body.SetActive(true);
             commander.warning.SetActive(false);commander.laser.SetActive(false);AliveEnemies++;
             commanderPhase=1;commanderClock=0;commanderAiming=false;commanderAttack=1.8f;commanderMove=0;
+            commanderSupportTimer=CommanderFirstSupportSeconds;
         }
         private void AdvanceCommanderCinematic(float seconds)
         {
@@ -85,6 +91,24 @@ namespace TienTuyen.Combat
             foreach(var rocket in rockets) if(rocket.body!=null) Destroy(rocket.body);
             rockets.Clear();AliveEnemies=0;
         }
+        private void UpdateCommanderSupports(float dt)
+        {
+            if (commanderPhase != 2) return;
+            int count = 0;
+            foreach (var enemy in enemies)
+                if (!ReferenceEquals(enemy, commander) && (enemy.active || enemy.pending)) count++;
+            // A full escort gets a fresh delay before replacing a fallen soldier, not an instant refill.
+            if (count >= CommanderSupportCap)
+            {
+                commanderSupportTimer = CommanderSupportIntervalSeconds;
+                return;
+            }
+            commanderSupportTimer -= dt;
+            if (commanderSupportTimer > 0) return;
+            commanderSupportTimer = CommanderSupportIntervalSeconds;
+            AnnounceEnemy(ContentCatalog.P2.GetEnemy(ContentIds.Infantry));
+        }
+
         private void UpdateCommander(float dt)
         {
             if(commanderPhase!=2 || commander==null) return;
@@ -120,6 +144,7 @@ namespace TienTuyen.Combat
             body.transform.position=from;body.transform.rotation=Quaternion.FromToRotation(Vector3.up,delta.normalized);body.transform.localScale=new Vector3(.09f,.2f,.09f);
             if(ProjectileMaterial!=null) body.GetComponent<Renderer>().sharedMaterial=ProjectileMaterial;
             rockets.Add(new Rocket{body=body,direction=delta.normalized,left=Mathf.Min(40,delta.magnitude),damage=damage,radius=radius,hostile=hostile});
+            RocketLaunched?.Invoke(body.transform, delta.normalized, hostile);
             LauncherFired?.Invoke(hostile);
         }
         private void UpdateRockets(float dt)
@@ -166,7 +191,9 @@ namespace TienTuyen.Combat
             }
             Vector3 to=target>=0 ? (manualAim ? AimTargetPoint(target,origin,direction) : enemies[target].body.transform.position+Vector3.up*.08f) : origin+direction*distance;
             int slot=ActiveWeaponSlot;weaponAmmo[slot]--;weaponFireTimer[slot]=ActiveWeapon.ShotCooldownSeconds;
-            LaunchRocket(from,to,ActiveWeapon.DamagePerHit*Run.RocketDamageFactor*Stats.DamageFactor,Run.RocketRadius,false);
+            int tier=Run.Weapons[slot].Tier;
+            float tierFactor=tier==1 ? 1f : tier==2 ? 1.35f : 1.8f;
+            LaunchRocket(from,to,ActiveWeapon.DamagePerHit*tierFactor*Run.RocketDamageFactor*Stats.DamageFactor,Run.RocketRadius,false);
             WeaponFired?.Invoke(slot,from,to);if(weaponAmmo[slot]<=0) StartReload(slot);
         }
     }

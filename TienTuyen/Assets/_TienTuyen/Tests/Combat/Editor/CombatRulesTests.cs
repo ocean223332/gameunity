@@ -5,6 +5,13 @@ namespace TienTuyen.Combat.Tests
 {
     public sealed class CombatRulesTests
     {
+        [TestCase(0f, 1f)] [TestCase(9.75f, 1f)] [TestCase(19.5f, .625f)]
+        [TestCase(29.25f, .25f)] [TestCase(40f, .25f)]
+        public void SmgDistanceFalloffPreservesCloseDamageAndHasANonzeroFloor(float distance, float expected)
+        {
+            Assert.That(CombatRules.SmgDistanceDamageFactor(distance, 9.75f), Is.EqualTo(expected).Within(.0001f));
+        }
+
         [TestCase(0, 0)]
         [TestCase(199, 0)]
         [TestCase(200, 100)]

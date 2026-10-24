@@ -41,6 +41,83 @@ namespace TienTuyen.Combat.Tests
         }
 
         [Test]
+        public void SmgDistantCrosshairRayIsClearWhenTargetSearchIsAllowedToReachIt()
+        {
+            player.position = new Vector3(-10, .8f, 0);
+            var enemy = CreateTarget(new Vector3(5, .8f, 0));
+            Vector3 eye = new Vector3(-10, 1.4f, 0);
+            game.SetViewInput(90, enemy.transform.position + Vector3.up * .6f, true, eye, Vector3.right);
+            var find = typeof(CombatGame).GetMethod("FindAimTarget", PrivateInstance);
+            Assert.That((int)find.Invoke(game, new object[] { 9.75f }), Is.EqualTo(-1));
+            Assert.That((int)find.Invoke(game, new object[] { 40f }), Is.GreaterThanOrEqualTo(0),
+                "Changing only the query reach finds the same body through the same cover geometry and camera ray.");
+        }
+
+        [TestCase(5f, false, 10f)] [TestCase(9f, false, 10f)] [TestCase(10f, false, 9.903846f)]
+        [TestCase(15f, false, 7.980769f)] [TestCase(20f, false, 6.057692f)] [TestCase(15f, true, 7.980769f)]
+        [TestCase(30f, false, 2.5f)] [TestCase(39f, false, 2.5f)] [TestCase(41f, false, 0f)]
+        public void SmgClearShotsFallOffGraduallyInBothCameraRays(float distance, bool shoulderCamera, float expectedDamage)
+        {
+            game.ReturnToMenu();
+            game.SelectWeapon(WeaponKind.Smg);
+            game.BeginRun();
+            SetField(game, "spawnTimer", 999f);
+            player.position = new Vector3(-10, .8f, 0);
+            var enemy = CreateTarget(player.position + Vector3.right * distance);
+            Vector3 point = enemy.transform.position + Vector3.up * .6f;
+            Vector3 eye = player.position + (shoulderCamera ? new Vector3(-3, 1.6f, .9f) : Vector3.up * .6f);
+            game.SetViewInput(90, point, true, eye, point - eye);
+            Assert.That(game.TryGetCrosshairEnemy(eye, (point - eye).normalized, out _), Is.True, "The crosshair must actually intersect the target body.");
+            float before = (float)GetField(enemy.entry, "hp");
+            Vector3 impact = Vector3.zero;
+            bool struck = false, critical = false;
+            float reportedDamage = 0;
+            game.DamageFeedback += (at, damage, head, crit) => { reportedDamage = damage; critical = crit; };
+            game.ShotImpact += (at, hit) => { impact = at; struck = hit; };
+            Invoke("FireWeapon");
+            float damage = before - (float)GetField(enemy.entry, "hp");
+            Assert.That(struck, Is.EqualTo(expectedDamage > 0));
+            Assert.That(reportedDamage / (critical ? 1.5f : 1f), Is.EqualTo(expectedDamage).Within(.001f));
+            Assert.That(damage, Is.EqualTo(reportedDamage).Within(.01f));
+            Assert.That(game.Ammo, Is.EqualTo(23), "Long-range misses must still spend ammunition.");
+        }
+        [Test]
+        public void SmgExtendedReachStillStopsOnSandbagsAndClearsTheirTop()
+        {
+            game.ReturnToMenu(); game.SelectWeapon(WeaponKind.Smg); game.BeginRun();
+            player.position = new Vector3(-1, .8f, -3.4f);
+            var enemy = CreateTarget(new Vector3(-14, .8f, -3.4f));
+            float hp = (float)GetField(enemy.entry, "hp");
+            game.SetViewInput(-90, new Vector3(-14, .7f, -3.4f), true, new Vector3(-1, .7f, -3.4f), Vector3.left);
+            Invoke("FireWeapon");
+            Assert.That((float)GetField(enemy.entry, "hp"), Is.EqualTo(hp));
+            ((float[])GetField(game, "weaponFireTimer"))[0] = 0;
+            game.SetViewInput(-90, new Vector3(-14, 1.5f, -3.4f), true, new Vector3(-1, 1.5f, -3.4f), Vector3.left);
+            Invoke("FireWeapon");
+            Assert.That((float)GetField(enemy.entry, "hp"), Is.LessThan(hp));
+        }
+
+        [Test]
+        public void SmgRangeBonusExtendsBothBulletReachAndDamageBand()
+        {
+            game.ReturnToMenu(); game.SelectWeapon(WeaponKind.Smg); game.BeginRun();
+            var bonus = new ShopOffer("test.smg.range", OfferKind.Passive, 1, 0, modifier: new StatModifier { Range = .1f });
+            var shop = new ShopSession(game.Run, 1, new[] { bonus, null, null, null });
+            Assert.That(shop.TryPurchase(0), Is.EqualTo(PurchaseResult.Bought));
+            player.position = new Vector3(-10, .8f, 0);
+            var enemy = CreateTarget(new Vector3(32, .8f, 0));
+            game.SetViewInput(90, new Vector3(32, 1.4f, 0), true, new Vector3(-10, 1.4f, 0), Vector3.right);
+            float hp = (float)GetField(enemy.entry, "hp");
+            Invoke("FireWeapon");
+            Assert.That((float)GetField(enemy.entry, "hp"), Is.LessThan(hp), "A +10% range bonus must reach beyond the unmodified 40-metre limit.");
+            string preview = TienTuyen.Presentation.Interface.CombatText.OfferPreview(game,
+                new ShopOffer(ContentIds.Smg, OfferKind.Weapon, 1, 18));
+            Assert.That(preview, Does.Contain("44 m"));
+            Assert.That(preview, Does.Contain("10.7 m"));
+            Assert.That(preview, Does.Contain("25%"));
+        }
+
+        [Test]
         public void TriggerFiresOnlyWhileHeldAndHitsTheEnemyUnderTheCrosshair()
         {
             var enemy = CreateTarget(new Vector3(4f, .8f, 0f));

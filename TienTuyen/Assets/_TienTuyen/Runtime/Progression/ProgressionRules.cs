@@ -61,7 +61,7 @@ namespace TienTuyen.Progression
         public static int RerollPrice(int wave, int rerollsInShop)
         {
             if (wave < 1 || rerollsInShop < 0) throw new ArgumentOutOfRangeException();
-            return checked(4 + 2 * rerollsInShop + (wave - 1) / 3);
+            return 2;
         }
 
         public static StatModifier Upgrade(UpgradeKind kind)
