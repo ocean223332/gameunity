@@ -14,8 +14,8 @@ namespace TienTuyen.Presentation
     public sealed class CommanderPresentation : MonoBehaviour
     {
         public const float HurtVoiceCooldownSeconds = 10f;
-        public const float HitPlayerVoiceCooldownSeconds = 6f;
-        private const float LockVoiceCooldownSeconds = 4.5f;
+        public const float HitPlayerVoiceCooldownSeconds = 8f;
+        private const float LockVoiceCooldownSeconds = 12f;
         private static readonly (string clip, string subtitle)[] LockLines =
         {
             ("Lock_1", "“Target... locked.”\nĐã khóa mục tiêu."),
@@ -78,26 +78,29 @@ namespace TienTuyen.Presentation
                 if(clip!=null)voiceClips[id]=clip;
             }
         }
-        private void PlayBossVoice(string clipName,string lineSubtitle,int priority)
+        private float PlayBossVoice(string clipName,string lineSubtitle,int priority)
         {
-            if(voice==null)return;
+            if(voice==null)return 0f;
             if(!voiceClips.TryGetValue(clipName,out var clip) || clip==null)
             {
                 clip=Resources.Load<AudioClip>("CommanderVoice/"+clipName);
                 if(clip!=null)voiceClips[clipName]=clip;
             }
-            if(clip==null)return;
+            if(clip==null)return 0f;
             voice.Stop();
             voice.clip=clip;
             voice.Play();
             currentVoicePriority=priority;
             combatSubtitle=lineSubtitle ?? "";
             combatSubtitleTimer=clip.length+.25f;
+            return clip.length;
         }
         private void ResetEncounterVoiceState()
         {
             enragedSpoken=playVictoryOnDefeat=false;
-            hurtVoiceCooldown=lockVoiceCooldown=hitPlayerVoiceCooldown=combatSubtitleTimer=0f;
+            hurtVoiceCooldown=HurtVoiceCooldownSeconds;
+            lockVoiceCooldown=6f;
+            hitPlayerVoiceCooldown=combatSubtitleTimer=0f;
             combatSubtitle="";
             currentVoicePriority=0;
             wasAiming=false;
@@ -172,6 +175,7 @@ namespace TienTuyen.Presentation
                 voice.Stop();
                 combatSubtitleTimer=0f;
                 currentVoicePriority=0;
+                hurtVoiceCooldown=HurtVoiceCooldownSeconds;
             }
             bool aiming=game.CommanderAiming;
             if(aiming && !wasAiming && !cinematic && game.State==CombatState.Playing)
@@ -179,8 +183,8 @@ namespace TienTuyen.Presentation
                 if(lockVoiceCooldown<=0f && (!voice.isPlaying || currentVoicePriority<1))
                 {
                     var line=LockLines[lockCursor++%LockLines.Length];
-                    lockVoiceCooldown=LockVoiceCooldownSeconds;
-                    PlayBossVoice(line.clip,line.subtitle,1);
+                    float d=PlayBossVoice(line.clip,line.subtitle,1);
+                    lockVoiceCooldown=LockVoiceCooldownSeconds+d;
                 }
             }
             wasAiming=aiming;
@@ -190,20 +194,19 @@ namespace TienTuyen.Presentation
         private void OnEnemyDamaged(Transform actor,float damage,bool critical,bool killed)
         {
             if(game==null || !game.CommanderActive || game.CommanderCinematic || killed || !game.IsCommanderActor(actor))return;
+            if(hurtVoiceCooldown>0f)return;
+            if(voice!=null && voice.isPlaying)return;
             float hp=game.CommanderHealth;
             if(!enragedSpoken && hp>0f && hp<=CombatGame.CommanderMaxHealth*.5f)
             {
                 enragedSpoken=true;
-                hurtVoiceCooldown=HurtVoiceCooldownSeconds;
-                PlayBossVoice("Enraged",EnragedSubtitle,3);
+                float d=PlayBossVoice("Enraged",EnragedSubtitle,3);
+                hurtVoiceCooldown=HurtVoiceCooldownSeconds+d;
                 return;
             }
-            if(hurtVoiceCooldown<=0f && (!voice.isPlaying || currentVoicePriority<1))
-            {
-                var line=HurtLines[hurtCursor++%HurtLines.Length];
-                hurtVoiceCooldown=HurtVoiceCooldownSeconds;
-                PlayBossVoice(line.clip,line.subtitle,1);
-            }
+            var line=HurtLines[hurtCursor++%HurtLines.Length];
+            float hurtDuration=PlayBossVoice(line.clip,line.subtitle,1);
+            hurtVoiceCooldown=HurtVoiceCooldownSeconds+hurtDuration;
         }
         private void OnPlayerDamaged(Vector3 source,float damage)
         {
@@ -216,8 +219,8 @@ namespace TienTuyen.Presentation
             if(lastHostileRocketFrame==Time.frameCount && hitPlayerVoiceCooldown<=0f && (!voice.isPlaying || currentVoicePriority<=1))
             {
                 var line=HitPlayerLines[hitPlayerCursor++%HitPlayerLines.Length];
-                hitPlayerVoiceCooldown=HitPlayerVoiceCooldownSeconds;
-                PlayBossVoice(line.clip,line.subtitle,2);
+                float d=PlayBossVoice(line.clip,line.subtitle,2);
+                hitPlayerVoiceCooldown=HitPlayerVoiceCooldownSeconds+d;
             }
         }
         private void UpdateHeroLauncher()
