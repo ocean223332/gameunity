@@ -78,23 +78,23 @@ namespace TienTuyen.Combat.Tests
         }
 
         [Test]
-        public void RerollPricesRiseAndInvalidRollDoesNotCharge()
+        public void RepeatedRerollsCostTwoAndInvalidRollDoesNotCharge()
         {
             var run = new ProgressionRun("starter");
-            run.AddCurrency(1500);
+            run.AddCurrency(500);
             ShopSession shop = Shop(run);
             ShopOffer kept = shop.OfferAt(0);
             Assert.That(shop.SetLocked(0, true), Is.True);
-            Assert.That(shop.NextRerollPrice, Is.EqualTo(4));
+            Assert.That(shop.NextRerollPrice, Is.EqualTo(2));
             Assert.That(shop.TryReroll(new[] { Weapon("wrong"), Passive(), Weapon(), Passive() }), Is.False);
-            Assert.That(run.CurrencyMinor, Is.EqualTo(1500));
+            Assert.That(run.CurrencyMinor, Is.EqualTo(500));
             Assert.That(shop.TryReroll(new[] { kept, Passive("new"), Weapon("new"), Passive("other") }), Is.True);
-            Assert.That(run.CurrencyMinor, Is.EqualTo(1100));
-            Assert.That(shop.NextRerollPrice, Is.EqualTo(6));
+            Assert.That(run.CurrencyMinor, Is.EqualTo(300));
+            Assert.That(shop.NextRerollPrice, Is.EqualTo(2));
             Assert.That(shop.TryReroll(new[] { kept, Passive(), Weapon(), Passive() }), Is.True);
-            Assert.That(run.CurrencyMinor, Is.EqualTo(500));
+            Assert.That(run.CurrencyMinor, Is.EqualTo(100));
             Assert.That(shop.TryReroll(new[] { kept, Passive(), Weapon(), Passive() }), Is.False);
-            Assert.That(run.CurrencyMinor, Is.EqualTo(500));
+            Assert.That(run.CurrencyMinor, Is.EqualTo(100));
         }
 
         [Test]
@@ -129,7 +129,45 @@ namespace TienTuyen.Combat.Tests
             Assert.That(next.IsLocked(0), Is.True);
             Assert.That(next.OfferAt(1).Id, Is.EqualTo("second"));
             Assert.That(next.Rerolls, Is.Zero);
-            Assert.That(next.NextRerollPrice, Is.EqualTo(4));
+            Assert.That(next.NextRerollPrice, Is.EqualTo(2));
+        }
+
+
+        [TestCase(1)]
+        [TestCase(5)]
+        [TestCase(12)]
+        public void RerollRefillsPurchasedSlotAndPreservesLockedQuoteForTwoSupply(int wave)
+        {
+            var run = new ProgressionRun("starter");
+            run.AddCurrency(2200);
+            var shop = new ShopSession(run, wave, new[] { Weapon(), Passive(), Weapon("smg"), Passive("boots") });
+            var kept = shop.OfferAt(1);
+            shop.SetLocked(1, true);
+            Assert.That(shop.TryPurchase(0), Is.EqualTo(PurchaseResult.Bought));
+            Assert.That(shop.OfferAt(0), Is.Null);
+            var replacement = Weapon("new");
+            Assert.That(shop.TryReroll(new[] { replacement, kept, Weapon(), Passive() }), Is.True);
+            Assert.That(run.CurrencyMinor, Is.Zero);
+            Assert.That(shop.OfferAt(0), Is.SameAs(replacement));
+            Assert.That(shop.OfferAt(1), Is.SameAs(kept));
+            Assert.That(shop.IsLocked(1), Is.True);
+            Assert.That(shop.NextRerollPrice, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void UnaffordableRerollPreservesAllOffersLocksAndCount()
+        {
+            var run = new ProgressionRun("starter");
+            run.AddCurrency(199);
+            var shop = Shop(run);
+            shop.SetLocked(0, true);
+            var before = new ShopOffer[4];
+            for (int i = 0; i < 4; i++) before[i] = shop.OfferAt(i);
+            Assert.That(shop.TryReroll(new[] { before[0], Passive("new"), Weapon("new"), Passive() }), Is.False);
+            Assert.That(run.CurrencyMinor, Is.EqualTo(199));
+            Assert.That(shop.Rerolls, Is.Zero);
+            for (int i = 0; i < 4; i++) Assert.That(shop.OfferAt(i), Is.SameAs(before[i]));
+            Assert.That(shop.IsLocked(0), Is.True);
         }
 
         [Test]
@@ -180,8 +218,8 @@ namespace TienTuyen.Combat.Tests
         public void PriceAndRerollFollowWaveRules()
         {
             Assert.That(ProgressionRules.OfferPrice(20, 2, 5), Is.EqualTo(50));
-            Assert.That(ProgressionRules.RerollPrice(5, 0), Is.EqualTo(5));
-            Assert.That(ProgressionRules.RerollPrice(5, 1), Is.EqualTo(7));
+            Assert.That(ProgressionRules.RerollPrice(5, 0), Is.EqualTo(2));
+            Assert.That(ProgressionRules.RerollPrice(5, 1), Is.EqualTo(2));
         }
 
         [Test]

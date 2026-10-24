@@ -133,7 +133,7 @@ namespace TienTuyen.Content
                 new WeaponDefinition(ContentIds.Smg, "Tiểu liên", 10f, 1, 0.12f, 24, 2.9333f, 6.5f, 18),
                 new WeaponDefinition(ContentIds.Shotgun, "Súng tản đạn", 8f, 6, 0.85f, 5,
                     new RoundReload(0.6f, 0.175f, 0.4667f), 4.5f, 22),
-                new WeaponDefinition(ContentIds.Rpg18, "RPG-18", 140f, 1, 1.2f, 1, 4f, 24f, 80)
+                new WeaponDefinition(ContentIds.Rpg18, "RPG-18", 140f, 1, 1.2f, 1, 4f, 24f, 24)
             },
             new[]
             {
