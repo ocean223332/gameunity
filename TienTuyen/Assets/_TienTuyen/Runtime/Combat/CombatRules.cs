@@ -9,6 +9,7 @@ namespace TienTuyen.Combat
     public static class CombatRules
     {
         public const float HeadshotMultiplier = 1.6f;
+        public const float CommanderHeadshotMultiplier = 1.3f;
 
         // Match the upper fifth of the same body column used by the crosshair hit test.
         public static bool IsHeadshot(float height, float bodyHeight) =>

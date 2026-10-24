@@ -80,7 +80,18 @@ namespace TienTuyen.Combat.Tests
             headDamage = 0;
             Shoot(head);
             Assert.That(lastHead, Is.True);
-            Assert.That(headDamage, Is.EqualTo(bodyDamage * CombatRules.HeadshotMultiplier).Within(.01f));
+            Assert.That(headDamage, Is.EqualTo(bodyDamage * CombatRules.CommanderHeadshotMultiplier).Within(.01f));
+        }
+
+        [Test]
+        public void ShotBesideCommanderHeadAboveShouldersMissesNarrowerHeadHitbox()
+        {
+            float before = game.CommanderHealth;
+            bool? hit = null;
+            game.ShotImpact += (point, struck) => hit = struck;
+            Shoot(head + Vector3.forward * .6f);
+            Assert.That(hit, Is.False, "Empty air beside the head must not count as a hit on the narrower head hitbox.");
+            Assert.That(game.CommanderHealth, Is.EqualTo(before));
         }
 
         [Test]
