@@ -214,13 +214,16 @@ namespace TienTuyen.Combat
         private const float BodyHeight = 2.0f, EliteBodyHeight = 2.6f;
         // The imported commander is 1.85 m tall and displayed at 1.3 times its original size.
         private const float CommanderBodyHeight = 1.85f * 1.3f;
+        private const float CommanderHeadRadius = ManualAimRadius * 0.65f;
         private const float CoverHeight = 1.1f;
 
         private float EnemyBodyHeight(Enemy enemy) => ReferenceEquals(enemy, commander)
             ? CommanderBodyHeight : enemy.elite ? EliteBodyHeight : BodyHeight;
 
-        private float EnemyAimRadius(Enemy enemy) => ManualAimRadius *
-            (ReferenceEquals(enemy, commander) || enemy.elite ? 1.3f : 1f);
+        private float EnemyAimRadius(Enemy enemy, float height = 0f) =>
+            ReferenceEquals(enemy, commander)
+                ? (CombatRules.IsHeadshot(height, CommanderBodyHeight) ? CommanderHeadRadius : ManualAimRadius * 1.3f)
+                : ManualAimRadius * (enemy.elite ? 1.3f : 1f);
         private static readonly Vector2[] Directions = { Vector2.right, Vector2.left, Vector2.up, Vector2.down };
 
         private struct Cover
@@ -1401,7 +1404,10 @@ namespace TienTuyen.Combat
                 if (weapon.Id == ContentIds.Smg)
                     damage *= CombatRules.SmgDistanceDamageFactor(
                         Mathf.Sqrt(PlanarDistanceSquared(player.position, enemy.body.transform.position)), fullDamageRange);
-                ApplyDetailedShotDamage(enemy, damage * (headshot ? CombatRules.HeadshotMultiplier : 1f), critical, headshot, end);
+                float headshotMultiplier = ReferenceEquals(enemy, commander)
+                    ? CombatRules.CommanderHeadshotMultiplier
+                    : CombatRules.HeadshotMultiplier;
+                ApplyDetailedShotDamage(enemy, damage * (headshot ? headshotMultiplier : 1f), critical, headshot, end);
             }
             if (weaponAmmo[slot] == 0) StartReload(slot);
         }
@@ -1439,9 +1445,13 @@ namespace TienTuyen.Combat
             var enemy = enemies[target];
             if (ReferenceEquals(enemy, commander))
             {
-                // Intersect the same finite body column used by targeting, including its head.
+                // Intersect the same finite body/head column used by targeting.
                 Vector3 position = enemy.body.transform.position;
-                float bodyRadius = EnemyAimRadius(enemy);
+                var planar = new Vector2(direction.x, direction.z);
+                float alongRay = Vector2.Dot(new Vector2(position.x - origin.x,
+                    position.z - origin.z), planar) / Mathf.Max(.000001f, planar.sqrMagnitude);
+                float rayHeight = origin.y + direction.y * alongRay - (position.y - .8f);
+                float bodyRadius = EnemyAimRadius(enemy, rayHeight);
                 Vector3 offset = origin - position;
                 float a = direction.x * direction.x + direction.z * direction.z;
                 float bodyB = offset.x * direction.x + offset.z * direction.z;
@@ -1510,11 +1520,11 @@ namespace TienTuyen.Combat
                 var offset = new Vector2(position.x - origin.x, position.z - origin.z);
                 float along = Vector2.Dot(offset, planar);
                 if (along <= 0 || along >= bestAlong) continue;
-                float radius = EnemyAimRadius(enemies[i]);
-                if ((offset - planar * along).sqrMagnitude > radius * radius) continue;
                 // The ray's height above the enemy's feet where it passes him; the actor sits at capsule centre.
                 float height = origin.y + direction.y * (along / speed) - (position.y - .8f);
                 if (height < -.1f || height > EnemyBodyHeight(enemies[i])) continue;
+                float radius = EnemyAimRadius(enemies[i], height);
+                if ((offset - planar * along).sqrMagnitude > radius * radius) continue;
                 var fromHero = new Vector2(position.x - player.position.x, position.z - player.position.z);
                 if (Vector2.Dot(fromHero, planar) <= 0) continue;
                 if (Vector2.Dot(fromHero, new Vector2(aimDirection.x, aimDirection.z)) >= reach) continue;

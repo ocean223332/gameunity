@@ -9,6 +9,7 @@ namespace TienTuyen.Combat
     public static class CombatRules
     {
         public const float HeadshotMultiplier = 1.6f;
+        public const float CommanderHeadshotMultiplier = 1.3f;
         public const float ManualAimRangeFactor = 1.5f;
         public const float SmgManualShotRange = 40f;
 
