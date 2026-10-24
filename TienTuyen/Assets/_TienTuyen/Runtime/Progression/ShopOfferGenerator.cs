@@ -45,7 +45,7 @@ namespace TienTuyen.Progression
             // Fill absent categories before random slots, prioritizing a weapon if only one slot remains.
             if (!hasWeapon && free.Count > 0)
             {
-                row[free[0]] = RollWeapon(wave, random);
+                row[free[0]] = RollWeapon(run, wave, random);
                 free.RemoveAt(0);
             }
             if (!hasPassive && free.Count > 0 && validPassives.Count > 0)
@@ -55,14 +55,14 @@ namespace TienTuyen.Progression
             }
             foreach (int slot in free)
                 row[slot] = validPassives.Count > 0 && random.Next(2) == 0
-                    ? RollPassive(validPassives, wave, random) : RollWeapon(wave, random);
+                    ? RollPassive(validPassives, wave, random) : RollWeapon(run, wave, random);
             return row;
         }
 
-        private ShopOffer RollWeapon(int wave, Random random)
+        private ShopOffer RollWeapon(ProgressionRun run, int wave, Random random)
         {
             if (weapons.Weapons.Count == 0) throw new InvalidOperationException("No weapons available for shop");
-            var available=weapons.Weapons.Where(w=>w.Id!=ContentIds.Rpg18).ToArray();
+            var available = weapons.Weapons.Where(w => w.Id != ContentIds.Rpg18 || run.CommanderRewardClaimed).ToArray();
             if(available.Length==0) throw new InvalidOperationException("No shop weapons available");
             WeaponDefinition weapon = available[random.Next(available.Length)];
             int roll = random.Next(100);

@@ -209,7 +209,7 @@ namespace TienTuyen.Combat
         private const float ChargerDashSpeed = 10f, ChargerDashSeconds = 0.45f;
         // Hand aiming replaces nearest-target selection, so give it a little more reach
         // and a forgiving hit radius around the crosshair ray.
-        private const float ManualRangeFactor = 1.5f, ManualAimRadius = 0.62f;
+        private const float ManualAimRadius = 0.62f;
         // How tall an enemy is for the crosshair ray, from his feet; generous over the visible models.
         private const float BodyHeight = 2.0f, EliteBodyHeight = 2.6f;
         // The imported commander is 1.85 m tall and displayed at 1.3 times its original size.
@@ -847,6 +847,11 @@ namespace TienTuyen.Combat
 
         private void UpdateSpawn(float dt)
         {
+            if (CommanderActive)
+            {
+                UpdateCommanderSupports(dt);
+                return;
+            }
             spawnTimer -= dt;
             if (spawnTimer > 0 || AliveEnemies >= CombatRules.EnemyCap) return;
             if (squadLeft <= 0) squadLeft = CombatRules.SquadSize(Wave);
@@ -854,8 +859,14 @@ namespace TienTuyen.Combat
             // The next member follows closely; after the last one the lull runs to the next squad's start.
             spawnTimer = squadLeft > 0 ? CombatRules.SquadSpacingSeconds :
                 CombatRules.SquadIntervalSeconds(Wave) - (CombatRules.SquadSize(Wave) - 1) * CombatRules.SquadSpacingSeconds;
+            AnnounceEnemy();
+        }
+
+        private void AnnounceEnemy(EnemyDefinition preferred = null)
+        {
             Enemy slot = null;
-            foreach (var enemy in enemies) if (!enemy.active && !enemy.pending) { slot = enemy; break; }
+            foreach (var enemy in enemies)
+                if (!ReferenceEquals(enemy, commander) && !enemy.active && !enemy.pending) { slot = enemy; break; }
             if (slot == null) return;
             for (int attempt = 0; attempt < 20; attempt++)
             {
@@ -871,7 +882,7 @@ namespace TienTuyen.Combat
                 slot.warning.SetActive(true);
                 slot.pending = true;
                 slot.warningTimer = SpawnWarning;
-                slot.definition = ChooseEnemyDefinition();
+                slot.definition = preferred ?? ChooseEnemyDefinition();
                 slot.elite = slot.definition.Role == EnemyRole.Elite;
                 // Both ranged roles use the same real projectile path; Elite only differs in
                 // magazine, spread, range and damage.
@@ -1333,7 +1344,9 @@ namespace TienTuyen.Combat
         {
             int slot = ActiveWeaponSlot;
             WeaponDefinition weapon = WeaponAt(slot);
-            float range = weapon == null ? 0 : weapon.Range * Stats.RangeFactor * ManualRangeFactor;
+            float fullDamageRange = weapon == null ? 0 : weapon.Range * Stats.RangeFactor * CombatRules.ManualAimRangeFactor;
+            float range = weapon != null && weapon.Id == ContentIds.Smg
+                ? CombatRules.SmgManualShotRange * Stats.RangeFactor : fullDamageRange;
             AimOnTarget = weapon != null && FindAimTarget(range) >= 0;
             if (!triggerHeld || !ActiveWeaponReady()) return;
             int target = FindAimTarget(range);
@@ -1388,6 +1401,9 @@ namespace TienTuyen.Combat
                     headshot = CombatRules.IsHeadshot(height, EnemyBodyHeight(enemy));
                 }
                 float damage = ShotDamage(slot, weapon, out bool critical);
+                if (weapon.Id == ContentIds.Smg)
+                    damage *= CombatRules.SmgDistanceDamageFactor(
+                        Mathf.Sqrt(PlanarDistanceSquared(player.position, enemy.body.transform.position)), fullDamageRange);
                 float headshotMultiplier = ReferenceEquals(enemy, commander)
                     ? CombatRules.CommanderHeadshotMultiplier
                     : CombatRules.HeadshotMultiplier;

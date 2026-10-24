@@ -18,7 +18,7 @@ namespace TienTuyen.Presentation
     /// shots (valley, forest edge, crowded fight, enemy at the edge) and records FrameTimingManager CPU/GPU times
     /// and frame rate for each, with a screenshot, into DIR/benchmark.csv; then films two short clips at a fixed
     /// 60 Hz step (still camera, slow pan) for judging shimmer and ghosting, and quits. The fight is the real
-    /// simulation (wave 5, auto-fire, hero invulnerable) so effects and AI are in the numbers.
+    /// simulation (wave 6, auto-fire, hero invulnerable) so effects and AI are in the numbers.
     /// For comparisons on one build: <c>-aa smaa|msaa|stp</c> overrides the anti-aliasing, <c>-shadowres N</c> and
     /// <c>-shadowdist M</c> the sun shadows, and <c>-lighting NAME</c> pins the LightingPreset;
     /// <c>-florafade off</c> drops the plants' LOD cross-fade; <c>-renderscale X</c> and <c>-cascades N</c> set those URP
@@ -27,6 +27,8 @@ namespace TienTuyen.Presentation
     /// depth) to price them; <c>-depthpriming Auto|Forced</c> sets the renderer's depth priming;
     /// <c>-passes</c> also writes each segment's GPU time per profiler sampler to <c>segment_passes.csv</c>;
     /// <c>-propshots a,b</c> only photographs those prop texture sets up close (see PropShots) and quits.
+    /// <c>-offscreen</c> explicitly renders an HDR target for hidden Windows players only (visible windows can render twice); <c>-no-clips</c> skips movie capture.
+    /// <c>-seed N</c> pins simulation (default 7319); <c>-fps N</c> caps a separate acceptance run (default uncapped).
     /// </summary>
     public sealed class GraphicsBenchmark : MonoBehaviour
     {
@@ -35,9 +37,13 @@ namespace TienTuyen.Presentation
 
         private string outDir;
         private CombatGame game;
+        private Camera benchmarkCamera;
+        private RenderTexture benchmarkTarget;
+        private int benchmarkSeed = 7319;
+        private readonly StringBuilder measurementWindows = new StringBuilder("segment,start_utc,end_utc\n");
         private readonly FrameTiming[] timing = new FrameTiming[1];
         private readonly StringBuilder csv = new StringBuilder(
-            "segment,frames,fps_p50,fps_1pct_low,frame_ms_p50,frame_ms_p99,cpu_ms_p50,cpu_main_ms_p50,cpu_render_ms_p50,gpu_ms_p50,gpu_ms_p99,gfx_driver_mb,alive_enemies\n");
+            "segment,frames,fps_p50,fps_1pct_low,frame_ms_p50,frame_ms_p99,cpu_ms_p50,cpu_main_ms_p50,cpu_render_ms_p50,gpu_ms_p50,gpu_ms_p99,gfx_driver_mb,alive_enemies,gpu_valid_frames\n");
 
         /// <summary>True when the benchmark was asked for on the command line.</summary>
         public static bool Requested => Argument() != null;
@@ -144,17 +150,28 @@ namespace TienTuyen.Presentation
         {
             Directory.CreateDirectory(outDir);
             QualitySettings.vSyncCount = 0;
-            Application.targetFrameRate = -1;
+            Application.targetFrameRate = int.TryParse(Argument("-fps"), out int targetFps) && targetFps > 0 ? targetFps : -1;
             game.enabled = false;
             for (int i = 0; i < 300 && game.transform.Find("Player/HeroVisual") == null; i++) yield return null;
+            if (int.TryParse(Argument("-seed"), out int seed)) benchmarkSeed = seed;
+            UnityEngine.Random.InitState(benchmarkSeed);
             game.BeginRun();
-            typeof(CombatGame).GetField("<Wave>k__BackingField", Private).SetValue(game, 5);
+            typeof(CombatGame).GetField("sniperTutorialSeen", Private).SetValue(game, true);
+            typeof(CombatGame).GetField("<Wave>k__BackingField", Private).SetValue(game, 6);
             typeof(CombatGame).GetMethod("ResetWave", Private).Invoke(game, null);
             var player = (Transform)typeof(CombatGame).GetField("player", Private).GetValue(game);
             var view = Camera.main;
             var follow = view.GetComponent<CombatThirdPersonCamera>();
             for (int i = 0; i < 60; i++) yield return null;
             string aa = ApplyAntialiasing(view);
+            benchmarkCamera = view;
+            if (Array.IndexOf(Environment.GetCommandLineArgs(), "-offscreen") >= 0)
+            {
+                benchmarkTarget = new RenderTexture(Screen.width, Screen.height, 24, RenderTextureFormat.ARGBHalf) { name = "BenchmarkTarget" };
+                benchmarkTarget.Create();
+                view.targetTexture = benchmarkTarget;
+                view.enabled = true;
+            }
             string props = Argument("-propshots");
             if (props != null)
             {
@@ -183,7 +200,16 @@ namespace TienTuyen.Presentation
                 Step(1f / 60f);
                 yield return null;
             }
-            yield return Measure("3_crowded_combat", () => Step(Time.deltaTime));
+            if (game.AliveEnemies < 12 || game.CommanderCinematic)
+            {
+                File.WriteAllText(Path.Combine(outDir, "INVALID_SCENE.txt"), "Normal-wave combat did not populate twelve actors.");
+                Debug.LogError("[GraphicsBenchmark] Invalid crowded-combat workload.");
+                Application.Quit(2);
+                yield break;
+            }
+            var fireTimers = (float[])typeof(CombatGame).GetField("weaponFireTimer", Private).GetValue(game);
+            Array.Clear(fireTimers, 0, fireTimers.Length);
+            yield return Measure("3_crowded_combat", () => Step(1f / 60f));
 
             // The live enemy nearest the arena edge, where the ground cover grows, seen at aim FOV.
             // The fight is held still here, so nobody walks into the camera while it measures.
@@ -192,30 +218,37 @@ namespace TienTuyen.Presentation
             if (target != null) Place(view, ClearEye(target.position), target.position + Vector3.up * .9f, 40f);
             yield return Measure("4_enemy_in_grass", HoldFire);
 
-            // Clips at the forest edge: the still one shows wind shimmer, the pan shows edge crawl and ghosting.
-            Place(view, edge, edge + new Vector3(-40f, 5f, -22f), 56f);
-            for (int i = 0; i < 30; i++) yield return null;
-            Time.captureDeltaTime = 1f / 60f;
-            for (int i = 0; i < 40; i++)
+            if (Array.IndexOf(Environment.GetCommandLineArgs(), "-no-clips") < 0)
             {
-                ScreenCapture.CaptureScreenshot(Path.Combine(outDir, "clip_still_" + i.ToString("00") + ".png"));
+                // Clips at the forest edge: the still one shows wind shimmer, the pan shows edge crawl and ghosting.
+                Place(view, edge, edge + new Vector3(-40f, 5f, -22f), 56f);
+                for (int i = 0; i < 30; i++) yield return null;
+                Time.captureDeltaTime = 1f / 60f;
+                for (int i = 0; i < 40; i++)
+                {
+                    CaptureImage(Path.Combine(outDir, "clip_still_" + i.ToString("00") + ".png"));
+                    yield return null;
+                }
+                var look = view.transform.rotation;
+                for (int i = 0; i < 40; i++)
+                {
+                    view.transform.rotation = Quaternion.AngleAxis(i * .12f, Vector3.up) * look;
+                    CaptureImage(Path.Combine(outDir, "clip_pan_" + i.ToString("00") + ".png"));
+                    yield return null;
+                }
+                Time.captureDeltaTime = 0f;
                 yield return null;
-            }
-            var look = view.transform.rotation;
-            for (int i = 0; i < 40; i++)
-            {
-                view.transform.rotation = Quaternion.AngleAxis(i * .12f, Vector3.up) * look;
-                ScreenCapture.CaptureScreenshot(Path.Combine(outDir, "clip_pan_" + i.ToString("00") + ".png"));
-                yield return null;
-            }
-            Time.captureDeltaTime = 0f;
-            yield return null;
 
+            }
             File.WriteAllText(Path.Combine(outDir, "benchmark.csv"), csv.ToString());
+            File.WriteAllText(Path.Combine(outDir, "measurement_windows.csv"), measurementWindows.ToString());
             File.WriteAllText(Path.Combine(outDir, "system.txt"),
                 SystemInfo.graphicsDeviceName + " | " + SystemInfo.graphicsDeviceType + " | " + Screen.width + "x" + Screen.height +
                 " | quality " + QualitySettings.names[QualitySettings.GetQualityLevel()] + " | aa " + aa +
                 " | lighting " + FindFirstObjectByType<CombatEnvironment>()?.Preset?.name +
+                " | seed " + benchmarkSeed + " | offscreen " + (benchmarkTarget != null) +
+                " | target fps " + Application.targetFrameRate +
+                " | frame timing enabled " + FrameTimingManager.IsFeatureEnabled() +
                 " | unity reserved MB " + Profiler.GetTotalReservedMemoryLong() / (1024 * 1024) +
                 " | gfx driver MB " + Profiler.GetAllocatedMemoryForGraphicsDriver() / (1024 * 1024) + "\n");
             Application.Quit();
@@ -305,7 +338,7 @@ namespace TienTuyen.Presentation
                     eye.y = CombatEnvironment.GroundHeight(eye.x, eye.z) + 1.7f;
                     Place(view, eye, bounds.center, fov);
                     for (int i = 0; i < 40; i++) yield return null;
-                    ScreenCapture.CaptureScreenshot(Path.Combine(outDir, "prop_" + name + "_" + side + ".png"));
+                    CaptureImage(Path.Combine(outDir, "prop_" + name + "_" + side + ".png"));
                     yield return null;
                     yield return null;
                 }
@@ -360,10 +393,12 @@ namespace TienTuyen.Presentation
                     if (recorders[s].isValid) recorders[s].enabled = true;
                 }
             }
+            DateTime sampleStart = default;
             for (int i = 0; i < Warmup + Measured; i++)
             {
+                if (i == Warmup) sampleStart = DateTime.UtcNow;
                 tick?.Invoke();
-                if (i == Warmup + Measured / 2) ScreenCapture.CaptureScreenshot(Path.Combine(outDir, segment + ".png"));
+                RenderBenchmarkFrame();
                 yield return null;
                 FrameTimingManager.CaptureFrameTimings();
                 if (i < Warmup) continue;
@@ -373,12 +408,18 @@ namespace TienTuyen.Presentation
                 frame.Add(Time.unscaledDeltaTime * 1000.0);
                 int gc = GC.CollectionCount(0) - collections;
                 collections += gc;
-                if (FrameTimingManager.GetLatestTimings(1, timing) == 0) continue;
+                if (FrameTimingManager.GetLatestTimings(1, timing) == 0)
+                {
+                    rows.AppendFormat(CultureInfo.InvariantCulture, "{0:F2},NaN,NaN,NaN,NaN,{1}\n", Time.unscaledDeltaTime * 1000.0, gc);
+                    continue;
+                }
                 rows.AppendFormat(CultureInfo.InvariantCulture, "{0:F2},{1:F2},{2:F2},{3:F2},{4:F2},{5}\n", Time.unscaledDeltaTime * 1000.0,
                     timing[0].cpuMainThreadFrameTime, timing[0].cpuRenderThreadFrameTime, timing[0].cpuMainThreadPresentWaitTime, timing[0].gpuFrameTime, gc);
                 cpu.Add(timing[0].cpuFrameTime); main.Add(timing[0].cpuMainThreadFrameTime);
-                render.Add(timing[0].cpuRenderThreadFrameTime); gpu.Add(timing[0].gpuFrameTime);
+                render.Add(timing[0].cpuRenderThreadFrameTime); if (timing[0].gpuFrameTime > 0) gpu.Add(timing[0].gpuFrameTime);
             }
+            measurementWindows.AppendFormat(CultureInfo.InvariantCulture, "{0},{1:O},{2:O}\n", segment, sampleStart, DateTime.UtcNow);
+            CaptureImage(Path.Combine(outDir, segment + ".png"));
             File.WriteAllText(Path.Combine(outDir, segment + "_frames.csv"), rows.ToString());
             if (recorders != null)
             {
@@ -395,10 +436,72 @@ namespace TienTuyen.Presentation
                     passes.AppendFormat(CultureInfo.InvariantCulture, "\"{0}\",{1:F3}\n", samplers[s].Replace("\"", "'"), passGpu[s] / Measured / 1e6);
                 File.WriteAllText(Path.Combine(outDir, segment + "_passes.csv"), passes.ToString());
             }
-            csv.AppendFormat(CultureInfo.InvariantCulture, "{0},{1},{2:F1},{3:F1},{4:F2},{5:F2},{6:F2},{7:F2},{8:F2},{9:F2},{10:F2},{11},{12}\n",
+            csv.AppendFormat(CultureInfo.InvariantCulture, "{0},{1},{2:F1},{3:F1},{4:F2},{5:F2},{6:F2},{7:F2},{8:F2},{9:F2},{10:F2},{11},{12},{13}\n",
                 segment, frame.Count, 1000.0 / Percentile(frame, .5), 1000.0 / Percentile(frame, .99), Percentile(frame, .5), Percentile(frame, .99),
                 Percentile(cpu, .5), Percentile(main, .5), Percentile(render, .5), Percentile(gpu, .5), Percentile(gpu, .99),
-                Profiler.GetAllocatedMemoryForGraphicsDriver() / (1024 * 1024), game.AliveEnemies);
+                Profiler.GetAllocatedMemoryForGraphicsDriver() / (1024 * 1024), game.AliveEnemies, gpu.Count);
+        }
+
+        private void RenderBenchmarkFrame()
+        {
+            if (benchmarkTarget == null) return;
+            benchmarkCamera.Render();
+            // Hidden windows skip automatic rendering even with a target texture. The camera stays
+            // enabled so Camera.main consumers (flora, blood, HUD) submit the real scene.
+            // A one-pixel readback finishes this frame and prevents
+            // the CPU from reporting submission speed while many GPU frames remain queued.
+            var completion = AsyncGPUReadback.Request(benchmarkTarget, 0, 0, 1, 0, 1, 0, 1);
+            completion.WaitForCompletion();
+            if (completion.hasError)
+            {
+                File.WriteAllText(Path.Combine(outDir, "INVALID_RENDER.txt"), "GPU completion readback failed.");
+                Application.Quit(2);
+            }
+        }
+
+        // Full screenshot readback and PNG encoding happen outside the measured interval.
+        private void CaptureImage(string path)
+        {
+            if (benchmarkTarget == null) { ScreenCapture.CaptureScreenshot(path); return; }
+            RenderBenchmarkFrame();
+            var previous = RenderTexture.active;
+            var image = new Texture2D(benchmarkTarget.width, benchmarkTarget.height, TextureFormat.RGB24, false);
+            try
+            {
+                RenderTexture.active = benchmarkTarget;
+                image.ReadPixels(new Rect(0, 0, image.width, image.height), 0, 0);
+                image.Apply();
+                File.WriteAllBytes(path, image.EncodeToPNG());
+                // A hidden player can advance simulation while never rendering its back buffer.
+                // Reject that loop explicitly instead of reporting hundreds of meaningless FPS.
+                var pixels = image.GetPixels32();
+                int darkest = 765, brightest = 0;
+                for (int p = 0; p < pixels.Length; p += Mathf.Max(1, pixels.Length / 4096))
+                {
+                    int brightness = pixels[p].r + pixels[p].g + pixels[p].b;
+                    darkest = Mathf.Min(darkest, brightness);
+                    brightest = Mathf.Max(brightest, brightness);
+                }
+                if (brightest < 12 || brightest - darkest < 8)
+                {
+                    File.WriteAllText(Path.Combine(outDir, "INVALID_RENDER.txt"), "The measured camera produced a blank target: " + path);
+                    Debug.LogError("[GraphicsBenchmark] Blank camera target; performance results are invalid.");
+                    Application.Quit(2);
+                }
+            }
+            finally
+            {
+                RenderTexture.active = previous;
+                Destroy(image);
+            }
+        }
+
+        private void OnDestroy()
+        {
+            if (benchmarkTarget == null) return;
+            if (benchmarkCamera != null) benchmarkCamera.targetTexture = null;
+            benchmarkTarget.Release();
+            Destroy(benchmarkTarget);
         }
 
         private static double Percentile(List<double> values, double q)

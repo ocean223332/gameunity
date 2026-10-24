@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using TMPro;
 using TienTuyen.Combat;
 using TienTuyen.Content;
@@ -29,14 +28,14 @@ namespace TienTuyen.Presentation
         private TMP_Text title,subtitle,notice;
         private AudioSource voice;
         private Material bossWarningMaterial;
-        private readonly List<GameObject> flashes=new List<GameObject>();
-        private readonly List<float> flashAges=new List<float>();
+        private RocketEffects rocketEffects;
         private void Start()
         {
             game=GetComponent<CombatGame>();player=transform.Find("Player");cameraView=Camera.main;
             if(cameraView!=null)view=cameraView.GetComponent<CombatThirdPersonCamera>();
             voice=gameObject.AddComponent<AudioSource>();voice.spatialBlend=0;voice.volume=.9f;
             game.RocketExploded+=Explosion;game.TransientsCleared+=Clear;
+            rocketEffects=GetComponent<RocketEffects>() ?? gameObject.AddComponent<RocketEffects>();
             BuildHud();
         }
         private void BuildBoss()
@@ -95,13 +94,6 @@ namespace TienTuyen.Presentation
             }
             if(!cinematic && wasCinematic)voice.Stop();
             wasCinematic=cinematic;wasRetreat=game.CommanderRetreating;
-            for(int i=flashes.Count-1;i>=0;i--)
-            {
-                if(flashes[i]==null){flashes.RemoveAt(i);flashAges.RemoveAt(i);continue;}
-                flashAges[i]+=dt;float age=flashAges[i];
-                flashes[i].transform.localScale=Vector3.one*(.3f+age*7);
-                if(age>.55f){Destroy(flashes[i].GetComponent<Renderer>().sharedMaterial);Destroy(flashes[i]);flashes.RemoveAt(i);flashAges.RemoveAt(i);}
-            }
         }
         private void UpdateHeroLauncher()
         {
@@ -182,20 +174,11 @@ namespace TienTuyen.Presentation
         }
         private void Explosion(Vector3 position,float radius,bool hostile)
         {
-            var flash=GameObject.CreatePrimitive(PrimitiveType.Sphere);flash.name="RPGBlast";flash.transform.position=position;
-            var collider=flash.GetComponent<Collider>();collider.enabled=false;Destroy(collider);
-            var material=new Material(Shader.Find("Universal Render Pipeline/Unlit"));material.SetColor("_BaseColor",new Color(2.8f,.65f,.1f));flash.GetComponent<Renderer>().sharedMaterial=material;
-            flashes.Add(flash);flashAges.Add(0);Smoke(position);
             if(view!=null && player!=null && Vector3.Distance(player.position,position)<12)view.Kick(.4f,.25f);
         }
         private void Smoke(Vector3 point)
         {
-            var go=new GameObject("RPGSmoke");go.transform.position=point;var ps=go.AddComponent<ParticleSystem>();ps.Stop(true,ParticleSystemStopBehavior.StopEmittingAndClear);
-            var main=ps.main;main.loop=false;main.duration=.4f;main.startLifetime=1.4f;main.startSpeed=1.4f;main.startSize=1;main.startColor=new Color(.24f,.23f,.2f,.6f);main.simulationSpace=ParticleSystemSimulationSpace.World;
-            var emission=ps.emission;emission.rateOverTime=0;emission.SetBursts(new[]{new ParticleSystem.Burst(0,12)});
-            var shape=ps.shape;shape.shapeType=ParticleSystemShapeType.Sphere;shape.radius=.4f;
-            var renderer=ps.GetComponent<ParticleSystemRenderer>();renderer.sharedMaterial=ProceduralArt.Particle("CommanderSmoke",true,new Color(.24f,.23f,.2f,.6f));
-            ps.Play();Destroy(go,2);
+            if(rocketEffects!=null)rocketEffects.RetreatSmoke(point);
         }
         private void Clear(){if(voice!=null)voice.Stop();if(bossRoot!=null)bossRoot.gameObject.SetActive(false);}
         private void OnDestroy()
@@ -204,7 +187,6 @@ namespace TienTuyen.Presentation
             if(cameraOwned && view!=null)view.EncounterCamera=false;
             if(graph.IsValid())graph.Destroy();
             if(canvasObject!=null)Destroy(canvasObject);if(bossRoot!=null)Destroy(bossRoot.gameObject);if(playerGun!=null)Destroy(playerGun.gameObject);
-            foreach(var flash in flashes)if(flash!=null){Destroy(flash.GetComponent<Renderer>().sharedMaterial);Destroy(flash);}
             if(bossWarningMaterial!=null)Destroy(bossWarningMaterial);
         }
     }

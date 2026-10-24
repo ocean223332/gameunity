@@ -10,6 +10,12 @@ namespace TienTuyen.Combat
     {
         public const float HeadshotMultiplier = 1.6f;
         public const float CommanderHeadshotMultiplier = 1.3f;
+        public const float ManualAimRangeFactor = 1.5f;
+        public const float SmgManualShotRange = 40f;
+
+        /// <summary>Full close-range SMG damage, then a linear falloff to 25% at three times that distance.</summary>
+        public static float SmgDistanceDamageFactor(float distance, float fullDamageRange) =>
+            Mathf.Lerp(1f, .25f, Mathf.InverseLerp(fullDamageRange, fullDamageRange * 3f, distance));
 
         // Match the upper fifth of the same body column used by the crosshair hit test.
         public static bool IsHeadshot(float height, float bodyHeight) =>
